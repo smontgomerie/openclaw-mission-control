@@ -16,6 +16,7 @@ from app.models.boards import Board
 from app.models.organizations import Organization
 from app.models.task_dependencies import TaskDependency
 from app.models.tasks import Task
+from app.services.task_dependencies import blocked_by_for_task
 
 
 async def _make_engine() -> AsyncEngine:
@@ -90,6 +91,12 @@ async def test_lead_dependency_only_update_allowed_when_task_blocked() -> None:
             task = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
             assert lead is not None
             assert task is not None
+            blocked_by_before = await blocked_by_for_task(
+                session,
+                board_id=board_id,
+                task_id=task_id,
+            )
+            assert blocked_by_before == [dep_id]
 
             # Re-assert the same deps list; this should be a no-op and should not
             # be rejected solely because the task is blocked.
@@ -110,6 +117,8 @@ async def test_lead_dependency_only_update_allowed_when_task_blocked() -> None:
 
             result = await _apply_lead_task_update(session, update=update)
             assert result.id == task_id
+            assert result.is_blocked is True
+            assert result.blocked_by_task_ids == [dep_id]
 
             reloaded = (await session.exec(select(Task).where(col(Task.id) == task_id))).first()
             assert reloaded is not None
