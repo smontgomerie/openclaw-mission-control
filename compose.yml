@@ -20,7 +20,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6380}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -45,11 +45,16 @@ services:
       LOCAL_AUTH_TOKEN: ${LOCAL_AUTH_TOKEN}
       BASE_URL: ${BASE_URL:-http://localhost:8000}
       RQ_REDIS_URL: redis://redis:6379/0
+      OPENCLAW_GATEWAY_DEVICE_IDENTITY_PATH: /home/appuser/.openclaw/identity/device.json
+      OPENCLAW_SHARED_WORKSPACE_ROOT: /home/appuser/.openclaw/workspace-shared
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - gateway_device_identity:/home/appuser/.openclaw/identity
+      - ${OPENCLAW_SHARED_WORKSPACE_PATH:-/Users/scott/.openclaw-docker/workspace}:/home/appuser/.openclaw/workspace-shared:ro
     ports:
       - "${BACKEND_PORT:-8000}:8000"
 
@@ -112,7 +117,13 @@ services:
       RQ_QUEUE_NAME: ${RQ_QUEUE_NAME:-default}
       RQ_DISPATCH_THROTTLE_SECONDS: ${RQ_DISPATCH_THROTTLE_SECONDS:-2.0}
       RQ_DISPATCH_MAX_RETRIES: ${RQ_DISPATCH_MAX_RETRIES:-3}
+      OPENCLAW_GATEWAY_DEVICE_IDENTITY_PATH: /home/appuser/.openclaw/identity/device.json
+      OPENCLAW_SHARED_WORKSPACE_ROOT: /home/appuser/.openclaw/workspace-shared
+    volumes:
+      - gateway_device_identity:/home/appuser/.openclaw/identity
+      - ${OPENCLAW_SHARED_WORKSPACE_PATH:-/Users/scott/.openclaw-docker/workspace}:/home/appuser/.openclaw/workspace-shared:ro
     restart: unless-stopped
 
 volumes:
   postgres_data:
+  gateway_device_identity:

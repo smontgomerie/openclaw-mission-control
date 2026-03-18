@@ -186,6 +186,8 @@ type LiveFeedItem = {
   event_type: LiveFeedEventType;
 };
 
+type BoardViewMode = "board" | "list";
+
 const LIVE_FEED_EVENT_TYPES = new Set<LiveFeedEventType>([
   "task.comment",
   "task.created",
@@ -205,6 +207,13 @@ const LIVE_FEED_EVENT_TYPES = new Set<LiveFeedEventType>([
 
 const isLiveFeedEventType = (value: string): value is LiveFeedEventType =>
   LIVE_FEED_EVENT_TYPES.has(value as LiveFeedEventType);
+
+const parseBoardViewMode = (value: string | null): BoardViewMode => {
+  if (value === "list") {
+    return value;
+  }
+  return "board";
+};
 
 type BoardTaskCreatePayload = Parameters<
   typeof createTaskApiV1BoardsBoardIdTasksPost
@@ -908,7 +917,9 @@ export default function BoardDetailPage() {
   );
   const [isDeletingTask, setIsDeletingTask] = useState(false);
   const [deleteTaskError, setDeleteTaskError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"board" | "list">("board");
+  const [viewMode, setViewMode] = useState<BoardViewMode>(() =>
+    parseBoardViewMode(searchParams.get("view")),
+  );
   const [isLiveFeedOpen, setIsLiveFeedOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const isLiveFeedOpenRef = useRef(false);
@@ -972,6 +983,22 @@ export default function BoardDetailPage() {
       }
     },
     [dismissToast],
+  );
+
+  useEffect(() => {
+    const nextViewMode = parseBoardViewMode(searchParams.get("view"));
+    setViewMode((prev) => (prev === nextViewMode ? prev : nextViewMode));
+  }, [searchParams]);
+
+  const updateViewMode = useCallback(
+    (nextViewMode: BoardViewMode) => {
+      setViewMode(nextViewMode);
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("view", nextViewMode);
+      const nextUrl = `${pathname}?${params.toString()}`;
+      router.replace(nextUrl, { scroll: false });
+    },
+    [pathname, router, searchParams],
   );
 
   useEffect(() => {
@@ -3126,7 +3153,7 @@ export default function BoardDetailPage() {
                           ? "bg-slate-900 text-white"
                           : "text-slate-600 hover:bg-slate-200 hover:text-slate-900",
                       )}
-                      onClick={() => setViewMode("board")}
+                      onClick={() => updateViewMode("board")}
                     >
                       Board
                     </button>
@@ -3137,7 +3164,7 @@ export default function BoardDetailPage() {
                           ? "bg-slate-900 text-white"
                           : "text-slate-600 hover:bg-slate-200 hover:text-slate-900",
                       )}
-                      onClick={() => setViewMode("list")}
+                      onClick={() => updateViewMode("list")}
                     >
                       List
                     </button>

@@ -4,6 +4,11 @@ from app.schemas.activity_events import ActivityEventRead
 from app.schemas.agents import AgentCreate, AgentRead, AgentUpdate
 from app.schemas.approvals import ApprovalCreate, ApprovalRead, ApprovalUpdate
 from app.schemas.board_group_memory import BoardGroupMemoryCreate, BoardGroupMemoryRead
+from app.schemas.board_filesystem_memory import (
+    BoardFilesystemMemoryContentRead,
+    BoardFilesystemMemoryFileRead,
+    BoardFilesystemMemoryOverviewRead,
+)
 from app.schemas.board_memory import BoardMemoryCreate, BoardMemoryRead
 from app.schemas.board_onboarding import (
     BoardOnboardingAnswer,
@@ -61,6 +66,9 @@ __all__ = [
     "ApprovalUpdate",
     "BoardGroupMemoryCreate",
     "BoardGroupMemoryRead",
+    "BoardFilesystemMemoryContentRead",
+    "BoardFilesystemMemoryFileRead",
+    "BoardFilesystemMemoryOverviewRead",
     "BoardMemoryCreate",
     "BoardMemoryRead",
     "BoardWebhookCreate",

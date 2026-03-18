@@ -30,6 +30,7 @@ from app.api.souls_directory import router as souls_directory_router
 from app.api.tags import router as tags_router
 from app.api.task_custom_fields import router as task_custom_fields_router
 from app.api.tasks import router as tasks_router
+from app.api.transcriptions import router as transcriptions_router
 from app.api.users import router as users_router
 from app.core.config import settings
 from app.core.error_handling import install_error_handling
@@ -129,6 +130,10 @@ OPENAPI_TAGS = [
     {
         "name": "users",
         "description": "User profile read/update operations and user-centric settings endpoints.",
+    },
+    {
+        "name": "transcriptions",
+        "description": "Shared-workspace transcript browsing endpoints for processed meeting audio artifacts.",
     },
     {
         "name": "agent",
@@ -543,6 +548,7 @@ api_v1.include_router(agents_router)
 api_v1.include_router(activity_router)
 api_v1.include_router(gateway_router)
 api_v1.include_router(gateways_router)
+api_v1.include_router(transcriptions_router)
 api_v1.include_router(metrics_router)
 api_v1.include_router(organizations_router)
 api_v1.include_router(souls_directory_router)

@@ -469,6 +469,17 @@ upsert_env_value() {
   mv "$tmp_file" "$file"
 }
 
+get_env_value() {
+  local file="$1"
+  local key="$2"
+
+  if [[ ! -f "$file" ]]; then
+    return 1
+  fi
+
+  awk -F= -v k="$key" '$1 == k { print substr($0, index($0, "=") + 1); exit }' "$file"
+}
+
 ensure_command_with_packages() {
   local cmd="$1"
   shift
@@ -634,6 +645,16 @@ docker_compose() {
   return "$rc"
 }
 
+docker_compose_repo() {
+  # Respect local compose overrides during install flows.
+  if [[ -f "$REPO_ROOT/compose.override.yml" ]]; then
+    docker_compose -f compose.yml -f compose.override.yml "$@"
+    return
+  fi
+
+  docker_compose -f compose.yml "$@"
+}
+
 wait_for_http() {
   local url="$1"
   local label="$2"
@@ -732,6 +753,8 @@ main() {
   local db_mode="docker"
   local database_url=""
   local start_services="yes"
+  local redis_port=""
+  local redis_url=""
 
   cd "$REPO_ROOT"
   ensure_repo_layout
@@ -859,13 +882,17 @@ main() {
   upsert_env_value "$REPO_ROOT/.env" "BASE_URL" "http://$public_host:$backend_port"
   upsert_env_value "$REPO_ROOT/.env" "CORS_ORIGINS" "http://$public_host:$frontend_port"
 
+  redis_port="$(get_env_value "$REPO_ROOT/.env" "REDIS_PORT" || true)"
+  redis_port="${redis_port:-6379}"
+  redis_url="redis://localhost:$redis_port/0"
+
   if [[ "$deployment_mode" == "docker" ]]; then
     ensure_file_from_example "$REPO_ROOT/backend/.env" "$REPO_ROOT/backend/.env.example"
 
     upsert_env_value "$REPO_ROOT/.env" "DB_AUTO_MIGRATE" "true"
 
     info "Starting production-like Docker stack..."
-    docker_compose -f compose.yml --env-file .env up -d --build
+    docker_compose_repo --env-file .env up -d --build
 
     wait_for_http "http://127.0.0.1:$backend_port/healthz" "Backend" 180 || true
     wait_for_http "http://127.0.0.1:$frontend_port" "Frontend" 180 || true
@@ -900,7 +927,7 @@ SUMMARY
     database_url="postgresql+psycopg://postgres:postgres@localhost:5432/mission_control"
 
     info "Starting PostgreSQL via Docker..."
-    docker_compose -f compose.yml --env-file .env up -d db
+    docker_compose_repo --env-file .env up -d db redis
   fi
 
   upsert_env_value "$REPO_ROOT/backend/.env" "ENVIRONMENT" "prod"
@@ -910,6 +937,8 @@ SUMMARY
   upsert_env_value "$REPO_ROOT/backend/.env" "CORS_ORIGINS" "http://$public_host:$frontend_port"
   upsert_env_value "$REPO_ROOT/backend/.env" "BASE_URL" "http://$public_host:$backend_port"
   upsert_env_value "$REPO_ROOT/backend/.env" "DB_AUTO_MIGRATE" "false"
+  upsert_env_value "$REPO_ROOT/backend/.env" "RQ_REDIS_URL" "$redis_url"
+  upsert_env_value "$REPO_ROOT/backend/.env" "RATE_LIMIT_REDIS_URL" "$redis_url"
 
   upsert_env_value "$REPO_ROOT/frontend/.env" "NEXT_PUBLIC_API_URL" "$next_public_api_url"
   upsert_env_value "$REPO_ROOT/frontend/.env" "NEXT_PUBLIC_AUTH_MODE" "local"

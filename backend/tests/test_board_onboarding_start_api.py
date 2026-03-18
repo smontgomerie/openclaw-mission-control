@@ -101,7 +101,9 @@ async def test_start_onboarding_redispatches_when_last_message_is_user(
 
     assert result is onboarding
     assert len(captured_calls) == 1
-    assert captured_calls[0]["answer_text"] == "I prefer concise updates."
+    answer_text = str(captured_calls[0]["answer_text"])
+    assert "RESUME INSTRUCTIONS:" in answer_text
+    assert "USER: I prefer concise updates." in answer_text
     assert str(captured_calls[0]["correlation_id"]).startswith("onboarding.resume:")
     assert onboarding.updated_at >= before
     assert session.added == [onboarding]

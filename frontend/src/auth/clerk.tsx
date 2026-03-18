@@ -3,7 +3,8 @@
 // NOTE: We intentionally keep this file very small and dependency-free.
 // It provides CI/secretless-build safe fallbacks for Clerk hooks/components.
 
-import type { ReactNode, ComponentProps } from "react";
+import type { ReactNode, ComponentProps, MouseEvent, ReactElement } from "react";
+import { cloneElement, isValidElement } from "react";
 
 import {
   ClerkProvider,
@@ -16,7 +17,16 @@ import {
 } from "@clerk/nextjs";
 
 import { isLikelyValidClerkPublishableKey } from "@/auth/clerkKey";
+import { navigateToFallbackSignIn } from "@/auth/fallbackNavigation";
 import { getLocalAuthToken, isLocalAuthMode } from "@/auth/localAuth";
+
+function resolveFallbackSignInUrl(
+  forceRedirectUrl?: string | null,
+): string {
+  if (!forceRedirectUrl) return "/sign-in";
+  const params = new URLSearchParams({ redirect_url: forceRedirectUrl });
+  return `/sign-in?${params.toString()}`;
+}
 
 function hasLocalAuthToken(): boolean {
   return Boolean(getLocalAuthToken());
@@ -47,9 +57,36 @@ export function SignedOut(props: { children: ReactNode }) {
   return <ClerkSignedOut>{props.children}</ClerkSignedOut>;
 }
 
+function renderFallbackTrigger(
+  children: ReactNode,
+  href: string,
+): ReactElement | null {
+  if (!isValidElement(children)) {
+    return null;
+  }
+
+  const child = children as ReactElement<{
+    onClick?: (event: MouseEvent<HTMLElement>) => void;
+  }>;
+  const existingOnClick = child.props.onClick;
+
+  return cloneElement(child, {
+    onClick: (event: MouseEvent<HTMLElement>) => {
+      existingOnClick?.(event);
+      if (event.defaultPrevented) return;
+      navigateToFallbackSignIn(href);
+    },
+  });
+}
+
 // Keep the same prop surface as Clerk components so call sites don't need edits.
 export function SignInButton(props: ComponentProps<typeof ClerkSignInButton>) {
-  if (!isClerkEnabled()) return null;
+  if (!isClerkEnabled()) {
+    return renderFallbackTrigger(
+      props.children,
+      resolveFallbackSignInUrl(props.forceRedirectUrl),
+    );
+  }
   return <ClerkSignInButton {...props} />;
 }
 

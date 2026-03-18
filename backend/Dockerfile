@@ -51,6 +51,11 @@ COPY --chown=appuser:appgroup backend/templates ./templates
 # In-repo these live at `scripts/`; runtime path is `/app/scripts`.
 COPY --chown=appuser:appgroup scripts ./scripts
 
+# Persist the gateway device identity at a stable appuser-owned path so Docker
+# volumes can be mounted there without changing runtime code defaults.
+RUN mkdir -p /home/appuser/.openclaw/identity \
+  && chown -R appuser:appgroup /home/appuser/.openclaw
+
 USER appuser
 
 # Default API port

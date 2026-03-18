@@ -17,6 +17,10 @@ from app.models.agents import Agent
 from app.models.gateways import Gateway
 from app.models.skills import GatewayInstalledSkill
 from app.schemas.common import OkResponse
+from app.schemas.gateway_filesystem_memory import (
+    GatewayFilesystemMemoryContentRead,
+    GatewayFilesystemMemoryOverviewRead,
+)
 from app.schemas.gateways import (
     GatewayCreate,
     GatewayRead,
@@ -25,6 +29,7 @@ from app.schemas.gateways import (
 )
 from app.schemas.pagination import DefaultLimitOffsetPage
 from app.services.openclaw.admin_service import GatewayAdminLifecycleService
+from app.services.openclaw.filesystem_memory import GatewayFilesystemMemoryService
 from app.services.openclaw.session_service import GatewayTemplateSyncQuery
 
 if TYPE_CHECKING:
@@ -124,6 +129,45 @@ async def get_gateway(
         organization_id=ctx.organization.id,
     )
     return gateway
+
+
+@router.get(
+    "/{gateway_id}/filesystem-memory",
+    response_model=GatewayFilesystemMemoryOverviewRead,
+)
+async def get_gateway_filesystem_memory(
+    gateway_id: UUID,
+    session: AsyncSession = SESSION_DEP,
+    ctx: OrganizationContext = ORG_ADMIN_DEP,
+) -> GatewayFilesystemMemoryOverviewRead:
+    """Get the gateway-main agent's filesystem-backed memory overview."""
+    gateway = await GatewayAdminLifecycleService(session).require_gateway(
+        gateway_id=gateway_id,
+        organization_id=ctx.organization.id,
+    )
+    return await GatewayFilesystemMemoryService(session).get_overview(gateway)
+
+
+@router.get(
+    "/{gateway_id}/filesystem-memory/file",
+    response_model=GatewayFilesystemMemoryContentRead,
+)
+async def get_gateway_filesystem_memory_file(
+    gateway_id: UUID,
+    *,
+    path: str = Query(..., min_length=1),
+    session: AsyncSession = SESSION_DEP,
+    ctx: OrganizationContext = ORG_ADMIN_DEP,
+) -> GatewayFilesystemMemoryContentRead:
+    """Read a specific gateway-main memory file such as MEMORY.md or memory/YYYY-MM-DD.md."""
+    gateway = await GatewayAdminLifecycleService(session).require_gateway(
+        gateway_id=gateway_id,
+        organization_id=ctx.organization.id,
+    )
+    return await GatewayFilesystemMemoryService(session).get_file(
+        gateway=gateway,
+        path=path,
+    )
 
 
 @router.patch("/{gateway_id}", response_model=GatewayRead)

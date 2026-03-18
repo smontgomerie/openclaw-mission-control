@@ -106,6 +106,12 @@ Lead OpenAPI download/index generation is intentionally documented in:
 
 This avoids relying on startup hooks to populate `api/openapi.json`.
 
+## Heartbeat wrapper
+
+`BOARD_BOOTSTRAP.md.j2` now instructs agents to create `./.mission-control/heartbeat.sh`
+and use that fixed script for heartbeat check-ins. This keeps OpenClaw exec approvals
+narrow: operators can allowlist one workspace-local script path instead of generic `curl`.
+
 ## Template variables reference
 
 ### Core keys (all templates)

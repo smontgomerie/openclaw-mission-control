@@ -28,6 +28,10 @@ from app.models.agents import Agent
 from app.models.board_groups import BoardGroup
 from app.models.boards import Board
 from app.models.gateways import Gateway
+from app.schemas.board_filesystem_memory import (
+    BoardFilesystemMemoryContentRead,
+    BoardFilesystemMemoryOverviewRead,
+)
 from app.schemas.boards import BoardCreate, BoardRead, BoardUpdate
 from app.schemas.common import OkResponse
 from app.schemas.pagination import DefaultLimitOffsetPage
@@ -39,6 +43,7 @@ from app.services.board_snapshot import build_board_snapshot
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
 from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
+from app.services.openclaw.filesystem_memory import BoardFilesystemMemoryService
 from app.services.organizations import OrganizationContext, board_access_filter
 
 if TYPE_CHECKING:
@@ -505,6 +510,35 @@ async def get_board_snapshot(
 ) -> BoardSnapshot:
     """Get a board snapshot view model."""
     return await build_board_snapshot(session, board)
+
+
+@router.get(
+    "/{board_id}/filesystem-memory",
+    response_model=BoardFilesystemMemoryOverviewRead,
+)
+async def get_board_filesystem_memory(
+    board: Board = BOARD_ACTOR_READ_DEP,
+    session: AsyncSession = SESSION_DEP,
+) -> BoardFilesystemMemoryOverviewRead:
+    """Get the board lead's filesystem-backed memory overview."""
+    return await BoardFilesystemMemoryService(session).get_overview(board)
+
+
+@router.get(
+    "/{board_id}/filesystem-memory/file",
+    response_model=BoardFilesystemMemoryContentRead,
+)
+async def get_board_filesystem_memory_file(
+    *,
+    path: str = Query(..., min_length=1),
+    board: Board = BOARD_ACTOR_READ_DEP,
+    session: AsyncSession = SESSION_DEP,
+) -> BoardFilesystemMemoryContentRead:
+    """Read a specific lead memory file such as MEMORY.md or memory/YYYY-MM-DD.md."""
+    return await BoardFilesystemMemoryService(session).get_file(
+        board=board,
+        path=path,
+    )
 
 
 @router.get(

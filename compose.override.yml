@@ -1,0 +1,6 @@
+services:
+  redis:
+    # Keep Redis on 6379 inside the Compose network, but move the host bind
+    # off the default port so the stack can start alongside a local Redis.
+    ports: !override
+      - "127.0.0.1:${REDIS_PORT:-6380}:6379"

@@ -32,6 +32,7 @@ jq -r '
 ## Mission Control Response Protocol
 - All outputs must be sent to Mission Control via HTTP.
 - Always include: `X-Agent-Token: {{ auth_token }}`
+- Prefer the fixed wrapper at `./.mission-control/heartbeat.sh` over approving generic `curl`.
 
 ## Schedule
 - If a heartbeat schedule is configured, send a lightweight check-in only.
@@ -45,8 +46,7 @@ jq -r '
 - Startup check-in example:
 
 ```bash
-curl -s -X POST "{{ base_url }}/api/v1/agent/heartbeat" \
-  -H "X-Agent-Token: {{ auth_token }}"
+./.mission-control/heartbeat.sh
 ```
 
 - If check-in fails due to 5xx/network, stop and retry next heartbeat.
@@ -168,7 +168,7 @@ Before execution:
 - `max_agents`: `{{ board_rule_max_agents }}`
 {% else %}
 ### Board Worker Loop
-1) Check in via heartbeat endpoint.
+1) Check in via `./.mission-control/heartbeat.sh`.
 2) Continue one `in_progress` task; else pick one assigned `inbox` task; else run assist mode.
 3) Refresh task context and plan for the active task.
 4) Execute and post only high-signal task comment updates.

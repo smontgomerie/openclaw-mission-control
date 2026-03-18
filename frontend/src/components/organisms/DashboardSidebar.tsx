@@ -9,9 +9,11 @@ import {
   Boxes,
   CheckCircle2,
   Folder,
+  FileText,
   Building2,
   LayoutGrid,
   Network,
+  NotebookText,
   Settings,
   Store,
   Tags,
@@ -56,7 +58,6 @@ export function DashboardSidebar() {
       : systemStatus === "unknown"
         ? "System status unavailable"
         : "System degraded";
-
   return (
     <aside className="fixed inset-y-0 left-0 z-40 flex w-[280px] -translate-x-full flex-col border-r border-slate-200 bg-white pt-16 shadow-lg transition-transform duration-200 ease-in-out [[data-sidebar=open]_&]:translate-x-0 md:relative md:inset-auto md:z-auto md:w-[260px] md:translate-x-0 md:pt-0 md:shadow-none md:transition-none">
       <div className="flex-1 px-3 py-4">
@@ -220,6 +221,34 @@ export function DashboardSidebar() {
                 <Building2 className="h-4 w-4" />
                 Organization
               </Link>
+              {isAdmin ? (
+                <Link
+                  href="/transcriptions"
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-slate-700 transition",
+                    pathname.startsWith("/transcriptions")
+                      ? "bg-blue-100 text-blue-800 font-medium"
+                      : "hover:bg-slate-100",
+                  )}
+                >
+                  <FileText className="h-4 w-4" />
+                  Transcriptions
+                </Link>
+              ) : null}
+              {isAdmin ? (
+                <Link
+                  href="/memory"
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-slate-700 transition",
+                    pathname.startsWith("/memory")
+                      ? "bg-blue-100 text-blue-800 font-medium"
+                      : "hover:bg-slate-100",
+                  )}
+                >
+                  <NotebookText className="h-4 w-4" />
+                  Memory
+                </Link>
+              ) : null}
               {isAdmin ? (
                 <Link
                   href="/gateways"
