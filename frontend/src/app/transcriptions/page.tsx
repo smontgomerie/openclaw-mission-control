@@ -1,10 +1,9 @@
 "use client";
-/* eslint-disable react-hooks/set-state-in-effect */
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useMemo, useState } from "react";
-import { FileText, Mic, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FileText, Mic, Pause, Play, Search } from "lucide-react";
 
 import { useAuth } from "@/auth/clerk";
 import { ApiError } from "@/api/mutator";
@@ -16,9 +15,11 @@ import { Input } from "@/components/ui/input";
 import {
   countDiarizedSpeakers,
   fetchTranscriptionDetail,
+  fetchTranscriptionSourceAudioBlob,
   fetchTranscriptions,
   getDiarizedTranscriptTurns,
   matchesTranscriptionSearch,
+  renameTranscriptionSpeaker,
   type DiarizedTranscriptTurn,
   type TranscriptionDetail,
   type TranscriptionEntry,
@@ -44,6 +45,19 @@ function formatBytes(value: number | null | undefined): string {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function getEntryStatus(entry: Pick<TranscriptionEntry, "status" | "is_done" | "artifact_files">): {
+  label: string;
+  variant: "success" | "warning" | "outline";
+} {
+  const artifactCount = entry.artifact_files?.length ?? 0;
+  const status =
+    entry.status ?? (entry.is_done ? "done" : artifactCount > 0 ? "partial" : "pending");
+
+  if (status === "done") return { label: "Done", variant: "success" };
+  if (status === "partial") return { label: "Partial", variant: "warning" };
+  return { label: "Pending", variant: "outline" };
+}
+
 function formatTranscriptOffset(value: number | null | undefined): string | null {
   if (typeof value !== "number" || Number.isNaN(value) || value < 0) return null;
 
@@ -59,12 +73,51 @@ function formatTranscriptOffset(value: number | null | undefined): string | null
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-function TranscriptTurns({ turns }: { turns: DiarizedTranscriptTurn[] }) {
+type TranscriptTurnsProps = {
+  turns: DiarizedTranscriptTurn[];
+  editingTurnKey: string | null;
+  editingSpeakerLabel: string | null;
+  editingValue: string;
+  renamePending: boolean;
+  renameError: string | null;
+  audioLoading: boolean;
+  audioPendingTurnKey: string | null;
+  playingTurnKey: string | null;
+  audioError: string | null;
+  onEditStart: (turn: DiarizedTranscriptTurn) => void;
+  onEditChange: (value: string) => void;
+  onEditCancel: () => void;
+  onEditSubmit: () => void;
+  onPlayTurn: (turn: DiarizedTranscriptTurn) => void;
+};
+
+function getTurnPlaybackKey(turn: DiarizedTranscriptTurn): string {
+  return `${turn.rawSpeakerLabel ?? turn.speakerLabel}:${turn.start ?? "na"}:${turn.end ?? "na"}:${turn.text}`;
+}
+
+function TranscriptTurns({
+  turns,
+  editingTurnKey,
+  editingSpeakerLabel,
+  editingValue,
+  renamePending,
+  renameError,
+  audioLoading,
+  audioPendingTurnKey,
+  playingTurnKey,
+  audioError,
+  onEditStart,
+  onEditChange,
+  onEditCancel,
+  onEditSubmit,
+  onPlayTurn,
+}: TranscriptTurnsProps) {
   return (
     <div className="space-y-3">
       {turns.map((turn, index) => {
         const startLabel = formatTranscriptOffset(turn.start);
         const endLabel = formatTranscriptOffset(turn.end);
+        const turnKey = getTurnPlaybackKey(turn);
         const timeRange =
           startLabel && endLabel && endLabel !== startLabel
             ? `${startLabel} - ${endLabel}`
@@ -72,18 +125,94 @@ function TranscriptTurns({ turns }: { turns: DiarizedTranscriptTurn[] }) {
 
         return (
           <div
-            key={`${turn.speakerLabel}-${turn.start ?? "na"}-${index}`}
+            key={`${turn.rawSpeakerLabel ?? turn.speakerLabel}-${turn.start ?? "na"}-${index}`}
             className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
           >
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-semibold text-slate-900">{turn.speakerLabel}</p>
+              {editingTurnKey === turnKey && editingSpeakerLabel === turn.rawSpeakerLabel && turn.rawSpeakerLabel ? (
+                <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-2 py-1 shadow-sm">
+                  <Input
+                    value={editingValue}
+                    onChange={(event) => onEditChange(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        onEditSubmit();
+                      }
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        onEditCancel();
+                      }
+                    }}
+                    autoFocus
+                    disabled={renamePending}
+                    className="h-8 w-48 border-0 bg-transparent px-2 shadow-none"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={onEditSubmit}
+                    disabled={renamePending}
+                  >
+                    Save
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={onEditCancel}
+                    disabled={renamePending}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : turn.rawSpeakerLabel ? (
+                <button
+                  type="button"
+                  className="cursor-text rounded-md bg-white/70 px-2 py-1 text-left text-sm font-semibold text-slate-900 underline decoration-dotted underline-offset-4 transition hover:bg-white"
+                  onClick={() => onEditStart(turn)}
+                  disabled={renamePending}
+                >
+                  {turn.speakerLabel}
+                </button>
+              ) : (
+                <p className="text-sm font-semibold text-slate-900">{turn.speakerLabel}</p>
+              )}
+              {renamePending && editingSpeakerLabel === turn.rawSpeakerLabel ? (
+                <span className="text-xs font-medium text-slate-500">Saving…</span>
+              ) : null}
               {timeRange ? (
                 <span className="text-xs font-medium text-slate-500">{timeRange}</span>
               ) : null}
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => onPlayTurn(turn)}
+                disabled={audioLoading && audioPendingTurnKey !== turnKey}
+              >
+                {playingTurnKey === turnKey ? (
+                  <Pause className="h-4 w-4" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                {audioLoading && audioPendingTurnKey === turnKey
+                  ? "Loading audio…"
+                  : playingTurnKey === turnKey
+                    ? "Pause clip"
+                    : "Play clip"}
+              </Button>
             </div>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
               {turn.text}
             </p>
+            {renameError && editingSpeakerLabel === turn.rawSpeakerLabel ? (
+              <p className="mt-2 text-xs text-red-600">{renameError}</p>
+            ) : null}
+            {audioError && audioPendingTurnKey === turnKey ? (
+              <p className="mt-2 text-xs text-red-600">{audioError}</p>
+            ) : null}
           </div>
         );
       })}
@@ -132,9 +261,29 @@ export default function TranscriptionsPage() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [editingSpeakerLabel, setEditingSpeakerLabel] = useState<string | null>(null);
+  const [editingTurnKey, setEditingTurnKey] = useState<string | null>(null);
+  const [editingSpeakerValue, setEditingSpeakerValue] = useState("");
+  const [renamePending, setRenamePending] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [audioObjectUrl, setAudioObjectUrl] = useState<string | null>(null);
+  const [audioLoading, setAudioLoading] = useState(false);
+  const [audioPendingTurnKey, setAudioPendingTurnKey] = useState<string | null>(null);
+  const [playingTurnKey, setPlayingTurnKey] = useState<string | null>(null);
+  const [audioStopAt, setAudioStopAt] = useState<number | null>(null);
+  const [audioError, setAudioError] = useState<string | null>(null);
   const [activePane, setActivePane] = useState<"analysis" | "transcript" | "json" | "artifacts">(
     "analysis",
   );
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (audioObjectUrl) {
+        URL.revokeObjectURL(audioObjectUrl);
+      }
+    };
+  }, [audioObjectUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -167,6 +316,14 @@ export default function TranscriptionsPage() {
   useEffect(() => {
     if (!selectedId) {
       setDetail(null);
+      setEditingSpeakerLabel(null);
+      setEditingTurnKey(null);
+      setEditingSpeakerValue("");
+      setRenameError(null);
+      setPlayingTurnKey(null);
+      setAudioPendingTurnKey(null);
+      setAudioError(null);
+      setAudioStopAt(null);
       return;
     }
 
@@ -178,6 +335,11 @@ export default function TranscriptionsPage() {
       .then((data) => {
         if (cancelled) return;
         setDetail(data);
+        setEditingSpeakerLabel(null);
+        setEditingTurnKey(null);
+        setEditingSpeakerValue("");
+        setRenameError(null);
+        setAudioError(null);
         setActivePane((current) => {
           if (data.has_analysis) return current === "artifacts" ? "analysis" : current;
           if (data.has_transcript_text) return "transcript";
@@ -202,6 +364,49 @@ export default function TranscriptionsPage() {
     };
   }, [selectedId]);
 
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.removeAttribute("src");
+    }
+    setAudioObjectUrl((current) => {
+      if (current) {
+        URL.revokeObjectURL(current);
+      }
+      return null;
+    });
+    setPlayingTurnKey(null);
+    setAudioPendingTurnKey(null);
+    setAudioStopAt(null);
+    setAudioError(null);
+  }, [selectedId]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleTimeUpdate = () => {
+      if (audioStopAt !== null && audio.currentTime >= audioStopAt) {
+        audio.pause();
+        setPlayingTurnKey(null);
+        setAudioStopAt(null);
+      }
+    };
+
+    const handleEnded = () => {
+      setPlayingTurnKey(null);
+      setAudioStopAt(null);
+    };
+
+    audio.addEventListener("timeupdate", handleTimeUpdate);
+    audio.addEventListener("ended", handleEnded);
+    return () => {
+      audio.removeEventListener("timeupdate", handleTimeUpdate);
+      audio.removeEventListener("ended", handleEnded);
+    };
+  }, [audioStopAt]);
+
   const filteredEntries = useMemo(
     () => entries.filter((entry) => matchesTranscriptionSearch(entry, searchTerm)),
     [entries, searchTerm],
@@ -216,7 +421,119 @@ export default function TranscriptionsPage() {
   );
 
   const processedCount = entries.filter((entry) => entry.is_done).length;
+  const pendingCount = entries.filter((entry) => getEntryStatus(entry).label === "Pending").length;
   const selectedEntry = detail ?? entries.find((entry) => entry.id === selectedId) ?? null;
+
+  const handleRenameStart = (turn: DiarizedTranscriptTurn) => {
+    if (!turn.rawSpeakerLabel || renamePending) return;
+    setEditingTurnKey(getTurnPlaybackKey(turn));
+    setEditingSpeakerLabel(turn.rawSpeakerLabel);
+    setEditingSpeakerValue(turn.speakerLabel);
+    setRenameError(null);
+  };
+
+  const handleRenameCancel = () => {
+    if (renamePending) return;
+    setEditingSpeakerLabel(null);
+    setEditingTurnKey(null);
+    setEditingSpeakerValue("");
+    setRenameError(null);
+  };
+
+  const handlePlayTurn = async (turn: DiarizedTranscriptTurn) => {
+    if (!selectedId) return;
+
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const turnKey = getTurnPlaybackKey(turn);
+    if (playingTurnKey === turnKey) {
+      audio.pause();
+      setPlayingTurnKey(null);
+      setAudioStopAt(null);
+      return;
+    }
+
+    setAudioLoading(true);
+    setAudioPendingTurnKey(turnKey);
+    setAudioError(null);
+
+    try {
+      let objectUrl = audioObjectUrl;
+      if (!objectUrl) {
+        const blob = await fetchTranscriptionSourceAudioBlob(selectedId);
+        objectUrl = URL.createObjectURL(blob);
+        setAudioObjectUrl((current) => {
+          if (current) URL.revokeObjectURL(current);
+          return objectUrl!;
+        });
+      }
+
+      if (audio.src !== objectUrl) {
+        audio.src = objectUrl;
+      }
+
+      if (audio.readyState < 1) {
+        await new Promise<void>((resolve, reject) => {
+          const onLoaded = () => resolve();
+          const onError = () => reject(new Error("Unable to load audio for playback."));
+          audio.addEventListener("loadedmetadata", onLoaded, { once: true });
+          audio.addEventListener("error", onError, { once: true });
+          audio.load();
+        });
+      }
+
+      const startTime = Math.max(turn.start ?? 0, 0);
+      const stopAt = turn.end && turn.end > startTime ? turn.end : null;
+      audio.currentTime = startTime;
+      await audio.play();
+      setPlayingTurnKey(turnKey);
+      setAudioStopAt(stopAt);
+    } catch (error: unknown) {
+      setPlayingTurnKey(null);
+      setAudioStopAt(null);
+      setAudioError(error instanceof Error ? error.message : "Unable to play audio clip.");
+    } finally {
+      setAudioLoading(false);
+      setAudioPendingTurnKey(turnKey);
+    }
+  };
+
+  const handleRenameSubmit = () => {
+    if (!selectedId || !editingSpeakerLabel || renamePending) return;
+    const newName = editingSpeakerValue.trim();
+    if (!newName) {
+      setRenameError("Speaker name cannot be empty.");
+      return;
+    }
+
+    setRenamePending(true);
+    setRenameError(null);
+
+    void renameTranscriptionSpeaker(selectedId, {
+      speaker_label: editingSpeakerLabel,
+      new_name: newName,
+    })
+      .then((updated) => {
+        setDetail(updated);
+        setEntries((current) =>
+          current.map((entry) => (entry.id === updated.id ? { ...entry, ...updated } : entry)),
+        );
+        setEditingSpeakerLabel(null);
+        setEditingTurnKey(null);
+        setEditingSpeakerValue("");
+      })
+      .catch((error: unknown) => {
+        const message =
+          error instanceof ApiError || error instanceof Error
+            ? error.message
+            : "Unable to rename speaker.";
+        setRenameError(message);
+      })
+      .finally(() => {
+        setRenamePending(false);
+      });
+  };
 
   return (
     <DashboardPageLayout
@@ -242,7 +559,8 @@ export default function TranscriptionsPage() {
                 Transcript explorer
               </h2>
               <p className="mt-2 max-w-3xl text-sm text-slate-600">
-                Read-only view into `transcriptions/processed` artifacts generated by
+                Inspect transcript artifacts and refine diarized speaker names in
+                `transcriptions/processed` generated by
                 the shared workspace transcript pipeline.
               </p>
             </div>
@@ -267,13 +585,16 @@ export default function TranscriptionsPage() {
           </div>
           <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
             <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
-              Processed entries: {entries.length}
+              Total entries: {entries.length}
             </span>
             <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
               Done markers: {processedCount}
             </span>
             <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
-              Source path: `transcriptions/processed`
+              Pending files: {pendingCount}
+            </span>
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+              Source path: `transcriptions`
             </span>
           </div>
           {entriesError ? (
@@ -287,7 +608,7 @@ export default function TranscriptionsPage() {
           <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">
               <p className="text-sm font-semibold text-slate-900">
-                Processed transcripts
+                Transcripts
               </p>
               <p className="mt-1 text-xs text-slate-500">
                 {filteredEntries.length} of {entries.length} entries visible
@@ -318,37 +639,42 @@ export default function TranscriptionsPage() {
                           : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50",
                       )}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold">
-                            {entry.title}
-                          </p>
-                          <p
-                            className={cn(
-                              "mt-1 text-[11px]",
-                              selectedId === entry.id
-                                ? "text-slate-200"
-                                : "text-slate-500",
-                            )}
-                          >
-                            Captured {formatTimestamp(entry.captured_at)}
-                          </p>
-                        </div>
-                        <Badge variant={entry.is_done ? "success" : "warning"}>
-                          {entry.is_done ? "Done" : "Partial"}
-                        </Badge>
-                      </div>
-                      <div
-                        className={cn(
-                          "mt-3 flex flex-wrap gap-1 text-[11px]",
-                          selectedId === entry.id ? "text-slate-200" : "text-slate-500",
-                        )}
-                      >
-                        {entry.has_analysis ? <span>analysis</span> : null}
-                        {entry.has_transcript_text ? <span>transcript</span> : null}
-                        {entry.has_transcript_json ? <span>json</span> : null}
-                        <span>{entry.source_files.length} source file(s)</span>
-                      </div>
+                      {(() => {
+                        const status = getEntryStatus(entry);
+                        return (
+                          <>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold">
+                                  {entry.title}
+                                </p>
+                                <p
+                                  className={cn(
+                                    "mt-1 text-[11px]",
+                                    selectedId === entry.id
+                                      ? "text-slate-200"
+                                      : "text-slate-500",
+                                  )}
+                                >
+                                  Captured {formatTimestamp(entry.captured_at)}
+                                </p>
+                              </div>
+                              <Badge variant={status.variant}>{status.label}</Badge>
+                            </div>
+                            <div
+                              className={cn(
+                                "mt-3 flex flex-wrap gap-1 text-[11px]",
+                                selectedId === entry.id ? "text-slate-200" : "text-slate-500",
+                              )}
+                            >
+                              {entry.has_analysis ? <span>analysis</span> : null}
+                              {entry.has_transcript_text ? <span>transcript</span> : null}
+                              {entry.has_transcript_json ? <span>json</span> : null}
+                              <span>{entry.source_files.length} source file(s)</span>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </button>
                   ))}
                 </div>
@@ -371,9 +697,10 @@ export default function TranscriptionsPage() {
                 </div>
                 {selectedEntry ? (
                   <div className="flex flex-wrap gap-2">
-                    <Badge variant={selectedEntry.is_done ? "success" : "warning"}>
-                      {selectedEntry.is_done ? "Done" : "Partial"}
-                    </Badge>
+                    {(() => {
+                      const status = getEntryStatus(selectedEntry);
+                      return <Badge variant={status.variant}>{status.label}</Badge>;
+                    })()}
                     <Badge variant="outline">
                       {selectedEntry.source_files.length} source
                     </Badge>
@@ -484,7 +811,40 @@ export default function TranscriptionsPage() {
 
                     {activePane === "transcript" ? (
                       diarizedTurns.length > 0 ? (
-                        <TranscriptTurns turns={diarizedTurns} />
+                        <div className="space-y-4">
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                              Source audio
+                            </p>
+                            <audio
+                              ref={audioRef}
+                              src={audioObjectUrl ?? undefined}
+                              controls
+                              preload="metadata"
+                              className="mt-3 w-full"
+                            />
+                            <p className="mt-2 text-xs text-slate-500">
+                              Use “Play clip” on a turn to jump to that speaker segment.
+                            </p>
+                          </div>
+                          <TranscriptTurns
+                            turns={diarizedTurns}
+                            editingTurnKey={editingTurnKey}
+                            editingSpeakerLabel={editingSpeakerLabel}
+                            editingValue={editingSpeakerValue}
+                            renamePending={renamePending}
+                            renameError={renameError}
+                            audioLoading={audioLoading}
+                            audioPendingTurnKey={audioPendingTurnKey}
+                            playingTurnKey={playingTurnKey}
+                            audioError={audioError}
+                            onEditStart={handleRenameStart}
+                            onEditChange={setEditingSpeakerValue}
+                            onEditCancel={handleRenameCancel}
+                            onEditSubmit={handleRenameSubmit}
+                            onPlayTurn={handlePlayTurn}
+                          />
+                        </div>
                       ) : detail?.transcript_text_content ? (
                         <pre className="overflow-x-auto whitespace-pre-wrap text-sm leading-relaxed text-slate-900">
                           {detail.transcript_text_content}

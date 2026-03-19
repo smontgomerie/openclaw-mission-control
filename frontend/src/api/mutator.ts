@@ -36,10 +36,10 @@ const resolveClerkToken = async (): Promise<string | null> => {
   }
 };
 
-export const customFetch = async <T>(
+export const authenticatedFetch = async (
   url: string,
   options: RequestInit,
-): Promise<T> => {
+): Promise<Response> => {
   const baseUrl = getApiBaseUrl();
 
   const headers = new Headers(options.headers);
@@ -60,10 +60,17 @@ export const customFetch = async <T>(
     }
   }
 
-  const response = await fetch(`${baseUrl}${url}`, {
+  return fetch(`${baseUrl}${url}`, {
     ...options,
     headers,
   });
+};
+
+export const customFetch = async <T>(
+  url: string,
+  options: RequestInit,
+): Promise<T> => {
+  const response = await authenticatedFetch(url, options);
 
   if (!response.ok) {
     const contentType = response.headers.get("content-type") ?? "";

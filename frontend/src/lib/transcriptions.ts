@@ -1,4 +1,4 @@
-import { customFetch } from "@/api/mutator";
+import { authenticatedFetch, customFetch } from "@/api/mutator";
 
 export type TranscriptionFile = {
   name: string;
@@ -10,6 +10,7 @@ export type TranscriptionFile = {
 export type TranscriptionEntry = {
   id: string;
   title: string;
+  status?: "pending" | "partial" | "done";
   is_done?: boolean;
   captured_at?: string | null;
   processed_at?: string | null;
@@ -26,8 +27,14 @@ export type TranscriptionDetail = TranscriptionEntry & {
   transcript_json_content?: string | null;
 };
 
+export type RenameTranscriptionSpeakerRequest = {
+  speaker_label: string;
+  new_name: string;
+};
+
 export type DiarizedTranscriptTurn = {
   speakerLabel: string;
+  rawSpeakerLabel: string | null;
   text: string;
   start: number | null;
   end: number | null;
@@ -49,6 +56,42 @@ export async function fetchTranscriptionDetail(
     { method: "GET" },
   );
   return response.data;
+}
+
+export async function renameTranscriptionSpeaker(
+  entryId: string,
+  payload: RenameTranscriptionSpeakerRequest,
+): Promise<TranscriptionDetail> {
+  const response = await customFetch<{ data: TranscriptionDetail }>(
+    `/api/v1/transcriptions/${encodeURIComponent(entryId)}/speakers/rename`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+  );
+  return response.data;
+}
+
+export async function fetchTranscriptionSourceAudioBlob(
+  entryId: string,
+): Promise<Blob> {
+  const response = await authenticatedFetch(
+    `/api/v1/transcriptions/${encodeURIComponent(entryId)}/audio`,
+    { method: "GET" },
+  );
+  if (!response.ok) {
+    let message = "Unable to load transcription audio.";
+    try {
+      const data = (await response.json()) as { detail?: unknown };
+      if (typeof data.detail === "string" && data.detail) {
+        message = data.detail;
+      }
+    } catch {
+      // Ignore JSON parse failures for binary/text error bodies.
+    }
+    throw new Error(message);
+  }
+  return response.blob();
 }
 
 export function matchesTranscriptionSearch(
@@ -114,6 +157,7 @@ export function getDiarizedTranscriptTurns(
     return [
       {
         speakerLabel: speakerName || speaker || "Unknown speaker",
+        rawSpeakerLabel: speaker || null,
         text,
         start: parseNumericField(segment.start),
         end: parseNumericField(segment.end),

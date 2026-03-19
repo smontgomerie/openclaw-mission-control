@@ -74,12 +74,14 @@ describe("transcriptions helpers", () => {
     expect(turns).toEqual([
       {
         speakerLabel: "Scott",
+        rawSpeakerLabel: "SPEAKER_00",
         text: "Hello there",
         start: 1.2,
         end: 3.8,
       },
       {
         speakerLabel: "SPEAKER_01",
+        rawSpeakerLabel: "SPEAKER_01",
         text: "General Kenobi",
         start: 4,
         end: 5.5,

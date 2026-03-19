@@ -23,6 +23,7 @@ class TranscriptionEntryRead(SQLModel):
 
     id: str
     title: str
+    status: str = "pending"
     is_done: bool = False
     captured_at: datetime | None = None
     processed_at: datetime | None = None
@@ -39,3 +40,10 @@ class TranscriptionDetailRead(TranscriptionEntryRead):
     analysis_content: str | None = None
     transcript_text_content: str | None = None
     transcript_json_content: str | None = None
+
+
+class TranscriptionSpeakerRenameRequest(SQLModel):
+    """Payload for renaming a diarized speaker and re-annotating the transcript."""
+
+    speaker_label: str
+    new_name: str
