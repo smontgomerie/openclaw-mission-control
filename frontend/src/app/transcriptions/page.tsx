@@ -14,9 +14,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  countDiarizedSpeakers,
   fetchTranscriptionDetail,
   fetchTranscriptions,
+  getDiarizedTranscriptTurns,
   matchesTranscriptionSearch,
+  type DiarizedTranscriptTurn,
   type TranscriptionDetail,
   type TranscriptionEntry,
   type TranscriptionFile,
@@ -39,6 +42,53 @@ function formatBytes(value: number | null | undefined): string {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatTranscriptOffset(value: number | null | undefined): string | null {
+  if (typeof value !== "number" || Number.isNaN(value) || value < 0) return null;
+
+  const totalSeconds = Math.floor(value);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function TranscriptTurns({ turns }: { turns: DiarizedTranscriptTurn[] }) {
+  return (
+    <div className="space-y-3">
+      {turns.map((turn, index) => {
+        const startLabel = formatTranscriptOffset(turn.start);
+        const endLabel = formatTranscriptOffset(turn.end);
+        const timeRange =
+          startLabel && endLabel && endLabel !== startLabel
+            ? `${startLabel} - ${endLabel}`
+            : startLabel ?? endLabel;
+
+        return (
+          <div
+            key={`${turn.speakerLabel}-${turn.start ?? "na"}-${index}`}
+            className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold text-slate-900">{turn.speakerLabel}</p>
+              {timeRange ? (
+                <span className="text-xs font-medium text-slate-500">{timeRange}</span>
+              ) : null}
+            </div>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+              {turn.text}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function ArtifactList({ files }: { files: TranscriptionFile[] }) {
@@ -155,6 +205,14 @@ export default function TranscriptionsPage() {
   const filteredEntries = useMemo(
     () => entries.filter((entry) => matchesTranscriptionSearch(entry, searchTerm)),
     [entries, searchTerm],
+  );
+  const diarizedTurns = useMemo(
+    () => getDiarizedTranscriptTurns(detail?.transcript_json_content),
+    [detail?.transcript_json_content],
+  );
+  const diarizedSpeakerCount = useMemo(
+    () => countDiarizedSpeakers(diarizedTurns),
+    [diarizedTurns],
   );
 
   const processedCount = entries.filter((entry) => entry.is_done).length;
@@ -322,6 +380,14 @@ export default function TranscriptionsPage() {
                     <Badge variant="outline">
                       {selectedEntry.artifact_files.length} artifacts
                     </Badge>
+                    {diarizedTurns.length > 0 ? (
+                      <Badge variant="outline">Diarized</Badge>
+                    ) : null}
+                    {diarizedSpeakerCount > 0 ? (
+                      <Badge variant="outline">
+                        {diarizedSpeakerCount} speaker{diarizedSpeakerCount === 1 ? "" : "s"}
+                      </Badge>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -417,7 +483,9 @@ export default function TranscriptionsPage() {
                     ) : null}
 
                     {activePane === "transcript" ? (
-                      detail?.transcript_text_content ? (
+                      diarizedTurns.length > 0 ? (
+                        <TranscriptTurns turns={diarizedTurns} />
+                      ) : detail?.transcript_text_content ? (
                         <pre className="overflow-x-auto whitespace-pre-wrap text-sm leading-relaxed text-slate-900">
                           {detail.transcript_text_content}
                         </pre>

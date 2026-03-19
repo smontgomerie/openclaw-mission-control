@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  countDiarizedSpeakers,
+  getDiarizedTranscriptTurns,
   matchesTranscriptionSearch,
   sortTranscriptionsByNewest,
   type TranscriptionEntry,
@@ -59,5 +61,38 @@ describe("transcriptions helpers", () => {
       "newer-captured",
       "older-processed",
     ]);
+  });
+
+  it("extracts diarized speaker turns from transcript json", () => {
+    const turns = getDiarizedTranscriptTurns(`{
+      "segments": [
+        { "speaker_name": "Scott", "speaker": "SPEAKER_00", "start": 1.2, "end": 3.8, "text": " Hello there " },
+        { "speaker": "SPEAKER_01", "start": "4.0", "end": "5.5", "text": "General Kenobi" }
+      ]
+    }`);
+
+    expect(turns).toEqual([
+      {
+        speakerLabel: "Scott",
+        text: "Hello there",
+        start: 1.2,
+        end: 3.8,
+      },
+      {
+        speakerLabel: "SPEAKER_01",
+        text: "General Kenobi",
+        start: 4,
+        end: 5.5,
+      },
+    ]);
+    expect(countDiarizedSpeakers(turns)).toBe(2);
+  });
+
+  it("ignores non-diarized and malformed transcript json", () => {
+    expect(
+      getDiarizedTranscriptTurns(`{"segments":[{"start":0,"end":1,"text":"No speaker"}]}`),
+    ).toEqual([]);
+    expect(getDiarizedTranscriptTurns("{not-json")).toEqual([]);
+    expect(getDiarizedTranscriptTurns(null)).toEqual([]);
   });
 });
