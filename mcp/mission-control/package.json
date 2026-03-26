@@ -1,0 +1,25 @@
+{
+  "name": "@openclaw/mission-control-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP server for OpenClaw Mission Control portfolio workflows.",
+  "main": "dist/src/server.js",
+  "types": "dist/src/server.d.ts",
+  "scripts": {
+    "api:export": "UV_CACHE_DIR=/tmp/uv-cache AUTH_MODE=local LOCAL_AUTH_TOKEN=ci-local-token-ci-local-token-ci-local-token-ci-local-token BASE_URL=http://localhost:8000 /bin/bash -lc 'cd ../../backend && uv run python scripts/export_openapi.py'",
+    "api:gen": "npm run api:export && orval --config ./orval.config.ts",
+    "build": "npm run api:gen && tsc -p tsconfig.json",
+    "test": "npm run api:gen && tsc -p tsconfig.json && node --test dist/tests/**/*.test.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.5",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "orval": "^8.3.0",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3"
+  }
+}
