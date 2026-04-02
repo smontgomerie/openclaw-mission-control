@@ -159,6 +159,8 @@ Environment templates:
 
 Complete guides for deployment, production, troubleshooting, and testing are in [`/docs`](./docs/).
 
+Automation clients can also use the in-repo Mission Control MCP package documented in [`docs/reference/mcp.md`](./docs/reference/mcp.md).
+
 ## Project status
 
 Mission Control is under active development.

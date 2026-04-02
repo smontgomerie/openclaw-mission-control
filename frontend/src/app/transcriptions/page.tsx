@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FileText, Mic, Pause, Play, Search } from "lucide-react";
+import { FileText, Mic, Pause, Play, RefreshCcw, Search } from "lucide-react";
 
 import { useAuth } from "@/auth/clerk";
 import { ApiError } from "@/api/mutator";
@@ -20,6 +20,7 @@ import {
   getDiarizedTranscriptTurns,
   matchesTranscriptionSearch,
   renameTranscriptionSpeaker,
+  syncTranscriptionsNow,
   type DiarizedTranscriptTurn,
   type TranscriptionDetail,
   type TranscriptionEntry,
@@ -45,17 +46,49 @@ function formatBytes(value: number | null | undefined): string {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function getEntryStatus(entry: Pick<TranscriptionEntry, "status" | "is_done" | "artifact_files">): {
+function getProgressPercent(
+  progressSeconds: number | null | undefined,
+  totalDurationSeconds: number | null | undefined,
+): number | null {
+  if (
+    typeof progressSeconds !== "number"
+    || Number.isNaN(progressSeconds)
+    || progressSeconds < 0
+    || typeof totalDurationSeconds !== "number"
+    || Number.isNaN(totalDurationSeconds)
+    || totalDurationSeconds <= 0
+  ) {
+    return null;
+  }
+
+  const percent = Math.round((progressSeconds / totalDurationSeconds) * 100);
+  return Math.max(0, Math.min(percent, 99));
+}
+
+function getEntryStatus(
+  entry: Pick<
+    TranscriptionEntry,
+    "status" | "is_done" | "artifact_files" | "progress_seconds" | "total_duration_seconds"
+  >,
+): {
   label: string;
   variant: "success" | "warning" | "outline";
+  progressPercent: number | null;
 } {
   const artifactCount = entry.artifact_files?.length ?? 0;
   const status =
     entry.status ?? (entry.is_done ? "done" : artifactCount > 0 ? "partial" : "pending");
+  const progressPercent = getProgressPercent(entry.progress_seconds, entry.total_duration_seconds);
 
-  if (status === "done") return { label: "Done", variant: "success" };
-  if (status === "partial") return { label: "Partial", variant: "warning" };
-  return { label: "Pending", variant: "outline" };
+  if (status === "done") return { label: "Done", variant: "success", progressPercent: 100 };
+  if (status === "partial") {
+    return {
+      label: progressPercent !== null ? `In progress ${progressPercent}%` : "Partial",
+      variant: "warning",
+      progressPercent,
+    };
+  }
+  return { label: "Pending", variant: "outline", progressPercent: null };
 }
 
 function formatTranscriptOffset(value: number | null | undefined): string | null {
@@ -260,7 +293,10 @@ export default function TranscriptionsPage() {
   const [detail, setDetail] = useState<TranscriptionDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [isSyncPending, setIsSyncPending] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [editingSpeakerLabel, setEditingSpeakerLabel] = useState<string | null>(null);
   const [editingTurnKey, setEditingTurnKey] = useState<string | null>(null);
   const [editingSpeakerValue, setEditingSpeakerValue] = useState("");
@@ -272,9 +308,10 @@ export default function TranscriptionsPage() {
   const [playingTurnKey, setPlayingTurnKey] = useState<string | null>(null);
   const [audioStopAt, setAudioStopAt] = useState<number | null>(null);
   const [audioError, setAudioError] = useState<string | null>(null);
-  const [activePane, setActivePane] = useState<"analysis" | "transcript" | "json" | "artifacts">(
+  const [activePane, setActivePane] = useState<"analysis" | "transcript" | "json" | "artifacts" | "logs">(
     "analysis",
   );
+  const [reloadToken, setReloadToken] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -311,7 +348,7 @@ export default function TranscriptionsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadToken]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -344,6 +381,7 @@ export default function TranscriptionsPage() {
           if (data.has_analysis) return current === "artifacts" ? "analysis" : current;
           if (data.has_transcript_text) return "transcript";
           if (data.has_transcript_json) return "json";
+          if (data.process_log_content || data.whisperx_log_content) return "logs";
           return "artifacts";
         });
       })
@@ -362,7 +400,7 @@ export default function TranscriptionsPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedId]);
+  }, [reloadToken, selectedId]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -535,6 +573,28 @@ export default function TranscriptionsPage() {
       });
   };
 
+  const handleSyncNow = () => {
+    setIsSyncPending(true);
+    setSyncError(null);
+    setSyncMessage(null);
+
+    void syncTranscriptionsNow()
+      .then(() => {
+        setSyncMessage("Transcription run queued. Pending files may take a few seconds to update.");
+        setReloadToken((current) => current + 1);
+      })
+      .catch((error: unknown) => {
+        const message =
+          error instanceof ApiError || error instanceof Error
+            ? error.message
+            : "Unable to start pending transcriptions.";
+        setSyncError(message);
+      })
+      .finally(() => {
+        setIsSyncPending(false);
+      });
+  };
+
   return (
     <DashboardPageLayout
       signedOut={{
@@ -564,22 +624,34 @@ export default function TranscriptionsPage() {
                 the shared workspace transcript pipeline.
               </p>
             </div>
-            <div className="w-full max-w-sm">
-              <label
-                htmlFor="transcription-search"
-                className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500"
-              >
-                Search transcriptions
-              </label>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <Input
-                  id="transcription-search"
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Search by id or artifact name"
-                  className="pl-9"
-                />
+            <div className="flex w-full flex-col gap-3 lg:max-w-md">
+              <div className="flex items-end gap-3">
+                <div className="min-w-0 flex-1">
+                  <label
+                    htmlFor="transcription-search"
+                    className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500"
+                  >
+                    Search transcriptions
+                  </label>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      id="transcription-search"
+                      value={searchTerm}
+                      onChange={(event) => setSearchTerm(event.target.value)}
+                      placeholder="Search by id or artifact name"
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+                <Button
+                  onClick={handleSyncNow}
+                  disabled={isSyncPending}
+                  className="gap-2 whitespace-nowrap"
+                >
+                  <RefreshCcw className="h-4 w-4" />
+                  {isSyncPending ? "Starting…" : "Start pending"}
+                </Button>
               </div>
             </div>
           </div>
@@ -600,6 +672,16 @@ export default function TranscriptionsPage() {
           {entriesError ? (
             <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {entriesError}
+            </div>
+          ) : null}
+          {syncError ? (
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {syncError}
+            </div>
+          ) : null}
+          {syncMessage ? (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {syncMessage}
             </div>
           ) : null}
         </section>
@@ -661,6 +743,22 @@ export default function TranscriptionsPage() {
                               </div>
                               <Badge variant={status.variant}>{status.label}</Badge>
                             </div>
+                            {status.progressPercent !== null ? (
+                              <div
+                                className={cn(
+                                  "mt-3 h-2 overflow-hidden rounded-full",
+                                  selectedId === entry.id ? "bg-slate-700" : "bg-slate-200",
+                                )}
+                              >
+                                <div
+                                  className={cn(
+                                    "h-full rounded-full",
+                                    selectedId === entry.id ? "bg-white" : "bg-amber-500",
+                                  )}
+                                  style={{ width: `${status.progressPercent}%` }}
+                                />
+                              </div>
+                            ) : null}
                             <div
                               className={cn(
                                 "mt-3 flex flex-wrap gap-1 text-[11px]",
@@ -739,6 +837,32 @@ export default function TranscriptionsPage() {
                 </p>
               ) : (
                 <div className="space-y-5">
+                  {(() => {
+                    const status = getEntryStatus(selectedEntry);
+                    return status.progressPercent !== null ? (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-medium text-amber-900">
+                            Chunked transcription progress
+                          </p>
+                          <span className="text-sm font-semibold text-amber-900">
+                            {status.progressPercent}%
+                          </span>
+                        </div>
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-amber-100">
+                          <div
+                            className="h-full rounded-full bg-amber-500"
+                            style={{ width: `${status.progressPercent}%` }}
+                          />
+                        </div>
+                        <p className="mt-2 text-xs text-amber-800">
+                          Processed {selectedEntry.progress_seconds ?? 0}s of{" "}
+                          {selectedEntry.total_duration_seconds ?? 0}s.
+                        </p>
+                      </div>
+                    ) : null;
+                  })()}
+
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                       <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -793,6 +917,15 @@ export default function TranscriptionsPage() {
                       onClick={() => setActivePane("artifacts")}
                     >
                       Artifacts
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={activePane === "logs" ? "primary" : "ghost"}
+                      onClick={() => setActivePane("logs")}
+                      disabled={!detail?.process_log_content && !detail?.whisperx_log_content}
+                    >
+                      Logs
                     </Button>
                   </div>
 
@@ -888,6 +1021,36 @@ export default function TranscriptionsPage() {
                           </div>
                           <ArtifactList files={selectedEntry.artifact_files} />
                         </div>
+                      </div>
+                    ) : null}
+
+                    {activePane === "logs" ? (
+                      <div className="space-y-4">
+                        {detail?.process_log_content ? (
+                          <div>
+                            <p className="mb-2 text-sm font-semibold text-slate-900">
+                              Process log
+                            </p>
+                            <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-900">
+                              {detail.process_log_content}
+                            </pre>
+                          </div>
+                        ) : null}
+                        {detail?.whisperx_log_content ? (
+                          <div>
+                            <p className="mb-2 text-sm font-semibold text-slate-900">
+                              WhisperX log
+                            </p>
+                            <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-900">
+                              {detail.whisperx_log_content}
+                            </pre>
+                          </div>
+                        ) : null}
+                        {!detail?.process_log_content && !detail?.whisperx_log_content ? (
+                          <p className="text-sm text-slate-500">
+                            No processing logs found for this entry.
+                          </p>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>

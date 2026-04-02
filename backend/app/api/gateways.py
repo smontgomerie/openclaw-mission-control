@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, Query
 from sqlmodel import col
 
-from app.api.deps import require_org_admin
+from app.api.deps import require_org_admin, require_org_member
 from app.core.auth import AuthContext, get_auth_context
 from app.db import crud
 from app.db.pagination import paginate
@@ -22,6 +22,7 @@ from app.schemas.gateway_filesystem_memory import (
     GatewayFilesystemMemoryOverviewRead,
 )
 from app.schemas.gateways import (
+    GatewayBrandRead,
     GatewayCreate,
     GatewayRead,
     GatewayTemplatesSyncResult,
@@ -43,6 +44,7 @@ router = APIRouter(prefix="/gateways", tags=["gateways"])
 SESSION_DEP = Depends(get_session)
 AUTH_DEP = Depends(get_auth_context)
 ORG_ADMIN_DEP = Depends(require_org_admin)
+ORG_MEMBER_DEP = Depends(require_org_member)
 INCLUDE_MAIN_QUERY = Query(default=True)
 RESET_SESSIONS_QUERY = Query(default=False)
 ROTATE_TOKENS_QUERY = Query(default=False)
@@ -90,6 +92,29 @@ async def list_gateways(
     )
 
     return await paginate(session, statement)
+
+
+@router.get("/brand", response_model=GatewayBrandRead)
+async def get_gateway_brand(
+    session: AsyncSession = SESSION_DEP,
+    ctx: OrganizationContext = ORG_MEMBER_DEP,
+) -> GatewayBrandRead:
+    """Resolve the current organization's primary gateway brand from IDENTITY.md."""
+    gateway = (
+        await Gateway.objects.filter_by(organization_id=ctx.organization.id)
+        .order_by(col(Gateway.created_at).desc())
+        .first(session)
+    )
+    if gateway is None:
+        return GatewayBrandRead()
+    identity_name = await GatewayFilesystemMemoryService(session).get_identity_name(
+        gateway,
+    )
+    return GatewayBrandRead(
+        gateway_id=gateway.id,
+        gateway_name=gateway.name,
+        identity_name=identity_name,
+    )
 
 
 @router.post("", response_model=GatewayRead)

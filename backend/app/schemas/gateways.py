@@ -70,6 +70,14 @@ class GatewayRead(GatewayBase):
     updated_at: datetime
 
 
+class GatewayBrandRead(SQLModel):
+    """Resolved brand metadata for the active organization's primary gateway."""
+
+    gateway_id: UUID | None = None
+    gateway_name: str | None = None
+    identity_name: str | None = None
+
+
 class GatewayTemplatesSyncError(SQLModel):
     """Per-agent error entry from a gateway template sync operation."""
 

@@ -141,9 +141,26 @@ build: frontend-build ## Build artifacts
 frontend-build: frontend-tooling ## Build frontend (next build)
 	$(NODE_WRAP) --cwd $(FRONTEND_DIR) npm run build
 
+.PHONY: backend-openapi
+backend-openapi: ## Export backend OpenAPI schema to backend/openapi.json
+	cd $(BACKEND_DIR) && \
+		UV_CACHE_DIR=/tmp/uv-cache \
+		AUTH_MODE=local \
+		LOCAL_AUTH_TOKEN=ci-local-token-ci-local-token-ci-local-token-ci-local-token \
+		BASE_URL=http://localhost:8000 \
+		uv run python scripts/export_openapi.py
+
 .PHONY: api-gen
 api-gen: frontend-tooling ## Regenerate TS API client (requires backend running at 127.0.0.1:8000)
 	$(NODE_WRAP) --cwd $(FRONTEND_DIR) npm run api:gen
+
+.PHONY: mcp-build
+mcp-build: frontend-tooling ## Build the Mission Control MCP package
+	$(NODE_WRAP) --cwd mcp/mission-control npm run build
+
+.PHONY: mcp-test
+mcp-test: frontend-tooling ## Run the Mission Control MCP package tests
+	$(NODE_WRAP) --cwd mcp/mission-control npm test
 
 .PHONY: docker-up
 docker-up: ## Start full Docker stack with image rebuild

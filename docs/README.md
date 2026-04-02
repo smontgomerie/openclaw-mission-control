@@ -20,6 +20,7 @@ This folder is the documentation home for **OpenClaw Mission Control**.
 - [Configuration reference](./reference/configuration.md)
 - [Authentication](./reference/authentication.md)
 - [API notes](./reference/api.md)
+- [MCP integration](./reference/mcp.md)
 
 ## Contributing to docs
 

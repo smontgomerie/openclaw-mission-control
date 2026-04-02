@@ -1,6 +1,8 @@
 .git
 .gitignore
 .github
+docs
+frontend
 
 # Python
 **/__pycache__

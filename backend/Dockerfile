@@ -1,16 +1,18 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.7
 
 FROM python:3.12-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    UV_LINK_MODE=copy
 
 WORKDIR /app
 
 # System deps (keep minimal)
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends curl ca-certificates git \
-  && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+  --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+  apt-get update \
+  && apt-get install -y --no-install-recommends curl ca-certificates git ffmpeg libsndfile1
 
 # Install uv (https://github.com/astral-sh/uv)
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -24,7 +26,16 @@ FROM base AS deps
 COPY backend/pyproject.toml backend/uv.lock ./
 
 # Create venv and sync deps (including runtime)
-RUN uv sync --frozen --no-dev
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+  uv sync --frozen --no-dev \
+  && uv pip install --python /app/.venv/bin/python --no-cache-dir \
+    --index-url https://download.pytorch.org/whl/cpu \
+    "torch==2.8.*" "torchaudio==2.8.*" "torchcodec==0.7.*" \
+  && uv pip install --python /app/.venv/bin/python --no-cache-dir \
+    "huggingface-hub<1.0.0" "requests==2.32.5" "soundfile==0.13.1" "speechbrain==1.0.3" \
+  && uv pip install --python /app/.venv/bin/python --no-cache-dir \
+    --index-url https://download.pytorch.org/whl/cpu \
+    "torchcodec==0.7.*"
 
 # --- runtime ---
 FROM base AS runtime

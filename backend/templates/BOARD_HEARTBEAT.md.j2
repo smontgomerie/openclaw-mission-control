@@ -128,6 +128,22 @@ jq -r '
 - On first cycle after wake/bootstrap, run heartbeat check-in immediately (do not wait for cadence).
 - Keep cadence conservative unless there is a clear latency need.
 
+## Stable Wrappers
+Use stable wrapper scripts for routine heartbeat work.
+
+Do not synthesize heartbeat shell inline. Do not use `exec` with variable-assignment chains,
+heredocs, or `bash -c` payloads for heartbeat/preflight logic. The gateway flags those as
+obfuscated and routes them into approval flow.
+
+```bash
+./.mission-control/heartbeat.sh
+./.mission-control/heartbeat.sh online "{{ agent_name }}" "{{ board_id }}"
+./.mission-control/preflight.sh
+```
+
+If `.mission-control/` is missing, recreate it from `BOOTSTRAP.md` before continuing.
+If a wrapper exists, run that wrapper exactly instead of reconstructing its logic.
+
 ## Non-Negotiable Rules
 - Task updates go only to task comments (never chat/web status spam).
 - Comments must be concise markdown with evidence.
@@ -138,9 +154,11 @@ jq -r '
 ## Pre-Flight Checks (Every Heartbeat)
 1) Confirm `BASE_URL`, `AUTH_TOKEN`, and `BOARD_ID` from `TOOLS.md` match this workspace.
 2) Verify API access:
-- `GET {{ base_url }}/healthz`
-- `GET {{ base_url }}/api/v1/agent/boards`
-- `GET {{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks`
+- Preferred command: `./.mission-control/preflight.sh`
+- Equivalent checks:
+  - `GET {{ base_url }}/healthz`
+  - `GET {{ base_url }}/api/v1/agent/boards`
+  - `GET {{ base_url }}/api/v1/agent/boards/{{ board_id }}/tasks`
 3) If any check fails, stop and retry next heartbeat.
 
 ## Shared Context Pull

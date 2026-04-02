@@ -8,6 +8,7 @@ const fetchTranscriptionsMock = vi.hoisted(() => vi.fn());
 const fetchTranscriptionDetailMock = vi.hoisted(() => vi.fn());
 const renameTranscriptionSpeakerMock = vi.hoisted(() => vi.fn());
 const fetchTranscriptionSourceAudioBlobMock = vi.hoisted(() => vi.fn());
+const syncTranscriptionsNowMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/auth/clerk", () => ({
   useAuth: () => ({ isSignedIn: true }),
@@ -103,6 +104,7 @@ vi.mock("@/lib/transcriptions", async () => {
     fetchTranscriptionDetail: fetchTranscriptionDetailMock,
     renameTranscriptionSpeaker: renameTranscriptionSpeakerMock,
     fetchTranscriptionSourceAudioBlob: fetchTranscriptionSourceAudioBlobMock,
+    syncTranscriptionsNow: syncTranscriptionsNowMock,
   };
 });
 
@@ -112,6 +114,7 @@ describe("TranscriptionsPage", () => {
     fetchTranscriptionDetailMock.mockReset();
     renameTranscriptionSpeakerMock.mockReset();
     fetchTranscriptionSourceAudioBlobMock.mockReset();
+    syncTranscriptionsNowMock.mockReset();
     fetchTranscriptionSourceAudioBlobMock.mockResolvedValue(new Blob(["audio"]));
     vi.stubGlobal(
       "URL",
@@ -354,6 +357,164 @@ describe("TranscriptionsPage", () => {
       expect(screen.getByRole("button", { name: "Scott" })).toBeTruthy();
     });
     expect(screen.queryByRole("button", { name: "SPEAKER_00" })).toBeNull();
+  });
+
+  it("starts pending transcriptions and reloads entries", async () => {
+    fetchTranscriptionsMock
+      .mockResolvedValueOnce([
+        {
+          id: "pending-2",
+          title: "pending-2",
+          status: "pending",
+          is_done: false,
+          source_files: [{ name: "pending-2.m4a", relative_path: "pending-2.m4a" }],
+          artifact_files: [],
+          has_analysis: false,
+          has_transcript_text: false,
+          has_transcript_json: false,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: "pending-2",
+          title: "pending-2",
+          status: "partial",
+          is_done: false,
+          source_files: [{ name: "pending-2.m4a", relative_path: "pending-2.m4a" }],
+          artifact_files: [{ name: "transcript.txt", relative_path: "processed/pending-2/transcript.txt" }],
+          has_analysis: false,
+          has_transcript_text: true,
+          has_transcript_json: false,
+        },
+      ]);
+    fetchTranscriptionDetailMock.mockResolvedValue({
+      id: "pending-2",
+      title: "pending-2",
+      status: "pending",
+      is_done: false,
+      source_files: [{ name: "pending-2.m4a", relative_path: "pending-2.m4a" }],
+      artifact_files: [],
+      has_analysis: false,
+      has_transcript_text: false,
+      has_transcript_json: false,
+      transcript_text_content: null,
+      transcript_json_content: null,
+    });
+    syncTranscriptionsNowMock.mockResolvedValue({
+      ok: true,
+      enqueued: true,
+      job_id: "shared-transcriptions",
+      run_id: "run-999",
+    });
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Pending files: 1")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /start pending/i }));
+
+    await waitFor(() => {
+      expect(syncTranscriptionsNowMock).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(fetchTranscriptionsMock).toHaveBeenCalledTimes(2);
+    });
+    expect(
+      screen.getByText("Transcription run queued. Pending files may take a few seconds to update."),
+    ).toBeTruthy();
+  });
+
+  it("shows chunked progress for partial transcription runs", async () => {
+    fetchTranscriptionsMock.mockResolvedValue([
+      {
+        id: "1774046932",
+        title: "1774046932",
+        status: "partial",
+        is_done: false,
+        source_files: [{ name: "1774046932.m4a", relative_path: "1774046932.m4a" }],
+        artifact_files: [
+          { name: "transcript.txt", relative_path: "processed/1774046932/transcript.txt" },
+        ],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+        progress_seconds: 360,
+        total_duration_seconds: 1839,
+      },
+    ]);
+    fetchTranscriptionDetailMock.mockResolvedValue({
+      id: "1774046932",
+      title: "1774046932",
+      status: "partial",
+      is_done: false,
+      source_files: [{ name: "1774046932.m4a", relative_path: "1774046932.m4a" }],
+      artifact_files: [
+        { name: "transcript.txt", relative_path: "processed/1774046932/transcript.txt" },
+      ],
+      has_analysis: false,
+      has_transcript_text: true,
+      has_transcript_json: true,
+      progress_seconds: 360,
+      total_duration_seconds: 1839,
+      transcript_text_content: "partial transcript",
+      transcript_json_content: JSON.stringify({ segments: [] }),
+    });
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("In progress 20%").length).toBeGreaterThan(0);
+    });
+
+    expect(screen.getByText("Chunked transcription progress")).toBeTruthy();
+    expect(screen.getByText("Processed 360s of 1839s.")).toBeTruthy();
+  });
+
+  it("renders processing logs in the logs pane when available", async () => {
+    fetchTranscriptionsMock.mockResolvedValue([
+      {
+        id: "entry-logs",
+        title: "entry-logs",
+        status: "partial",
+        is_done: false,
+        source_files: [{ name: "entry-logs.m4a", relative_path: "entry-logs.m4a" }],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: false,
+        has_transcript_json: false,
+      },
+    ]);
+    fetchTranscriptionDetailMock.mockResolvedValue({
+      id: "entry-logs",
+      title: "entry-logs",
+      status: "partial",
+      is_done: false,
+      source_files: [{ name: "entry-logs.m4a", relative_path: "entry-logs.m4a" }],
+      artifact_files: [],
+      has_analysis: false,
+      has_transcript_text: false,
+      has_transcript_json: false,
+      process_log_content: "[START] file=entry-logs.m4a",
+      whisperx_log_content: "[WHISPERX_START] chunk_file=entry-logs.mp3",
+      transcript_text_content: null,
+      transcript_json_content: null,
+    });
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Logs" })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Logs" }));
+
+    expect(screen.getByText("Process log")).toBeTruthy();
+    expect(screen.getByText("[START] file=entry-logs.m4a")).toBeTruthy();
+    expect(screen.getByText("WhisperX log")).toBeTruthy();
+    expect(screen.getByText("[WHISPERX_START] chunk_file=entry-logs.mp3")).toBeTruthy();
   });
 
   it("loads source audio and plays the diarized snippet for a turn", async () => {

@@ -34,7 +34,7 @@ curl -fsS "{{ base_url }}/healthz" >/dev/null
 
 5) Ensure today's daily file exists: `memory/YYYY-MM-DD.md`.
 
-6) Create the Mission Control heartbeat wrapper and prefer allowlisting it instead of generic `curl`:
+6) Create stable Mission Control wrappers and prefer allowlisting them instead of generic `curl` or inline shell:
 
 ```bash
 mkdir -p .mission-control
@@ -69,7 +69,71 @@ exec curl -fsS -X POST "${base_url}/api/v1/agent/heartbeat" \
   -H "X-Agent-Token: ${auth_token}"
 EOF
 chmod 700 .mission-control/heartbeat.sh
+
+cat > .mission-control/preflight.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+workspace_root="${WORKSPACE_ROOT:-$PWD}"
+state_file="${workspace_root}/.state/gateway_status"
+mkdir -p "$(dirname "$state_file")"
+
+base_url="{{ base_url }}"
+auth_token="{{ auth_token }}"
+board_id="{{ board_id }}"
+
+if [[ -f "$state_file" ]]; then
+  # shellcheck disable=SC1090
+  . "$state_file"
+else
+  last_status="unknown"
+  last_alert_time=0
+fi
+
+current_status="unknown"
+if curl -fsS "${base_url}/healthz" >/dev/null \
+  && curl -fsS -H "X-Agent-Token: ${auth_token}" "${base_url}/api/v1/agent/boards" >/dev/null \
+  && curl -fsS -H "X-Agent-Token: ${auth_token}" "${base_url}/api/v1/agent/boards/${board_id}/tasks" >/dev/null; then
+  current_status="up"
+else
+  current_status="down"
+fi
+
+now="$(date +%s)"
+message=""
+
+if [[ "$current_status" == "up" ]]; then
+  if [[ "${last_status}" == "down" ]]; then
+    message="API gateway is now up."
+    last_status="up"
+    last_alert_time="$now"
+  fi
+else
+  if [[ "${last_status}" == "up" ]]; then
+    message="API gateway is now down."
+    last_status="down"
+    last_alert_time="$now"
+  elif (( now - last_alert_time > 1800 )); then
+    message="API gateway is still down. Already escalated to @lead; waiting for gateway to be restored."
+    last_alert_time="$now"
+  fi
+fi
+
+if [[ -z "$message" ]]; then
+  message="HEARTBEAT_OK"
+fi
+
+{
+  printf 'last_status="%s"\n' "${last_status}"
+  printf 'last_alert_time=%s\n' "${last_alert_time}"
+} > "$state_file"
+
+echo "$message"
+EOF
+chmod 700 .mission-control/preflight.sh
 ```
+
+Do not rewrite these wrappers during heartbeat execution. Run them as-is.
 
 {% if is_lead %}
 7) Immediately check in to Mission Control (do this before any task orchestration):

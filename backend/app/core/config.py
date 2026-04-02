@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     cors_origins: str = ""
     base_url: str = ""
     openclaw_shared_workspace_root: str = ""
+    openclaw_transcriptions_python_bin: str = ""
 
     # Security response headers (set to blank to disable a specific header)
     security_header_x_content_type_options: str = "nosniff"

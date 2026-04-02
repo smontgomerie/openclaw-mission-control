@@ -19,17 +19,28 @@ export type TranscriptionEntry = {
   has_analysis?: boolean;
   has_transcript_text?: boolean;
   has_transcript_json?: boolean;
+  progress_seconds?: number | null;
+  total_duration_seconds?: number | null;
 };
 
 export type TranscriptionDetail = TranscriptionEntry & {
   analysis_content?: string | null;
   transcript_text_content?: string | null;
   transcript_json_content?: string | null;
+  process_log_content?: string | null;
+  whisperx_log_content?: string | null;
 };
 
 export type RenameTranscriptionSpeakerRequest = {
   speaker_label: string;
   new_name: string;
+};
+
+export type TranscriptionSyncResult = {
+  ok: boolean;
+  enqueued: boolean;
+  job_id: string;
+  run_id?: string | null;
 };
 
 export type DiarizedTranscriptTurn = {
@@ -54,6 +65,14 @@ export async function fetchTranscriptionDetail(
   const response = await customFetch<{ data: TranscriptionDetail }>(
     `/api/v1/transcriptions/${encodeURIComponent(entryId)}`,
     { method: "GET" },
+  );
+  return response.data;
+}
+
+export async function syncTranscriptionsNow(): Promise<TranscriptionSyncResult> {
+  const response = await customFetch<{ data: TranscriptionSyncResult }>(
+    "/api/v1/transcriptions/sync",
+    { method: "POST" },
   );
   return response.data;
 }

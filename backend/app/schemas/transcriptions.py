@@ -32,6 +32,8 @@ class TranscriptionEntryRead(SQLModel):
     has_analysis: bool = False
     has_transcript_text: bool = False
     has_transcript_json: bool = False
+    progress_seconds: int | None = None
+    total_duration_seconds: int | None = None
 
 
 class TranscriptionDetailRead(TranscriptionEntryRead):
@@ -40,6 +42,17 @@ class TranscriptionDetailRead(TranscriptionEntryRead):
     analysis_content: str | None = None
     transcript_text_content: str | None = None
     transcript_json_content: str | None = None
+    process_log_content: str | None = None
+    whisperx_log_content: str | None = None
+
+
+class TranscriptionSyncRead(SQLModel):
+    """Result of enqueuing a manual transcription sync."""
+
+    ok: bool = True
+    enqueued: bool = True
+    job_id: str
+    run_id: str | None = None
 
 
 class TranscriptionSpeakerRenameRequest(SQLModel):

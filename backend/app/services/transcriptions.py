@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import re
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,6 +29,9 @@ STRUCTURED_TEXT_SUFFIXES = (".txt", ".md", ".json", ".srt", ".tsv", ".vtt", ".lo
 SOURCE_AUDIO_SUFFIXES = (".m4a", ".wav", ".mp3")
 IGNORED_ROOT_NAMES = {"transcribe.sh", "process_wav_files.sh", ".test"}
 SPEAKER_HELPER_NAME = "speaker_identity.py"
+TRANSCRIPT_VENV_DIRNAME = ".venv-whisperx"
+PROCESS_LOG_DURATION_PATTERN = re.compile(r"duration=(?P<duration>\d+)s")
+WHISPERX_LOG_DURATION_PATTERN = re.compile(r"\[DURATION\]\s+(?P<duration>\d+)s")
 
 
 def _utc_datetime(value: float) -> datetime:
@@ -67,6 +71,51 @@ def _entry_status(*, done: bool, has_artifacts: bool) -> str:
     if has_artifacts:
         return "partial"
     return "pending"
+
+
+def _read_processing_progress(entry_dir: Path) -> int | None:
+    state_path = entry_dir / ".chunk_state"
+    if not state_path.is_file():
+        return None
+
+    try:
+        lines = [line.strip() for line in state_path.read_text(encoding="utf-8").splitlines()]
+    except OSError:
+        return None
+
+    if not lines:
+        return None
+
+    try:
+        progress_seconds = int(lines[0])
+    except ValueError:
+        return None
+
+    return max(progress_seconds, 0)
+
+
+def _read_processing_total_duration(entry_dir: Path) -> int | None:
+    candidate_paths = (entry_dir / "process.log", entry_dir / "whisperx.log")
+    patterns = (PROCESS_LOG_DURATION_PATTERN, WHISPERX_LOG_DURATION_PATTERN)
+
+    for path in candidate_paths:
+        if not path.is_file():
+            continue
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for pattern in patterns:
+            match = pattern.search(content)
+            if match is None:
+                continue
+            try:
+                duration_seconds = int(match.group("duration"))
+            except (TypeError, ValueError):
+                continue
+            return max(duration_seconds, 0)
+
+    return None
 
 
 def _find_first_existing(entry_dir: Path, candidates: tuple[str, ...]) -> Path | None:
@@ -253,6 +302,18 @@ class SharedTranscriptionsService:
             )
         return helper_path
 
+    def _speaker_python_bin(self, *, transcriptions_root: Path) -> str:
+        configured = settings.openclaw_transcriptions_python_bin.strip()
+        if configured:
+            return configured
+
+        for candidate_name in ("python", "python3"):
+            candidate = transcriptions_root / TRANSCRIPT_VENV_DIRNAME / "bin" / candidate_name
+            if candidate.is_file():
+                return str(candidate)
+
+        return "python3"
+
     def _run_speaker_helper(self, command: list[str], *, transcriptions_root: Path) -> None:
         try:
             subprocess.run(
@@ -305,6 +366,12 @@ class SharedTranscriptionsService:
         json_path = _find_best_transcript_json(entry_dir) if entry_dir is not None else None
         done_path = entry_dir / ".done" if entry_dir is not None else None
         is_done = done_path.is_file() if done_path is not None else False
+        progress_seconds = (
+            None if entry_dir is None or is_done else _read_processing_progress(entry_dir)
+        )
+        total_duration_seconds = (
+            None if entry_dir is None else _read_processing_total_duration(entry_dir)
+        )
         processed_at = (
             max((item.modified_at for item in artifact_files if item.modified_at is not None), default=None)
             if artifact_files
@@ -322,6 +389,8 @@ class SharedTranscriptionsService:
             has_analysis=analysis_path is not None,
             has_transcript_text=text_path is not None,
             has_transcript_json=json_path is not None,
+            progress_seconds=progress_seconds,
+            total_duration_seconds=total_duration_seconds,
         )
 
     def list_entries(self) -> list[TranscriptionEntryRead]:
@@ -396,6 +465,8 @@ class SharedTranscriptionsService:
         json_path = (
             _find_best_transcript_json(entry_dir) if entry_dir is not None and entry_dir.is_dir() else None
         )
+        process_log_path = entry_dir / "process.log" if entry_dir is not None and entry_dir.is_dir() else None
+        whisperx_log_path = entry_dir / "whisperx.log" if entry_dir is not None and entry_dir.is_dir() else None
 
         transcript_json_content: str | None = None
         if json_path is not None:
@@ -415,6 +486,8 @@ class SharedTranscriptionsService:
             analysis_content=_safe_read_text(analysis_path) if analysis_path else None,
             transcript_text_content=_safe_read_text(text_path) if text_path else None,
             transcript_json_content=transcript_json_content,
+            process_log_content=_safe_read_text(process_log_path) if process_log_path else None,
+            whisperx_log_content=_safe_read_text(whisperx_log_path) if whisperx_log_path else None,
         )
 
     def rename_speaker(
@@ -448,7 +521,7 @@ class SharedTranscriptionsService:
 
         transcript_json_path = entry_dir / "transcript.json"
         transcript_text_path = entry_dir / "transcript.txt"
-        python_bin = "python3"
+        python_bin = self._speaker_python_bin(transcriptions_root=transcriptions_root)
         registry_dir = str(transcriptions_root)
 
         self._run_speaker_helper(

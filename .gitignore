@@ -22,5 +22,6 @@ node_modules/
 backend/~/
 backend/coverage.*
 backend/.coverage
+backend/openapi.json
 frontend/coverage
 backend/app/services/openclaw/.device-keys

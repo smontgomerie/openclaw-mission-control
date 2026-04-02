@@ -1,5 +1,13 @@
 name: openclaw-mission-control
 
+x-backend-image: &backend-image
+  image: openclaw-mission-control-backend:latest
+  build:
+    # Build from repo root so the backend image can include repo-level assets
+    # like `backend/templates/`.
+    context: .
+    dockerfile: backend/Dockerfile
+
 services:
   db:
     image: postgres:16-alpine
@@ -28,11 +36,7 @@ services:
       retries: 5
 
   backend:
-    build:
-      # Build from repo root so the backend image can include repo-level assets
-      # like `backend/templates/`.
-      context: .
-      dockerfile: backend/Dockerfile
+    <<: *backend-image
     env_file:
       - path: ./backend/.env
         required: false
@@ -47,6 +51,9 @@ services:
       RQ_REDIS_URL: redis://redis:6379/0
       OPENCLAW_GATEWAY_DEVICE_IDENTITY_PATH: /home/appuser/.openclaw/identity/device.json
       OPENCLAW_SHARED_WORKSPACE_ROOT: /home/appuser/.openclaw/workspace-shared
+      OPENCLAW_TRANSCRIPTIONS_PYTHON_BIN: ${OPENCLAW_TRANSCRIPTIONS_PYTHON_BIN:-}
+      HF_HOME: /home/appuser/.cache/huggingface
+      HUGGINGFACE_HUB_CACHE: /home/appuser/.cache/huggingface/hub
     depends_on:
       db:
         condition: service_healthy
@@ -54,7 +61,8 @@ services:
         condition: service_healthy
     volumes:
       - gateway_device_identity:/home/appuser/.openclaw/identity
-      - ${OPENCLAW_SHARED_WORKSPACE_PATH:-/Users/scott/.openclaw-docker/workspace}:/home/appuser/.openclaw/workspace-shared:ro
+      - ${OPENCLAW_SHARED_WORKSPACE_PATH:-/Users/scott/.openclaw-docker/workspace}:/home/appuser/.openclaw/workspace-shared
+      - ${OPENCLAW_HUGGINGFACE_CACHE_PATH:-/Users/scott/.cache/huggingface}:/home/appuser/.cache/huggingface
     ports:
       - "${BACKEND_PORT:-8000}:8000"
 
@@ -96,9 +104,7 @@ services:
           path: ./frontend/tsconfig.json
 
   webhook-worker:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
+    image: openclaw-mission-control-backend:latest
     command: ["python", "scripts/rq-docker", "worker"]
     env_file:
       - path: ./backend/.env
@@ -108,6 +114,8 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
+      backend:
+        condition: service_started
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-mission_control}
       AUTH_MODE: ${AUTH_MODE}
@@ -119,9 +127,13 @@ services:
       RQ_DISPATCH_MAX_RETRIES: ${RQ_DISPATCH_MAX_RETRIES:-3}
       OPENCLAW_GATEWAY_DEVICE_IDENTITY_PATH: /home/appuser/.openclaw/identity/device.json
       OPENCLAW_SHARED_WORKSPACE_ROOT: /home/appuser/.openclaw/workspace-shared
+      OPENCLAW_TRANSCRIPTIONS_PYTHON_BIN: ${OPENCLAW_TRANSCRIPTIONS_PYTHON_BIN:-}
+      HF_HOME: /home/appuser/.cache/huggingface
+      HUGGINGFACE_HUB_CACHE: /home/appuser/.cache/huggingface/hub
     volumes:
       - gateway_device_identity:/home/appuser/.openclaw/identity
-      - ${OPENCLAW_SHARED_WORKSPACE_PATH:-/Users/scott/.openclaw-docker/workspace}:/home/appuser/.openclaw/workspace-shared:ro
+      - ${OPENCLAW_SHARED_WORKSPACE_PATH:-/Users/scott/.openclaw-docker/workspace}:/home/appuser/.openclaw/workspace-shared
+      - ${OPENCLAW_HUGGINGFACE_CACHE_PATH:-/Users/scott/.cache/huggingface}:/home/appuser/.cache/huggingface
     restart: unless-stopped
 
 volumes:

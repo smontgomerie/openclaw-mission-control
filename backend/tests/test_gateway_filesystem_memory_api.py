@@ -11,7 +11,7 @@ from fastapi import APIRouter, FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from app.api.gateways import router as gateways_router
-from app.api.deps import require_org_admin
+from app.api.deps import require_org_admin, require_org_member
 from app.db.session import get_session
 from app.services.openclaw import filesystem_memory as filesystem_memory_service
 
@@ -91,6 +91,57 @@ async def test_get_gateway_filesystem_memory_overview_returns_service_payload(
     assert payload["gateway_name"] == "Core Gateway"
     assert payload["main_agent_name"] == "Core Gateway main"
     assert payload["long_term_memory"]["path"] == "MEMORY.md"
+
+
+@pytest.mark.asyncio
+async def test_get_gateway_brand_returns_identity_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gateway = SimpleNamespace(
+        id=uuid4(),
+        name="Core Gateway",
+        created_at="2026-03-20T00:00:00Z",
+    )
+    ctx = SimpleNamespace(organization=SimpleNamespace(id=uuid4()))
+    app = _build_test_app(ctx)
+
+    class _GatewayQuery:
+        def filter_by(self, **kwargs):
+            assert kwargs == {"organization_id": ctx.organization.id}
+            return self
+
+        def order_by(self, *_args):
+            return self
+
+        async def first(self, _session):
+            return gateway
+
+    async def _override_require_org_member() -> object:
+        return ctx
+
+    async def _fake_get_identity_name(self, target_gateway: object):
+        assert target_gateway is gateway
+        return "Scott's Service Bot"
+
+    monkeypatch.setattr("app.api.gateways.Gateway.objects", _GatewayQuery())
+    monkeypatch.setattr(
+        filesystem_memory_service.GatewayFilesystemMemoryService,
+        "get_identity_name",
+        _fake_get_identity_name,
+    )
+    app.dependency_overrides[require_org_member] = _override_require_org_member
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/api/v1/gateways/brand")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["gateway_id"] == str(gateway.id)
+    assert payload["gateway_name"] == "Core Gateway"
+    assert payload["identity_name"] == "Scott's Service Bot"
 
 
 @pytest.mark.asyncio

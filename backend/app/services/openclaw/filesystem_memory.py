@@ -30,7 +30,12 @@ from app.services.openclaw.internal.retry import with_coordination_gateway_retry
 from app.services.openclaw.shared import GatewayAgentIdentity
 
 MEMORY_FILE_NAME = "MEMORY.md"
+IDENTITY_FILE_NAME = "IDENTITY.md"
 DAILY_MEMORY_RE = re.compile(r"^memory/(?P<date>\d{4}-\d{2}-\d{2})\.md$")
+IDENTITY_NAME_RE = re.compile(
+    r"^\s*-\s*\*\*Name:\*\*\s*(?:\r?\n\s+)?(?P<name>[^\r\n]+?)\s*$",
+    re.MULTILINE,
+)
 _MISSING_FILE_MARKERS = (
     "not found",
     "no such file",
@@ -89,6 +94,14 @@ def _gateway_long_term_file_read(content: str) -> GatewayFilesystemMemoryContent
 def _is_missing_file_error(exc: Exception) -> bool:
     message = str(exc).lower()
     return any(marker in message for marker in _MISSING_FILE_MARKERS)
+
+
+def _identity_name_from_content(content: str) -> str | None:
+    match = IDENTITY_NAME_RE.search(content)
+    if match is None:
+        return None
+    value = match.group("name").strip()
+    return value or None
 
 
 class BoardFilesystemMemoryService(OpenClawDBService):
@@ -297,6 +310,18 @@ class GatewayFilesystemMemoryService(OpenClawDBService):
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Gateway filesystem memory read failed: {exc}",
             ) from exc
+
+    async def get_identity_name(self, gateway: Gateway) -> str | None:
+        try:
+            content = await self._read_gateway_file(gateway, IDENTITY_FILE_NAME)
+        except OpenClawGatewayError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Gateway filesystem identity read failed: {exc}",
+            ) from exc
+        if content is None:
+            return None
+        return _identity_name_from_content(content)
 
     async def get_file(
         self,
