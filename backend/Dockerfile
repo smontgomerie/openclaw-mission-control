@@ -21,6 +21,8 @@ ENV PATH="/root/.local/bin:${PATH}"
 # --- deps layer ---
 FROM base AS deps
 
+ARG OPENCLAW_TORCH_BACKEND=cpu
+
 # Copy only dependency metadata first for better build caching
 # NOTE: compose builds backend with repo-root context, so files live under /backend.
 COPY backend/pyproject.toml backend/uv.lock ./
@@ -28,14 +30,35 @@ COPY backend/pyproject.toml backend/uv.lock ./
 # Create venv and sync deps (including runtime)
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
   uv sync --frozen --no-dev \
-  && uv pip install --python /app/.venv/bin/python --no-cache-dir \
-    --index-url https://download.pytorch.org/whl/cpu \
-    "torch==2.8.*" "torchaudio==2.8.*" "torchcodec==0.7.*" \
+  && case "${OPENCLAW_TORCH_BACKEND}" in \
+    cpu) \
+      uv pip install --python /app/.venv/bin/python --no-cache-dir \
+        --index-url https://pypi.org/simple \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        "torch==2.8.*" "torchaudio==2.8.*" "torchcodec==0.7.*" ;; \
+    cu*) \
+      uv pip install --python /app/.venv/bin/python --no-cache-dir \
+        --index-url https://pypi.org/simple \
+        --extra-index-url "https://download.pytorch.org/whl/${OPENCLAW_TORCH_BACKEND}" \
+        "torch==2.8.*" "torchaudio==2.8.*" "torchcodec==0.7.*" ;; \
+    *) \
+      echo "Unsupported OPENCLAW_TORCH_BACKEND=${OPENCLAW_TORCH_BACKEND}. Use cpu or a PyTorch CUDA channel such as cu128." >&2; \
+      exit 1 ;; \
+  esac \
   && uv pip install --python /app/.venv/bin/python --no-cache-dir \
     "huggingface-hub<1.0.0" "requests==2.32.5" "soundfile==0.13.1" "speechbrain==1.0.3" \
-  && uv pip install --python /app/.venv/bin/python --no-cache-dir \
-    --index-url https://download.pytorch.org/whl/cpu \
-    "torchcodec==0.7.*"
+  && case "${OPENCLAW_TORCH_BACKEND}" in \
+    cpu) \
+      uv pip install --python /app/.venv/bin/python --no-cache-dir \
+        --index-url https://pypi.org/simple \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        "torchcodec==0.7.*" ;; \
+    cu*) \
+      uv pip install --python /app/.venv/bin/python --no-cache-dir \
+        --index-url https://pypi.org/simple \
+        --extra-index-url "https://download.pytorch.org/whl/${OPENCLAW_TORCH_BACKEND}" \
+        "torchcodec==0.7.*" ;; \
+  esac
 
 # --- runtime ---
 FROM base AS runtime

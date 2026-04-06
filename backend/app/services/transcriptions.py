@@ -6,11 +6,14 @@ import json
 import mimetypes
 import re
 import subprocess
+import zipfile
+from io import BytesIO
 from datetime import UTC, datetime
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from fastapi import HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from app.core.config import settings
 from app.schemas.transcriptions import (
@@ -32,6 +35,153 @@ SPEAKER_HELPER_NAME = "speaker_identity.py"
 TRANSCRIPT_VENV_DIRNAME = ".venv-whisperx"
 PROCESS_LOG_DURATION_PATTERN = re.compile(r"duration=(?P<duration>\d+)s")
 WHISPERX_LOG_DURATION_PATTERN = re.compile(r"\[DURATION\]\s+(?P<duration>\d+)s")
+PYTHON_WARNING_LINE_PATTERN = re.compile(
+    r"^(?:.+:\d+:\s+)?(?:\w+Warning|warnings\.\w+Warning):"
+)
+DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+def _normalize_speaker_label(segment: dict[str, object]) -> tuple[str | None, str | None]:
+    speaker_name = segment.get("speaker_name")
+    speaker = segment.get("speaker")
+    normalized_name = speaker_name.strip() if isinstance(speaker_name, str) else ""
+    normalized_speaker = speaker.strip() if isinstance(speaker, str) else ""
+    return (
+        normalized_name or normalized_speaker or "Unknown speaker",
+        normalized_speaker or None,
+    )
+
+
+def _parse_offset_seconds(value: object) -> float | None:
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _format_docx_offset(value: float | None) -> str | None:
+    if value is None or value < 0:
+        return None
+    total_seconds = int(value)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    if hours > 0:
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes}:{seconds:02d}"
+
+
+def _docx_paragraph_xml(text: str, *, style: str | None = None) -> str:
+    style_xml = f"<w:pPr><w:pStyle w:val=\"{escape(style)}\"/></w:pPr>" if style else ""
+    return (
+        "<w:p>"
+        f"{style_xml}"
+        "<w:r><w:t xml:space=\"preserve\">"
+        f"{escape(text)}"
+        "</w:t></w:r>"
+        "</w:p>"
+    )
+
+
+def _build_docx_bytes(*, title: str, turns: list[dict[str, str]]) -> bytes:
+    document_paragraphs = [_docx_paragraph_xml(title, style="Title")]
+    for turn in turns:
+        document_paragraphs.append(_docx_paragraph_xml(turn["heading"], style="Heading2"))
+        document_paragraphs.append(_docx_paragraph_xml(turn["text"]))
+
+    document_xml = (
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+        "<w:document "
+        "xmlns:wpc=\"http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas\" "
+        "xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\" "
+        "xmlns:o=\"urn:schemas-microsoft-com:office:office\" "
+        "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
+        "xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\" "
+        "xmlns:v=\"urn:schemas-microsoft-com:vml\" "
+        "xmlns:wp14=\"http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing\" "
+        "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" "
+        "xmlns:w10=\"urn:schemas-microsoft-com:office:word\" "
+        "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" "
+        "xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\" "
+        "xmlns:wpg=\"http://schemas.microsoft.com/office/word/2010/wordprocessingGroup\" "
+        "xmlns:wpi=\"http://schemas.microsoft.com/office/word/2010/wordprocessingInk\" "
+        "xmlns:wne=\"http://schemas.microsoft.com/office/word/2006/wordml\" "
+        "xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\" "
+        "mc:Ignorable=\"w14 wp14\">"
+        "<w:body>"
+        f"{''.join(document_paragraphs)}"
+        "<w:sectPr>"
+        "<w:pgSz w:w=\"12240\" w:h=\"15840\"/>"
+        "<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" "
+        "w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/>"
+        "</w:sectPr>"
+        "</w:body>"
+        "</w:document>"
+    )
+
+    styles_xml = (
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+        "<w:styles xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
+        "<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\">"
+        "<w:name w:val=\"Normal\"/>"
+        "</w:style>"
+        "<w:style w:type=\"paragraph\" w:styleId=\"Title\">"
+        "<w:name w:val=\"Title\"/>"
+        "<w:basedOn w:val=\"Normal\"/>"
+        "<w:qFormat/>"
+        "<w:rPr><w:b/><w:sz w:val=\"32\"/></w:rPr>"
+        "</w:style>"
+        "<w:style w:type=\"paragraph\" w:styleId=\"Heading2\">"
+        "<w:name w:val=\"heading 2\"/>"
+        "<w:basedOn w:val=\"Normal\"/>"
+        "<w:qFormat/>"
+        "<w:rPr><w:b/><w:sz w:val=\"24\"/></w:rPr>"
+        "</w:style>"
+        "</w:styles>"
+    )
+
+    content_types_xml = (
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+        "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+        "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+        "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+        "<Override PartName=\"/word/document.xml\" "
+        "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>"
+        "<Override PartName=\"/word/styles.xml\" "
+        "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/>"
+        "</Types>"
+    )
+
+    package_rels_xml = (
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+        "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+        "<Relationship Id=\"rId1\" "
+        "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" "
+        "Target=\"word/document.xml\"/>"
+        "</Relationships>"
+    )
+
+    document_rels_xml = (
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+        "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+        "<Relationship Id=\"rId1\" "
+        "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" "
+        "Target=\"styles.xml\"/>"
+        "</Relationships>"
+    )
+
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", content_types_xml)
+        archive.writestr("_rels/.rels", package_rels_xml)
+        archive.writestr("word/document.xml", document_xml)
+        archive.writestr("word/_rels/document.xml.rels", document_rels_xml)
+        archive.writestr("word/styles.xml", styles_xml)
+    return buffer.getvalue()
 
 
 def _utc_datetime(value: float) -> datetime:
@@ -144,6 +294,81 @@ def _find_best_transcript_json(entry_dir: Path) -> Path | None:
         if path.is_file() and path.suffix.lower() == ".json":
             return path
     return None
+
+
+def _diarized_speaker_list_metadata(json_path: Path) -> tuple[int | None, list[str]]:
+    """Speaker count and label preview for list views (matches UI diarized transcript parsing)."""
+    raw = _safe_read_text(json_path)
+    if raw is None:
+        return None, []
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None, []
+
+    if not isinstance(data, dict):
+        return None, []
+
+    segments = data.get("segments")
+    if not isinstance(segments, list):
+        return None, []
+
+    has_speaker_data = False
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        if isinstance(segment.get("speaker_name"), str) or isinstance(segment.get("speaker"), str):
+            has_speaker_data = True
+            break
+
+    if not has_speaker_data:
+        return None, []
+
+    ordered_unique: list[str] = []
+    seen: set[str] = set()
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        text = segment.get("text")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        display_label, _raw = _normalize_speaker_label(segment)
+        if display_label not in seen:
+            seen.add(display_label)
+            ordered_unique.append(display_label)
+
+    if not seen:
+        return None, []
+
+    preview_limit = 4
+    return len(seen), ordered_unique[:preview_limit]
+
+
+def _extract_subprocess_error_detail(stderr: str | None, stdout: str | None) -> str:
+    def _candidate_lines(*streams: str | None) -> list[str]:
+        lines: list[str] = []
+        for stream in streams:
+            if not stream:
+                continue
+            lines.extend(line.strip() for line in stream.splitlines() if line.strip())
+        return lines
+
+    lines = _candidate_lines(stderr, stdout)
+    if not lines:
+        return "Speaker rename processing failed."
+
+    for line in reversed(lines):
+        lowered = line.lower()
+        if lowered == "traceback (most recent call last):":
+            continue
+        if PYTHON_WARNING_LINE_PATTERN.match(line):
+            continue
+        if line.startswith(("File ", "^")):
+            continue
+        return line[:300]
+
+    return "Speaker rename processing failed."
 
 
 def _parse_captured_at(entry_id: str, source_files: list[TranscriptionFileRead]) -> datetime | None:
@@ -335,12 +560,9 @@ class SharedTranscriptionsService:
                 detail="Speaker rename processing timed out.",
             ) from exc
         except subprocess.CalledProcessError as exc:
-            stderr = (exc.stderr or "").strip()
-            stdout = (exc.stdout or "").strip()
-            detail = stderr or stdout or "Speaker rename processing failed."
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=detail.splitlines()[0][:300],
+                detail=_extract_subprocess_error_detail(exc.stderr, exc.stdout),
             ) from exc
 
     def _build_entry(
@@ -377,6 +599,11 @@ class SharedTranscriptionsService:
             if artifact_files
             else None
         )
+        diarized_speaker_count: int | None = None
+        diarized_speaker_preview: list[str] = []
+        if json_path is not None and json_path.is_file():
+            diarized_speaker_count, diarized_speaker_preview = _diarized_speaker_list_metadata(json_path)
+
         return TranscriptionEntryRead(
             id=entry_id,
             title=entry_id,
@@ -391,6 +618,8 @@ class SharedTranscriptionsService:
             has_transcript_json=json_path is not None,
             progress_seconds=progress_seconds,
             total_duration_seconds=total_duration_seconds,
+            diarized_speaker_count=diarized_speaker_count,
+            diarized_speaker_preview=diarized_speaker_preview,
         )
 
     def list_entries(self) -> list[TranscriptionEntryRead]:
@@ -571,4 +800,69 @@ class SharedTranscriptionsService:
             path=audio_path,
             media_type=media_type or "application/octet-stream",
             filename=audio_path.name,
+        )
+
+    def export_diarized_transcript_docx_response(self, entry_id: str) -> Response:
+        entry_dir = self._require_processed_entry_dir(entry_id)
+        transcript_json_path = _find_best_transcript_json(entry_dir)
+        if transcript_json_path is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Transcript JSON is required to export a diarized DOCX.",
+            )
+
+        try:
+            transcript = json.loads(transcript_json_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Transcript JSON could not be parsed for DOCX export.",
+            ) from exc
+
+        segments = transcript.get("segments")
+        if not isinstance(segments, list):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Transcript JSON does not contain segment data for DOCX export.",
+            )
+
+        turns: list[dict[str, str]] = []
+        for segment in segments:
+            if not isinstance(segment, dict):
+                continue
+            text = segment.get("text")
+            normalized_text = text.strip() if isinstance(text, str) else ""
+            if not normalized_text:
+                continue
+            speaker_label, raw_speaker = _normalize_speaker_label(segment)
+            if raw_speaker is None:
+                continue
+            start_label = _format_docx_offset(_parse_offset_seconds(segment.get("start")))
+            end_label = _format_docx_offset(_parse_offset_seconds(segment.get("end")))
+            time_range = (
+                f" ({start_label} - {end_label})"
+                if start_label and end_label and start_label != end_label
+                else f" ({start_label or end_label})"
+                if start_label or end_label
+                else ""
+            )
+            turns.append(
+                {
+                    "heading": f"{speaker_label}{time_range}",
+                    "text": normalized_text,
+                }
+            )
+
+        if not turns:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Only diarized transcripts can be exported to DOCX.",
+            )
+
+        docx_bytes = _build_docx_bytes(title=f"{entry_id} diarized transcript", turns=turns)
+        filename = f"{entry_id}-diarized-transcript.docx"
+        return Response(
+            content=docx_bytes,
+            media_type=DOCX_MEDIA_TYPE,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )

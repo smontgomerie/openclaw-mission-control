@@ -34,6 +34,8 @@ class TranscriptionEntryRead(SQLModel):
     has_transcript_json: bool = False
     progress_seconds: int | None = None
     total_duration_seconds: int | None = None
+    diarized_speaker_count: int | None = None
+    diarized_speaker_preview: list[str] = Field(default_factory=list)
 
 
 class TranscriptionDetailRead(TranscriptionEntryRead):

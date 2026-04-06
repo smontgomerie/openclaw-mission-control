@@ -8,6 +8,7 @@ const fetchTranscriptionsMock = vi.hoisted(() => vi.fn());
 const fetchTranscriptionDetailMock = vi.hoisted(() => vi.fn());
 const renameTranscriptionSpeakerMock = vi.hoisted(() => vi.fn());
 const fetchTranscriptionSourceAudioBlobMock = vi.hoisted(() => vi.fn());
+const exportDiarizedTranscriptionDocxMock = vi.hoisted(() => vi.fn());
 const syncTranscriptionsNowMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/auth/clerk", () => ({
@@ -104,6 +105,7 @@ vi.mock("@/lib/transcriptions", async () => {
     fetchTranscriptionDetail: fetchTranscriptionDetailMock,
     renameTranscriptionSpeaker: renameTranscriptionSpeakerMock,
     fetchTranscriptionSourceAudioBlob: fetchTranscriptionSourceAudioBlobMock,
+    exportDiarizedTranscriptionDocx: exportDiarizedTranscriptionDocxMock,
     syncTranscriptionsNow: syncTranscriptionsNowMock,
   };
 });
@@ -114,8 +116,10 @@ describe("TranscriptionsPage", () => {
     fetchTranscriptionDetailMock.mockReset();
     renameTranscriptionSpeakerMock.mockReset();
     fetchTranscriptionSourceAudioBlobMock.mockReset();
+    exportDiarizedTranscriptionDocxMock.mockReset();
     syncTranscriptionsNowMock.mockReset();
     fetchTranscriptionSourceAudioBlobMock.mockResolvedValue(new Blob(["audio"]));
+    exportDiarizedTranscriptionDocxMock.mockResolvedValue(undefined);
     vi.stubGlobal(
       "URL",
       Object.assign(globalThis.URL, {
@@ -199,6 +203,7 @@ describe("TranscriptionsPage", () => {
     expect(screen.queryByText("1 speaker")).toBeNull();
     expect(screen.getByText("2 speakers")).toBeTruthy();
     expect(screen.queryByText("plain fallback transcript")).toBeNull();
+    expect(screen.getByRole("button", { name: /export docx/i })).toBeTruthy();
   });
 
   it("falls back to plain transcript text when diarization is unavailable", async () => {
@@ -236,7 +241,56 @@ describe("TranscriptionsPage", () => {
     });
 
     expect(screen.queryByText("Diarized")).toBeNull();
+    expect(screen.queryByRole("button", { name: /export docx/i })).toBeNull();
     expect(screen.queryByText("No speaker labels here")).toBeNull();
+  });
+
+  it("exports a diarized transcript as docx", async () => {
+    fetchTranscriptionsMock.mockResolvedValue([
+      {
+        id: "entry-docx",
+        title: "entry-docx",
+        is_done: true,
+        source_files: [{ name: "entry-docx.m4a", relative_path: "entry-docx.m4a" }],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+      },
+    ]);
+    fetchTranscriptionDetailMock.mockResolvedValue({
+      id: "entry-docx",
+      title: "entry-docx",
+      is_done: true,
+      source_files: [{ name: "entry-docx.m4a", relative_path: "entry-docx.m4a" }],
+      artifact_files: [],
+      has_analysis: false,
+      has_transcript_text: true,
+      has_transcript_json: true,
+      transcript_text_content: "[SPEAKER_00] First line",
+      transcript_json_content: JSON.stringify({
+        segments: [
+          {
+            speaker: "SPEAKER_00",
+            start: 1.2,
+            end: 4.9,
+            text: "First line",
+          },
+        ],
+      }),
+    });
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /export docx/i })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /export docx/i }));
+
+    await waitFor(() => {
+      expect(exportDiarizedTranscriptionDocxMock).toHaveBeenCalledWith("entry-docx");
+    });
   });
 
   it("shows pending entries from source files without processed artifacts", async () => {
@@ -557,6 +611,8 @@ describe("TranscriptionsPage", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /play clip/i })).toBeTruthy();
     });
+
+    expect(screen.queryByText("Chunked transcription progress")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /play clip/i }));
 

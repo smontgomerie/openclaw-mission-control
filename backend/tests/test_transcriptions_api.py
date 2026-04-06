@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
+import zipfile
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -73,6 +76,51 @@ async def test_list_transcriptions_reads_processed_entries(
     assert payload[0]["has_transcript_text"] is True
     assert payload[0]["has_transcript_json"] is True
     assert payload[0]["source_files"][0]["name"] == "1773166957.m4a"
+    assert payload[0]["diarized_speaker_count"] is None
+    assert payload[0]["diarized_speaker_preview"] == []
+
+
+@pytest.mark.asyncio
+async def test_list_transcriptions_includes_diarized_speaker_preview(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    root = workspace / "transcriptions"
+    processed = root / "processed"
+    transcript_json = {
+        "segments": [
+            {"speaker": "SPEAKER_00", "text": "Hello there", "start": 0.0, "end": 1.0},
+            {"speaker": "SPEAKER_01", "text": "Hi back", "start": 1.0, "end": 2.0},
+            {"speaker": "SPEAKER_02", "text": "Me too", "start": 2.0, "end": 3.0},
+            {"speaker": "SPEAKER_03", "text": "Same", "start": 3.0, "end": 4.0},
+            {"speaker": "SPEAKER_04", "text": "Likewise", "start": 4.0, "end": 5.0},
+        ],
+    }
+    _write(root / "meet.m4a", "audio")
+    _write(processed / "meet" / "transcript.json", json.dumps(transcript_json))
+    _write(processed / "meet" / ".done", "")
+
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
+    app = _build_test_app(SimpleNamespace())
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/api/v1/transcriptions")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["id"] == "meet"
+    assert payload[0]["diarized_speaker_count"] == 5
+    assert payload[0]["diarized_speaker_preview"] == [
+        "SPEAKER_00",
+        "SPEAKER_01",
+        "SPEAKER_02",
+        "SPEAKER_03",
+    ]
 
 
 @pytest.mark.asyncio
@@ -245,6 +293,76 @@ async def test_get_transcription_audio_returns_source_file(
     assert response.status_code == 200
     assert response.content == b"fake-audio"
     assert response.headers["content-type"].startswith("audio/")
+
+
+@pytest.mark.asyncio
+async def test_export_transcription_docx_returns_diarized_document(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    root = workspace / "transcriptions"
+    processed = root / "processed"
+    _write(root / "docx-check.m4a", "audio")
+    _write(
+        processed / "docx-check" / "transcript.json",
+        (
+            '{"segments":['
+            '{"speaker":"SPEAKER_00","speaker_name":"Scott","start":1.2,"end":4.9,"text":"First line"},'
+            '{"speaker":"SPEAKER_01","start":5.1,"end":6.5,"text":"Second line"}'
+            "]}"
+        ),
+    )
+
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
+    app = _build_test_app(SimpleNamespace())
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/api/v1/transcriptions/docx-check/export.docx")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    assert "docx-check-diarized-transcript.docx" in response.headers["content-disposition"]
+
+    archive = zipfile.ZipFile(BytesIO(response.content))
+    document_xml = archive.read("word/document.xml").decode("utf-8")
+    assert "docx-check diarized transcript" in document_xml
+    assert "Scott (0:01 - 0:04)" in document_xml
+    assert "First line" in document_xml
+    assert "SPEAKER_01 (0:05 - 0:06)" in document_xml
+    assert "Second line" in document_xml
+
+
+@pytest.mark.asyncio
+async def test_export_transcription_docx_rejects_non_diarized_transcript(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    root = workspace / "transcriptions"
+    processed = root / "processed"
+    _write(root / "plain-only.m4a", "audio")
+    _write(
+        processed / "plain-only" / "transcript.json",
+        '{"segments":[{"start":0,"end":2,"text":"No speaker labels here"}]}',
+    )
+
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
+    app = _build_test_app(SimpleNamespace())
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/api/v1/transcriptions/plain-only/export.docx")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Only diarized transcripts can be exported to DOCX."
 
 
 @pytest.mark.asyncio
@@ -468,3 +586,53 @@ async def test_rename_transcription_speaker_requires_raw_json(
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Canonical raw transcript JSON is missing for this entry."
+
+
+@pytest.mark.asyncio
+async def test_rename_transcription_speaker_skips_warning_prefixed_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    root = workspace / "transcriptions"
+    processed = root / "processed" / "meeting-warn"
+    _write(root / "speaker_identity.py", "#!/usr/bin/env python3\n")
+    _write(root / "meeting-warn.m4a", "audio")
+    _write(
+        processed / "meeting-warn.json",
+        '{"segments":[{"speaker":"SPEAKER_00","text":"hello"}]}',
+    )
+    _write(processed / "transcript.json", '{"segments":[{"speaker":"SPEAKER_00","text":"hello"}]}')
+
+    warning_and_error = "\n".join(
+        [
+            "/app/.venv/lib/python3.12/site-packages/torchaudio/_backend/utils.py:213: UserWarning: warning",
+            "  warnings.warn(message, stacklevel=2)",
+            "RuntimeError: Model checkpoint is missing",
+        ]
+    )
+
+    def _fake_run(*args, **kwargs):
+        command = list(args[0])
+        raise subprocess.CalledProcessError(
+            1,
+            command,
+            output="",
+            stderr=warning_and_error,
+        )
+
+    monkeypatch.setattr("app.services.transcriptions.subprocess.run", _fake_run)
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
+    app = _build_test_app(SimpleNamespace())
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            "/api/v1/transcriptions/meeting-warn/speakers/rename",
+            json={"speaker_label": "SPEAKER_00", "new_name": "Scott"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "RuntimeError: Model checkpoint is missing"

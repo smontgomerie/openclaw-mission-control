@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   countDiarizedSpeakers,
+  exportDiarizedTranscriptionDocx,
   fetchTranscriptionDetail,
   fetchTranscriptionSourceAudioBlob,
   fetchTranscriptions,
@@ -80,7 +81,7 @@ function getEntryStatus(
     entry.status ?? (entry.is_done ? "done" : artifactCount > 0 ? "partial" : "pending");
   const progressPercent = getProgressPercent(entry.progress_seconds, entry.total_duration_seconds);
 
-  if (status === "done") return { label: "Done", variant: "success", progressPercent: 100 };
+  if (status === "done") return { label: "Done", variant: "success", progressPercent: null };
   if (status === "partial") {
     return {
       label: progressPercent !== null ? `In progress ${progressPercent}%` : "Partial",
@@ -308,6 +309,8 @@ export default function TranscriptionsPage() {
   const [playingTurnKey, setPlayingTurnKey] = useState<string | null>(null);
   const [audioStopAt, setAudioStopAt] = useState<number | null>(null);
   const [audioError, setAudioError] = useState<string | null>(null);
+  const [exportPending, setExportPending] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [activePane, setActivePane] = useState<"analysis" | "transcript" | "json" | "artifacts" | "logs">(
     "analysis",
   );
@@ -361,6 +364,7 @@ export default function TranscriptionsPage() {
       setAudioPendingTurnKey(null);
       setAudioError(null);
       setAudioStopAt(null);
+      setExportError(null);
       return;
     }
 
@@ -377,6 +381,7 @@ export default function TranscriptionsPage() {
         setEditingSpeakerValue("");
         setRenameError(null);
         setAudioError(null);
+        setExportError(null);
         setActivePane((current) => {
           if (data.has_analysis) return current === "artifacts" ? "analysis" : current;
           if (data.has_transcript_text) return "transcript";
@@ -573,6 +578,24 @@ export default function TranscriptionsPage() {
       });
   };
 
+  const handleExportDocx = () => {
+    if (!selectedId || exportPending) return;
+    setExportPending(true);
+    setExportError(null);
+
+    void exportDiarizedTranscriptionDocx(selectedId)
+      .catch((error: unknown) => {
+        setExportError(
+          error instanceof ApiError || error instanceof Error
+            ? error.message
+            : "Unable to export diarized transcript.",
+        );
+      })
+      .finally(() => {
+        setExportPending(false);
+      });
+  };
+
   const handleSyncNow = () => {
     setIsSyncPending(true);
     setSyncError(null);
@@ -740,6 +763,28 @@ export default function TranscriptionsPage() {
                                 >
                                   Captured {formatTimestamp(entry.captured_at)}
                                 </p>
+                                {typeof entry.diarized_speaker_count === "number"
+                                && entry.diarized_speaker_count > 0 ? (
+                                  <p
+                                    className={cn(
+                                      "mt-1 line-clamp-2 text-[11px] leading-snug",
+                                      selectedId === entry.id
+                                        ? "text-slate-200"
+                                        : "text-slate-600",
+                                    )}
+                                  >
+                                    <span className="font-semibold">Speakers</span>
+                                    {": "}
+                                    {(entry.diarized_speaker_preview ?? []).join(", ")}
+                                    {entry.diarized_speaker_count
+                                    > (entry.diarized_speaker_preview?.length ?? 0)
+                                      ? ` (+${
+                                          entry.diarized_speaker_count
+                                          - (entry.diarized_speaker_preview?.length ?? 0)
+                                        } more)`
+                                      : null}
+                                  </p>
+                                ) : null}
                               </div>
                               <Badge variant={status.variant}>{status.label}</Badge>
                             </div>
@@ -946,9 +991,21 @@ export default function TranscriptionsPage() {
                       diarizedTurns.length > 0 ? (
                         <div className="space-y-4">
                           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                              Source audio
-                            </p>
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                Source audio
+                              </p>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                onClick={handleExportDocx}
+                                disabled={exportPending}
+                              >
+                                <FileText className="h-4 w-4" />
+                                {exportPending ? "Exporting…" : "Export DOCX"}
+                              </Button>
+                            </div>
                             <audio
                               ref={audioRef}
                               src={audioObjectUrl ?? undefined}
@@ -959,6 +1016,9 @@ export default function TranscriptionsPage() {
                             <p className="mt-2 text-xs text-slate-500">
                               Use “Play clip” on a turn to jump to that speaker segment.
                             </p>
+                            {exportError ? (
+                              <p className="mt-2 text-xs text-red-600">{exportError}</p>
+                            ) : null}
                           </div>
                           <TranscriptTurns
                             turns={diarizedTurns}

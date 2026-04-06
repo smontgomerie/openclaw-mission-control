@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlmodel import col
 
 from app.api.deps import require_org_admin
@@ -268,6 +268,16 @@ async def get_transcription_audio(
 ) -> FileResponse:
     """Get the source audio file for one transcription entry."""
     return SharedTranscriptionsService().get_source_audio_response(entry_id)
+
+
+@router.get("/{entry_id}/export.docx")
+async def export_transcription_docx(
+    entry_id: str,
+    _ctx=ORG_ADMIN_DEP,
+    _session=SESSION_DEP,
+) -> Response:
+    """Export one diarized transcription entry as a DOCX document."""
+    return SharedTranscriptionsService().export_diarized_transcript_docx_response(entry_id)
 
 
 @router.post("/sync", response_model=TranscriptionSyncRead)

@@ -21,6 +21,8 @@ export type TranscriptionEntry = {
   has_transcript_json?: boolean;
   progress_seconds?: number | null;
   total_duration_seconds?: number | null;
+  diarized_speaker_count?: number | null;
+  diarized_speaker_preview?: string[];
 };
 
 export type TranscriptionDetail = TranscriptionEntry & {
@@ -113,6 +115,39 @@ export async function fetchTranscriptionSourceAudioBlob(
   return response.blob();
 }
 
+export async function exportDiarizedTranscriptionDocx(entryId: string): Promise<void> {
+  const response = await authenticatedFetch(
+    `/api/v1/transcriptions/${encodeURIComponent(entryId)}/export.docx`,
+    { method: "GET" },
+  );
+  if (!response.ok) {
+    let message = "Unable to export diarized transcript.";
+    try {
+      const data = (await response.json()) as { detail?: unknown };
+      if (typeof data.detail === "string" && data.detail) {
+        message = data.detail;
+      }
+    } catch {
+      // Ignore JSON parse failures for binary/text error bodies.
+    }
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const contentDisposition = response.headers.get("content-disposition");
+    const filenameMatch = contentDisposition?.match(/filename="([^"]+)"/i);
+    const filename = filenameMatch?.[1] ?? `${entryId}-diarized-transcript.docx`;
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filename;
+    link.click();
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export function matchesTranscriptionSearch(
   entry: TranscriptionEntry,
   searchTerm: string,
@@ -124,6 +159,7 @@ export function matchesTranscriptionSearch(
     entry.title,
     ...entry.source_files.map((file) => file.name),
     ...entry.artifact_files.map((file) => file.name),
+    ...(entry.diarized_speaker_preview ?? []),
   ].some((value) => value.toLowerCase().includes(normalized));
 }
 

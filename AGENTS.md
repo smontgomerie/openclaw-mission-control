@@ -13,6 +13,8 @@
 - `make setup`: install/sync backend and frontend dependencies.
 - `make check`: closest CI parity run (lint, typecheck, tests/coverage, frontend build).
 - `docker compose -f compose.yml --env-file .env up -d --build`: run full stack.
+- Optional GPU backend runtime: `env OPENCLAW_TORCH_BACKEND=cu128 docker compose -f compose.yml -f compose.gpu.yml --env-file .env up -d --build backend webhook-worker`
+  Use this when the host has NVIDIA Container Toolkit configured and transcription/speaker workloads should see the GPU.
 - Fast local loop:
   - `docker compose -f compose.yml --env-file .env up -d db`
   - `cd backend && uv run uvicorn app.main:app --reload --port 8000`

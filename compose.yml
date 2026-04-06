@@ -7,6 +7,11 @@ x-backend-image: &backend-image
     # like `backend/templates/`.
     context: .
     dockerfile: backend/Dockerfile
+    args:
+      # Select the PyTorch wheel channel for backend/worker images.
+      # Keep CPU as the safe default; opt into CUDA with, for example:
+      #   OPENCLAW_TORCH_BACKEND=cu128 docker compose ...
+      OPENCLAW_TORCH_BACKEND: ${OPENCLAW_TORCH_BACKEND:-cpu}
 
 services:
   db:
@@ -61,8 +66,8 @@ services:
         condition: service_healthy
     volumes:
       - gateway_device_identity:/home/appuser/.openclaw/identity
-      - ${OPENCLAW_SHARED_WORKSPACE_PATH:-/Users/scott/.openclaw-docker/workspace}:/home/appuser/.openclaw/workspace-shared
-      - ${OPENCLAW_HUGGINGFACE_CACHE_PATH:-/Users/scott/.cache/huggingface}:/home/appuser/.cache/huggingface
+      - ${OPENCLAW_SHARED_WORKSPACE_PATH:-${HOME}/.openclaw-docker/workspace}:/home/appuser/.openclaw/workspace-shared
+      - ${OPENCLAW_HUGGINGFACE_CACHE_PATH:-${HOME}/.cache/huggingface}:/home/appuser/.cache/huggingface
     ports:
       - "${BACKEND_PORT:-8000}:8000"
 
@@ -132,8 +137,8 @@ services:
       HUGGINGFACE_HUB_CACHE: /home/appuser/.cache/huggingface/hub
     volumes:
       - gateway_device_identity:/home/appuser/.openclaw/identity
-      - ${OPENCLAW_SHARED_WORKSPACE_PATH:-/Users/scott/.openclaw-docker/workspace}:/home/appuser/.openclaw/workspace-shared
-      - ${OPENCLAW_HUGGINGFACE_CACHE_PATH:-/Users/scott/.cache/huggingface}:/home/appuser/.cache/huggingface
+      - ${OPENCLAW_SHARED_WORKSPACE_PATH:-${HOME}/.openclaw-docker/workspace}:/home/appuser/.openclaw/workspace-shared
+      - ${OPENCLAW_HUGGINGFACE_CACHE_PATH:-${HOME}/.cache/huggingface}:/home/appuser/.cache/huggingface
     restart: unless-stopped
 
 volumes:
