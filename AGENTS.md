@@ -16,6 +16,9 @@
 - `docker compose -f compose.yml --env-file .env up -d --build`: run full stack.
 - Optional GPU backend runtime: `env OPENCLAW_TORCH_BACKEND=cu128 docker compose -f compose.yml -f compose.gpu.yml --env-file .env up -d --build backend webhook-worker`
   Use this when the host has NVIDIA Container Toolkit configured and transcription/speaker workloads should see the GPU.
+- When rebuilding Docker services, keep `OPENCLAW_TORCH_BACKEND=cu128` set if you want Compose to stay on the CUDA base image. A plain frontend rebuild can still trigger backend image resolution, which falls back to the CPU base if the env var is omitted.
+- The backend image expects the shared runtime identity to stay aligned with the live containers. Current working values are `OPENCLAW_APP_UID=1000` and `OPENCLAW_APP_GID=1000`.
+- Docker Compose writes build metadata under `/tmp`; if builds fail with `no space left on device`, clear unused Docker build cache before retrying.
 - Fast local loop:
   - `docker compose -f compose.yml --env-file .env up -d db`
   - `cd backend && uv run uvicorn app.main:app --reload --port 8000`

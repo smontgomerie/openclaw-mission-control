@@ -46,9 +46,24 @@ ARG APP_GID
 
 # Create non-root user before COPY so --chown can reference it.
 # Using COPY --chown avoids a slow recursive chown on overlay2 (docker/for-linux#388).
-RUN groupadd --system --gid "${APP_GID}" appgroup \
-  && useradd --system --uid "${APP_UID}" --gid appgroup --create-home appuser \
-  && chown appuser:appgroup /app
+RUN set -eux; \
+  if getent group appgroup >/dev/null; then \
+    :; \
+  elif getent group "${APP_GID}" >/dev/null; then \
+    groupmod -n appgroup "$(getent group "${APP_GID}" | cut -d: -f1)"; \
+  else \
+    groupadd --system --gid "${APP_GID}" appgroup; \
+  fi; \
+  if id -u appuser >/dev/null 2>&1; then \
+    :; \
+  elif id -u "${APP_UID}" >/dev/null 2>&1; then \
+    usermod -l appuser -d /home/appuser -m "$(getent passwd "${APP_UID}" | cut -d: -f1)"; \
+  else \
+    useradd --system --uid "${APP_UID}" --gid appgroup --create-home appuser; \
+  fi; \
+  usermod -g appgroup appuser; \
+  mkdir -p /home/appuser; \
+  chown -R appuser:appgroup /app /home/appuser
 
 # Copy virtual environment from deps stage
 COPY --from=deps --chown=appuser:appgroup /app/.venv /app/.venv
