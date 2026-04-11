@@ -8,10 +8,14 @@ x-backend-image: &backend-image
     context: .
     dockerfile: backend/Dockerfile
     args:
-      # Select the PyTorch wheel channel for backend/worker images.
+      # Select which shared WhisperX/PyTorch base image mission-control builds on.
       # Keep CPU as the safe default; opt into CUDA with, for example:
+      #   OPENCLAW_TORCH_BACKEND=cu128 ./scripts/ensure_openclaw_backend_base.sh
       #   OPENCLAW_TORCH_BACKEND=cu128 docker compose ...
       OPENCLAW_TORCH_BACKEND: ${OPENCLAW_TORCH_BACKEND:-cpu}
+      OPENCLAW_BACKEND_BASE_IMAGE: ${OPENCLAW_BACKEND_BASE_IMAGE:-${OPENCLAW_BACKEND_BASE_REPOSITORY:-openclaw-whisperx-base}:${OPENCLAW_TORCH_BACKEND:-cpu}}
+      APP_UID: ${OPENCLAW_APP_UID:-1000}
+      APP_GID: ${OPENCLAW_APP_GID:-1000}
 
 services:
   db:
@@ -57,6 +61,8 @@ services:
       OPENCLAW_GATEWAY_DEVICE_IDENTITY_PATH: /home/appuser/.openclaw/identity/device.json
       OPENCLAW_SHARED_WORKSPACE_ROOT: /home/appuser/.openclaw/workspace-shared
       OPENCLAW_TRANSCRIPTIONS_PYTHON_BIN: ${OPENCLAW_TRANSCRIPTIONS_PYTHON_BIN:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
       HF_HOME: /home/appuser/.cache/huggingface
       HUGGINGFACE_HUB_CACHE: /home/appuser/.cache/huggingface/hub
     depends_on:
@@ -133,6 +139,8 @@ services:
       OPENCLAW_GATEWAY_DEVICE_IDENTITY_PATH: /home/appuser/.openclaw/identity/device.json
       OPENCLAW_SHARED_WORKSPACE_ROOT: /home/appuser/.openclaw/workspace-shared
       OPENCLAW_TRANSCRIPTIONS_PYTHON_BIN: ${OPENCLAW_TRANSCRIPTIONS_PYTHON_BIN:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
       HF_HOME: /home/appuser/.cache/huggingface
       HUGGINGFACE_HUB_CACHE: /home/appuser/.cache/huggingface/hub
     volumes:

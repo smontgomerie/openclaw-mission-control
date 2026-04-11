@@ -163,11 +163,15 @@ mcp-test: frontend-tooling ## Run the Mission Control MCP package tests
 	$(NODE_WRAP) --cwd mcp/mission-control npm test
 
 .PHONY: docker-up
-docker-up: ## Start full Docker stack with image rebuild
+docker-up: docker-backend-base ## Start full Docker stack with image rebuild
 	docker compose -f compose.yml --env-file .env up -d --build
 
+.PHONY: docker-backend-base
+docker-backend-base: ## Ensure the shared OpenClaw backend base image exists locally
+	./scripts/ensure_openclaw_backend_base.sh
+
 .PHONY: docker-watch
-docker-watch: ## Start stack in watch mode (auto rebuild frontend on UI changes)
+docker-watch: docker-backend-base ## Start stack in watch mode (auto rebuild frontend on UI changes)
 	docker compose -f compose.yml --env-file .env up --build --watch
 
 .PHONY: docker-watch-only

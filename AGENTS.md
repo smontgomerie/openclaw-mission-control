@@ -12,6 +12,7 @@
 ## Build, Test, and Development Commands
 - `make setup`: install/sync backend and frontend dependencies.
 - `make check`: closest CI parity run (lint, typecheck, tests/coverage, frontend build).
+- `./scripts/ensure_openclaw_backend_base.sh`: ensure the shared OpenClaw WhisperX/PyTorch base image exists locally before Docker builds.
 - `docker compose -f compose.yml --env-file .env up -d --build`: run full stack.
 - Optional GPU backend runtime: `env OPENCLAW_TORCH_BACKEND=cu128 docker compose -f compose.yml -f compose.gpu.yml --env-file .env up -d --build backend webhook-worker`
   Use this when the host has NVIDIA Container Toolkit configured and transcription/speaker workloads should see the GPU.

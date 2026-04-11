@@ -465,6 +465,7 @@ async def test_rename_transcription_speaker_enrolls_and_reannotates(
     tmp_path: Path,
 ) -> None:
     workspace = tmp_path / "workspace"
+    registry_root = tmp_path / "speaker-registry"
     root = workspace / "transcriptions"
     processed = root / "processed" / "meeting-1"
     _write(root / "speaker_identity.py", "#!/usr/bin/env python3\n")
@@ -490,6 +491,7 @@ async def test_rename_transcription_speaker_enrolls_and_reannotates(
 
     monkeypatch.setattr("app.services.transcriptions.subprocess.run", _fake_run)
     monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
+    monkeypatch.setattr(settings, "openclaw_transcriptions_speaker_registry_root", str(registry_root))
     app = _build_test_app(SimpleNamespace())
 
     async with AsyncClient(
@@ -508,6 +510,9 @@ async def test_rename_transcription_speaker_enrolls_and_reannotates(
     assert len(calls) == 2
     assert "enroll-from-transcript" in calls[0]
     assert "annotate" in calls[1]
+    assert calls[0][calls[0].index("--registry-dir") + 1] == str(registry_root)
+    assert calls[1][calls[1].index("--registry-dir") + 1] == str(registry_root)
+    assert registry_root.exists()
 
 
 @pytest.mark.asyncio

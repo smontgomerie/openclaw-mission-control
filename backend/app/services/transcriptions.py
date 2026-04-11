@@ -32,6 +32,7 @@ STRUCTURED_TEXT_SUFFIXES = (".txt", ".md", ".json", ".srt", ".tsv", ".vtt", ".lo
 SOURCE_AUDIO_SUFFIXES = (".m4a", ".wav", ".mp3")
 IGNORED_ROOT_NAMES = {"transcribe.sh", "process_wav_files.sh", ".test"}
 SPEAKER_HELPER_NAME = "speaker_identity.py"
+SPEAKER_REGISTRY_DIRNAME = ".speaker_registry"
 TRANSCRIPT_VENV_DIRNAME = ".venv-whisperx"
 PROCESS_LOG_DURATION_PATTERN = re.compile(r"duration=(?P<duration>\d+)s")
 WHISPERX_LOG_DURATION_PATTERN = re.compile(r"\[DURATION\]\s+(?P<duration>\d+)s")
@@ -527,6 +528,21 @@ class SharedTranscriptionsService:
             )
         return helper_path
 
+    def _speaker_registry_root(self) -> Path:
+        configured = settings.openclaw_transcriptions_speaker_registry_root.strip()
+        if configured:
+            root = Path(configured)
+        else:
+            root = Path.home() / ".cache" / "openclaw" / "transcriptions" / SPEAKER_REGISTRY_DIRNAME
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Speaker registry cache directory is not writable.",
+            ) from exc
+        return root
+
     def _speaker_python_bin(self, *, transcriptions_root: Path) -> str:
         configured = settings.openclaw_transcriptions_python_bin.strip()
         if configured:
@@ -751,7 +767,7 @@ class SharedTranscriptionsService:
         transcript_json_path = entry_dir / "transcript.json"
         transcript_text_path = entry_dir / "transcript.txt"
         python_bin = self._speaker_python_bin(transcriptions_root=transcriptions_root)
-        registry_dir = str(transcriptions_root)
+        registry_dir = str(self._speaker_registry_root())
 
         self._run_speaker_helper(
             [
