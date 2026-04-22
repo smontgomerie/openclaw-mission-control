@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from sqlmodel import Field, SQLModel
 
@@ -21,6 +22,7 @@ class PortfolioRationaleRead(SQLModel):
     """Current durable rationale for one position."""
 
     position_key: str | None = None
+    rolled_from_position_key: str | None = None
     strategy: str | None = None
     why: str | None = None
     entry_plan: str | None = None
@@ -98,3 +100,39 @@ class PortfolioSyncRead(SQLModel):
     enqueued: bool = True
     job_id: str
     run_id: str | None = None
+
+
+class PortfolioReviewRunRequest(SQLModel):
+    """Raw Google Sheet rows for server-side portfolio review generation."""
+
+    positions_rows: list[list[Any]] = Field(default_factory=list)
+    trades_rows: list[list[Any]] = Field(default_factory=list)
+    generated_at: str | None = None
+
+
+class PortfolioReviewRunResult(SQLModel):
+    """Result of running the portfolio review engine (cron / manual)."""
+
+    ok: bool = True
+    generated_at: str
+    position_count: int = 0
+    flagged_count: int = 0
+    missing_rationale_count: int = 0
+    rolls_detected_count: int = 0
+    review_id: str
+    snapshot_path: str
+    review_json_path: str
+    review_markdown_path: str
+
+
+class PortfolioRollEventRead(SQLModel):
+    """One detected or recorded option roll."""
+
+    id: str
+    rolled_from_position_key: str
+    rolled_to_position_key: str
+    rolled_at: datetime
+    net_credit_cents: int = 0
+    source_trade_ids: list[str] = Field(default_factory=list)
+    status: str = "auto_carried"
+    confidence: float | None = None

@@ -14,6 +14,7 @@ export interface PortfolioRationaleHistoryRead {
   profit_take_plan?: string | null;
   risk_plan?: string | null;
   roll_or_reopen_plan?: string | null;
+  rolled_from_position_key?: string | null;
   strategy?: string | null;
   tags?: string[];
   updated_at?: string | null;

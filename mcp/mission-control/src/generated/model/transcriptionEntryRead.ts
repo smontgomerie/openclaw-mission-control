@@ -12,13 +12,17 @@ import type { TranscriptionFileRead } from "./transcriptionFileRead";
 export interface TranscriptionEntryRead {
   artifact_files?: TranscriptionFileRead[];
   captured_at?: string | null;
+  diarized_speaker_count?: number | null;
+  diarized_speaker_preview?: string[];
   has_analysis?: boolean;
   has_transcript_json?: boolean;
   has_transcript_text?: boolean;
   id: string;
   is_done?: boolean;
   processed_at?: string | null;
+  progress_seconds?: number | null;
   source_files?: TranscriptionFileRead[];
   status?: string;
   title: string;
+  total_duration_seconds?: number | null;
 }

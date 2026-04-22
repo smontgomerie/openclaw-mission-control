@@ -10,8 +10,8 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.api.gateways import router as gateways_router
 from app.api.deps import require_org_admin, require_org_member
+from app.api.gateways import router as gateways_router
 from app.db.session import get_session
 from app.services.openclaw import filesystem_memory as filesystem_memory_service
 

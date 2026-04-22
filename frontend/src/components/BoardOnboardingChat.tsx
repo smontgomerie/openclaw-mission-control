@@ -248,7 +248,9 @@ export function BoardOnboardingChat({
   }, [startSession]);
 
   const shouldPollSession =
-    isPageActive && (loading || isAwaitingAgent || (!question && !draft));
+    Boolean(session) &&
+    isPageActive &&
+    (loading || isAwaitingAgent || (!question && !draft));
 
   useEffect(() => {
     if (!shouldPollSession) return;

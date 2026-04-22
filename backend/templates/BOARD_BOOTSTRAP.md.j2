@@ -42,8 +42,30 @@ cat > .mission-control/heartbeat.sh <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
-base_url="{{ base_url }}"
-auth_token="{{ auth_token }}"
+workspace_root="${WORKSPACE_ROOT:-$PWD}"
+tools_file="${workspace_root}/TOOLS.md"
+if [[ ! -f "$tools_file" ]]; then
+  tools_file="TOOLS.md"
+fi
+
+read_tools_value() {
+  local key="$1"
+  awk -v key="$key" '
+    {
+      line = $0
+      sub(/^[[:space:]]*-[[:space:]]*/, "", line)
+      gsub(/^`|`$/, "", line)
+      if (line ~ ("^" key "=")) {
+        sub("^" key "=", "", line)
+        print line
+        exit
+      }
+    }
+  ' "$tools_file"
+}
+
+base_url="${BASE_URL:-$(read_tools_value BASE_URL)}"
+auth_token="${AUTH_TOKEN:-$(read_tools_value AUTH_TOKEN)}"
 
 if [[ "${1:-}" == "online" ]]; then
   if [[ $# -ne 3 ]]; then
@@ -53,16 +75,18 @@ if [[ "${1:-}" == "online" ]]; then
 
   agent_name="$2"
   board_id="$3"
-
-  exec curl -fsS -X POST "${base_url}/api/v1/agent/heartbeat" \
-    -H "X-Agent-Token: ${auth_token}" \
-    -H "Content-Type: application/json" \
-    -d "{\"name\":\"${agent_name}\",\"board_id\":\"${board_id}\",\"status\":\"online\"}"
+else
+  if [[ $# -ne 0 ]]; then
+    echo "usage: $0 [online <agent_name> <board_id>]" >&2
+    exit 2
+  fi
+  agent_name="${AGENT_NAME:-$(read_tools_value AGENT_NAME)}"
+  board_id="${BOARD_ID:-$(read_tools_value BOARD_ID)}"
 fi
 
-if [[ $# -ne 0 ]]; then
-  echo "usage: $0 [online <agent_name> <board_id>]" >&2
-  exit 2
+if [[ -z "$base_url" || -z "$auth_token" ]]; then
+  echo "Error: missing BASE_URL or AUTH_TOKEN in TOOLS.md" >&2
+  exit 1
 fi
 
 exec curl -fsS -X POST "${base_url}/api/v1/agent/heartbeat" \

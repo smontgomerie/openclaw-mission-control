@@ -18,6 +18,7 @@ from app.models.organization_invites import OrganizationInvite
 from app.models.organization_members import OrganizationMember
 from app.models.organizations import Organization
 from app.models.portfolio_rationales import PortfolioRationale
+from app.models.portfolio_roll_events import PortfolioRollEvent
 from app.models.skills import GatewayInstalledSkill, MarketplaceSkill, SkillPack
 from app.models.tag_assignments import TagAssignment
 from app.models.tags import Tag
@@ -53,6 +54,7 @@ __all__ = [
     "TaskCustomFieldValue",
     "OrganizationMember",
     "PortfolioRationale",
+    "PortfolioRollEvent",
     "OrganizationBoardAccess",
     "OrganizationInvite",
     "OrganizationInviteBoardAccess",

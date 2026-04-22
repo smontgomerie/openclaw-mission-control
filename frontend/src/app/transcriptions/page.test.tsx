@@ -10,6 +10,7 @@ const renameTranscriptionSpeakerMock = vi.hoisted(() => vi.fn());
 const fetchTranscriptionSourceAudioBlobMock = vi.hoisted(() => vi.fn());
 const exportDiarizedTranscriptionDocxMock = vi.hoisted(() => vi.fn());
 const syncTranscriptionsNowMock = vi.hoisted(() => vi.fn());
+const reprocessTranscriptionsMetadataMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/auth/clerk", () => ({
   useAuth: () => ({ isSignedIn: true }),
@@ -107,6 +108,7 @@ vi.mock("@/lib/transcriptions", async () => {
     fetchTranscriptionSourceAudioBlob: fetchTranscriptionSourceAudioBlobMock,
     exportDiarizedTranscriptionDocx: exportDiarizedTranscriptionDocxMock,
     syncTranscriptionsNow: syncTranscriptionsNowMock,
+    reprocessTranscriptionsMetadata: reprocessTranscriptionsMetadataMock,
   };
 });
 
@@ -118,6 +120,7 @@ describe("TranscriptionsPage", () => {
     fetchTranscriptionSourceAudioBlobMock.mockReset();
     exportDiarizedTranscriptionDocxMock.mockReset();
     syncTranscriptionsNowMock.mockReset();
+    reprocessTranscriptionsMetadataMock.mockReset();
     fetchTranscriptionSourceAudioBlobMock.mockResolvedValue(new Blob(["audio"]));
     exportDiarizedTranscriptionDocxMock.mockResolvedValue(undefined);
     vi.stubGlobal(
@@ -481,11 +484,76 @@ describe("TranscriptionsPage", () => {
     ).toBeTruthy();
   });
 
+  it("queues metadata backfill after confirmation", async () => {
+    fetchTranscriptionsMock.mockResolvedValue([
+      {
+        id: "entry-1",
+        title: "entry-1",
+        status: "done",
+        is_done: true,
+        source_files: [{ name: "entry-1.m4a", relative_path: "entry-1.m4a" }],
+        artifact_files: [{ name: "transcript.txt", relative_path: "processed/entry-1/transcript.txt" }],
+        has_analysis: true,
+        has_transcript_text: true,
+        has_transcript_json: true,
+      },
+    ]);
+    fetchTranscriptionDetailMock.mockResolvedValue({
+      id: "entry-1",
+      title: "entry-1",
+      status: "done",
+      is_done: true,
+      source_files: [{ name: "entry-1.m4a", relative_path: "entry-1.m4a" }],
+      artifact_files: [{ name: "transcript.txt", relative_path: "processed/entry-1/transcript.txt" }],
+      has_analysis: true,
+      has_transcript_text: true,
+      has_transcript_json: true,
+      analysis_content: "# ok",
+      transcript_text_content: "hello",
+      transcript_json_content: "{}",
+    });
+    reprocessTranscriptionsMetadataMock.mockResolvedValue({
+      ok: true,
+      enqueued: true,
+      job_id: "manual-transcriptions-reprocess-metadata-1",
+      run_id: "run-2",
+    });
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /re-run metadata/i })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /re-run metadata/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/re-runs calendar matching, title generation, and speaker re-annotation/i),
+      ).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /queue backfill/i }));
+
+    await waitFor(() => {
+      expect(reprocessTranscriptionsMetadataMock).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(fetchTranscriptionsMock).toHaveBeenCalledTimes(2);
+    });
+    expect(
+      screen.getByText(
+        "Metadata backfill queued. Calendar match, titles, and speaker labels may take several minutes to refresh.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("shows chunked progress for partial transcription runs", async () => {
     fetchTranscriptionsMock.mockResolvedValue([
       {
         id: "1774046932",
-        title: "1774046932",
+        title: "M&A process review",
         status: "partial",
         is_done: false,
         source_files: [{ name: "1774046932.m4a", relative_path: "1774046932.m4a" }],
@@ -501,7 +569,7 @@ describe("TranscriptionsPage", () => {
     ]);
     fetchTranscriptionDetailMock.mockResolvedValue({
       id: "1774046932",
-      title: "1774046932",
+      title: "M&A process review",
       status: "partial",
       is_done: false,
       source_files: [{ name: "1774046932.m4a", relative_path: "1774046932.m4a" }],
@@ -518,6 +586,10 @@ describe("TranscriptionsPage", () => {
     });
 
     render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/M&A process review/).length).toBeGreaterThanOrEqual(1);
+    });
 
     await waitFor(() => {
       expect(screen.getAllByText("In progress 20%").length).toBeGreaterThan(0);
@@ -563,9 +635,15 @@ describe("TranscriptionsPage", () => {
       expect(screen.getByRole("button", { name: "Logs" })).toBeTruthy();
     });
 
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Logs" })).not.toBeDisabled();
+    });
+
     fireEvent.click(screen.getByRole("button", { name: "Logs" }));
 
-    expect(screen.getByText("Process log")).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText("Process log")).toBeTruthy();
+    });
     expect(screen.getByText("[START] file=entry-logs.m4a")).toBeTruthy();
     expect(screen.getByText("WhisperX log")).toBeTruthy();
     expect(screen.getByText("[WHISPERX_START] chunk_file=entry-logs.mp3")).toBeTruthy();

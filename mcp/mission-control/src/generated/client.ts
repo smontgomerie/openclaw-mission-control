@@ -111,6 +111,7 @@ import type {
   ListMarketplaceSkillsApiV1SkillsMarketplaceGetParams,
   ListOrgInvitesApiV1OrganizationsMeInvitesGetParams,
   ListOrgMembersApiV1OrganizationsMeMembersGetParams,
+  ListPortfolioRollEventsApiV1PortfolioRollEventsGetParams,
   ListTagsApiV1TagsGetParams,
   ListTaskCommentFeedApiV1ActivityTaskCommentsGetParams,
   ListTaskCommentsApiV1AgentBoardsBoardIdTasksTaskIdCommentsGetParams,
@@ -136,6 +137,9 @@ import type {
   PortfolioPositionRead,
   PortfolioRationaleUpdate,
   PortfolioReviewRead,
+  PortfolioReviewRunRequest,
+  PortfolioReviewRunResult,
+  PortfolioRollEventRead,
   PortfolioSyncRead,
   SearchApiV1SoulsDirectorySearchGetParams,
   SendGatewaySessionMessageApiV1GatewaysSessionsSessionIdMessagePostParams,
@@ -8152,6 +8156,63 @@ export const updatePortfolioRationaleApiV1PortfolioPositionsPositionKeyRationale
   };
 
 /**
+ * Run the portfolio review engine (sheet rows → snapshot + review artifacts).
+ * @summary Run Portfolio Review Endpoint
+ */
+export type runPortfolioReviewEndpointApiV1PortfolioReviewRunPostResponse200 = {
+  data: PortfolioReviewRunResult;
+  status: 200;
+};
+
+export type runPortfolioReviewEndpointApiV1PortfolioReviewRunPostResponse422 = {
+  data: HTTPValidationError;
+  status: 422;
+};
+
+export type runPortfolioReviewEndpointApiV1PortfolioReviewRunPostResponseSuccess =
+  runPortfolioReviewEndpointApiV1PortfolioReviewRunPostResponse200 & {
+    headers: Headers;
+  };
+export type runPortfolioReviewEndpointApiV1PortfolioReviewRunPostResponseError =
+  runPortfolioReviewEndpointApiV1PortfolioReviewRunPostResponse422 & {
+    headers: Headers;
+  };
+
+export type runPortfolioReviewEndpointApiV1PortfolioReviewRunPostResponse =
+  | runPortfolioReviewEndpointApiV1PortfolioReviewRunPostResponseSuccess
+  | runPortfolioReviewEndpointApiV1PortfolioReviewRunPostResponseError;
+
+export const getRunPortfolioReviewEndpointApiV1PortfolioReviewRunPostUrl =
+  () => {
+    return `/api/v1/portfolio/review/run`;
+  };
+
+export const runPortfolioReviewEndpointApiV1PortfolioReviewRunPost = async (
+  portfolioReviewRunRequest: PortfolioReviewRunRequest,
+  options?: RequestInit,
+): Promise<runPortfolioReviewEndpointApiV1PortfolioReviewRunPostResponse> => {
+  const res = await fetch(
+    getRunPortfolioReviewEndpointApiV1PortfolioReviewRunPostUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(portfolioReviewRunRequest),
+    },
+  );
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: runPortfolioReviewEndpointApiV1PortfolioReviewRunPostResponse["data"] =
+    body ? JSON.parse(body) : {};
+  return {
+    data,
+    status: res.status,
+    headers: res.headers,
+  } as runPortfolioReviewEndpointApiV1PortfolioReviewRunPostResponse;
+};
+
+/**
  * List daily portfolio review artifacts from the shared workspace.
  * @summary List Portfolio Reviews
  */
@@ -8248,6 +8309,135 @@ export const getPortfolioReviewApiV1PortfolioReviewsReviewIdGet = async (
     headers: res.headers,
   } as getPortfolioReviewApiV1PortfolioReviewsReviewIdGetResponse;
 };
+
+/**
+ * List recent portfolio roll events (auto-carry / manual).
+ * @summary List Portfolio Roll Events
+ */
+export type listPortfolioRollEventsApiV1PortfolioRollEventsGetResponse200 = {
+  data: PortfolioRollEventRead[];
+  status: 200;
+};
+
+export type listPortfolioRollEventsApiV1PortfolioRollEventsGetResponse422 = {
+  data: HTTPValidationError;
+  status: 422;
+};
+
+export type listPortfolioRollEventsApiV1PortfolioRollEventsGetResponseSuccess =
+  listPortfolioRollEventsApiV1PortfolioRollEventsGetResponse200 & {
+    headers: Headers;
+  };
+export type listPortfolioRollEventsApiV1PortfolioRollEventsGetResponseError =
+  listPortfolioRollEventsApiV1PortfolioRollEventsGetResponse422 & {
+    headers: Headers;
+  };
+
+export type listPortfolioRollEventsApiV1PortfolioRollEventsGetResponse =
+  | listPortfolioRollEventsApiV1PortfolioRollEventsGetResponseSuccess
+  | listPortfolioRollEventsApiV1PortfolioRollEventsGetResponseError;
+
+export const getListPortfolioRollEventsApiV1PortfolioRollEventsGetUrl = (
+  params?: ListPortfolioRollEventsApiV1PortfolioRollEventsGetParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/v1/portfolio/roll-events?${stringifiedParams}`
+    : `/api/v1/portfolio/roll-events`;
+};
+
+export const listPortfolioRollEventsApiV1PortfolioRollEventsGet = async (
+  params?: ListPortfolioRollEventsApiV1PortfolioRollEventsGetParams,
+  options?: RequestInit,
+): Promise<listPortfolioRollEventsApiV1PortfolioRollEventsGetResponse> => {
+  const res = await fetch(
+    getListPortfolioRollEventsApiV1PortfolioRollEventsGetUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: listPortfolioRollEventsApiV1PortfolioRollEventsGetResponse["data"] =
+    body ? JSON.parse(body) : {};
+  return {
+    data,
+    status: res.status,
+    headers: res.headers,
+  } as listPortfolioRollEventsApiV1PortfolioRollEventsGetResponse;
+};
+
+/**
+ * Dismiss a roll detection and remove auto-carried rationale on the target key.
+ * @summary Undo Portfolio Roll Event
+ */
+export type undoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPostResponse204 =
+  {
+    data: void;
+    status: 204;
+  };
+
+export type undoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPostResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type undoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPostResponseSuccess =
+  undoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPostResponse204 & {
+    headers: Headers;
+  };
+export type undoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPostResponseError =
+  undoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPostResponse422 & {
+    headers: Headers;
+  };
+
+export type undoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPostResponse =
+
+    | undoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPostResponseSuccess
+    | undoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPostResponseError;
+
+export const getUndoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPostUrl =
+  (eventId: string) => {
+    return `/api/v1/portfolio/roll-events/${eventId}/undo`;
+  };
+
+export const undoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPost =
+  async (
+    eventId: string,
+    options?: RequestInit,
+  ): Promise<undoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPostResponse> => {
+    const res = await fetch(
+      getUndoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPostUrl(
+        eventId,
+      ),
+      {
+        ...options,
+        method: "POST",
+      },
+    );
+
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+    const data: undoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPostResponse["data"] =
+      body ? JSON.parse(body) : {};
+    return {
+      data,
+      status: res.status,
+      headers: res.headers,
+    } as undoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPostResponse;
+  };
 
 /**
  * Enqueue the configured morning portfolio review job immediately.
@@ -9456,6 +9646,51 @@ export const listTranscriptionsApiV1TranscriptionsGet = async (
 };
 
 /**
+ * Enqueue a gateway job to re-run calendar match, titles, and speaker annotation for all processed entries.
+ * @summary Reprocess Transcriptions Metadata
+ */
+export type reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostResponse200 =
+  {
+    data: TranscriptionSyncRead;
+    status: 200;
+  };
+
+export type reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostResponseSuccess =
+  reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostResponse200 & {
+    headers: Headers;
+  };
+export type reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostResponse =
+  reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostResponseSuccess;
+
+export const getReprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostUrl =
+  () => {
+    return `/api/v1/transcriptions/reprocess-metadata`;
+  };
+
+export const reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPost =
+  async (
+    options?: RequestInit,
+  ): Promise<reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostResponse> => {
+    const res = await fetch(
+      getReprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostUrl(),
+      {
+        ...options,
+        method: "POST",
+      },
+    );
+
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+    const data: reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostResponse["data"] =
+      body ? JSON.parse(body) : {};
+    return {
+      data,
+      status: res.status,
+      headers: res.headers,
+    } as reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostResponse;
+  };
+
+/**
  * Enqueue the configured transcription cron job immediately.
  * @summary Sync Transcriptions Now
  */
@@ -9610,6 +9845,67 @@ export const getTranscriptionAudioApiV1TranscriptionsEntryIdAudioGet = async (
     headers: res.headers,
   } as getTranscriptionAudioApiV1TranscriptionsEntryIdAudioGetResponse;
 };
+
+/**
+ * Export one diarized transcription entry as a DOCX document.
+ * @summary Export Transcription Docx
+ */
+export type exportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGetResponse200 =
+  {
+    data: unknown;
+    status: 200;
+  };
+
+export type exportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGetResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type exportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGetResponseSuccess =
+  exportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGetResponse200 & {
+    headers: Headers;
+  };
+export type exportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGetResponseError =
+  exportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGetResponse422 & {
+    headers: Headers;
+  };
+
+export type exportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGetResponse =
+
+    | exportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGetResponseSuccess
+    | exportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGetResponseError;
+
+export const getExportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGetUrl =
+  (entryId: string) => {
+    return `/api/v1/transcriptions/${entryId}/export.docx`;
+  };
+
+export const exportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGet =
+  async (
+    entryId: string,
+    options?: RequestInit,
+  ): Promise<exportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGetResponse> => {
+    const res = await fetch(
+      getExportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGetUrl(
+        entryId,
+      ),
+      {
+        ...options,
+        method: "GET",
+      },
+    );
+
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+    const data: exportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGetResponse["data"] =
+      body ? JSON.parse(body) : {};
+    return {
+      data,
+      status: res.status,
+      headers: res.headers,
+    } as exportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGetResponse;
+  };
 
 /**
  * Enroll a diarized speaker label under a new name and refresh transcript artifacts.

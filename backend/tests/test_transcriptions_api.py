@@ -70,6 +70,8 @@ async def test_list_transcriptions_reads_processed_entries(
     payload = response.json()
     assert len(payload) == 1
     assert payload[0]["id"] == "1773166957"
+    assert payload[0]["title"] != "1773166957"
+    assert "2026" in payload[0]["title"]
     assert payload[0]["status"] == "done"
     assert payload[0]["is_done"] is True
     assert payload[0]["has_analysis"] is True
@@ -121,6 +123,73 @@ async def test_list_transcriptions_includes_diarized_speaker_preview(
         "SPEAKER_02",
         "SPEAKER_03",
     ]
+
+
+@pytest.mark.asyncio
+async def test_list_transcriptions_title_prefers_calendar_match_high(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    root = workspace / "transcriptions"
+    processed = root / "processed"
+    entry_id = "1999999999"
+    _write(root / f"{entry_id}.m4a", "audio")
+    _write(processed / entry_id / "transcript.txt", "x")
+    _write(processed / entry_id / "transcript.json", "{}")
+    _write(processed / entry_id / ".done", "")
+    _write(
+        processed / entry_id / "calendar-match.json",
+        json.dumps({"confidence": "high", "title": "Board sync"}),
+    )
+
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
+    app = _build_test_app(SimpleNamespace())
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/api/v1/transcriptions")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["id"] == entry_id
+    assert payload[0]["title"] == "Board sync"
+
+
+@pytest.mark.asyncio
+async def test_list_transcriptions_title_prefers_title_txt_when_calendar_low(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    root = workspace / "transcriptions"
+    processed = root / "processed"
+    entry_id = "1999999998"
+    _write(root / f"{entry_id}.m4a", "audio")
+    _write(processed / entry_id / "transcript.txt", "x")
+    _write(processed / entry_id / "transcript.json", "{}")
+    _write(processed / entry_id / ".done", "")
+    _write(
+        processed / entry_id / "calendar-match.json",
+        json.dumps({"confidence": "low", "title": "Ignored"}),
+    )
+    _write(processed / entry_id / "title.txt", "Investor diligence recap\n")
+
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
+    app = _build_test_app(SimpleNamespace())
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/api/v1/transcriptions")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["title"] == "Investor diligence recap"
 
 
 @pytest.mark.asyncio
@@ -435,6 +504,74 @@ async def test_sync_transcriptions_enqueues_gateway_cron_job(
 
 
 @pytest.mark.asyncio
+async def test_reprocess_transcriptions_metadata_enqueues_gateway_cron_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = SimpleNamespace(organization=SimpleNamespace(id="org-123"))
+    app = _build_test_app(ctx)
+
+    async def _fake_latest_gateway_for_org(session: object, organization_id: object) -> object:
+        _ = session
+        assert organization_id == "org-123"
+        return SimpleNamespace(
+            id="gateway-1",
+            url="ws://gateway.example/ws",
+            token="secret",
+            allow_insecure_tls=False,
+            disable_device_pairing=False,
+        )
+
+    added_job_payload: dict[str, object] | None = None
+
+    async def _fake_openclaw_call(method: str, params: object = None, *, config: object) -> object:
+        nonlocal added_job_payload
+        _ = config
+        if method == "cron.list":
+            return {
+                "jobs": [
+                    {"id": "nightly-maintenance", "name": "Nightly maintenance"},
+                    {
+                        "id": "shared-transcriptions",
+                        "name": "Shared workspace transcriptions",
+                        "command": "./transcribe.sh",
+                    },
+                ],
+            }
+        if method == "cron.add":
+            assert isinstance(params, dict)
+            added_job_payload = params
+            assert params["sessionTarget"] == "isolated"
+            assert params["schedule"]["kind"] == "at"
+            assert params["delivery"] == {"mode": "none"}
+            payload = params["payload"]
+            assert payload["kind"] == "agentTurn"
+            assert payload["timeoutSeconds"] == 7200
+            assert "reprocess_metadata_all.sh" in payload["message"]
+            return {"id": "manual-transcriptions-reprocess-metadata-999"}
+        assert method == "cron.run"
+        assert params == {"id": "manual-transcriptions-reprocess-metadata-999"}
+        return {"ok": True, "enqueued": True, "runId": "run-789"}
+
+    monkeypatch.setattr(transcriptions_api, "_latest_gateway_for_org", _fake_latest_gateway_for_org)
+    monkeypatch.setattr(transcriptions_api, "openclaw_call", _fake_openclaw_call)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post("/api/v1/transcriptions/reprocess-metadata")
+
+    assert response.status_code == 200
+    assert added_job_payload is not None
+    assert response.json() == {
+        "ok": True,
+        "enqueued": True,
+        "job_id": "manual-transcriptions-reprocess-metadata-999",
+        "run_id": "run-789",
+    }
+
+
+@pytest.mark.asyncio
 async def test_sync_transcriptions_requires_gateway(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -452,6 +589,31 @@ async def test_sync_transcriptions_requires_gateway(
         base_url="http://testserver",
     ) as client:
         response = await client.post("/api/v1/transcriptions/sync")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "An OpenClaw gateway is required before transcriptions can start."
+    )
+
+
+@pytest.mark.asyncio
+async def test_reprocess_transcriptions_metadata_requires_gateway(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = SimpleNamespace(organization=SimpleNamespace(id="org-123"))
+    app = _build_test_app(ctx)
+
+    async def _fake_latest_gateway_for_org(session: object, organization_id: object) -> object | None:
+        _ = (session, organization_id)
+        return None
+
+    monkeypatch.setattr(transcriptions_api, "_latest_gateway_for_org", _fake_latest_gateway_for_org)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post("/api/v1/transcriptions/reprocess-metadata")
 
     assert response.status_code == 422
     assert response.json()["detail"] == (

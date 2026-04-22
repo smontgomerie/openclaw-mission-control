@@ -78,6 +78,92 @@ def test_templates_root_points_to_repo_templates_dir():
     assert (root / "BOARD_AGENTS.md.j2").exists()
 
 
+def test_worker_heartbeat_template_avoids_per_cycle_self_checkins():
+    gateway = _GatewayStub(
+        id=uuid4(),
+        name="Gateway",
+        url="ws://gateway.example/ws",
+        token=None,
+        workspace_root="/tmp/openclaw",
+    )
+    board = SimpleNamespace(
+        id=uuid4(),
+        name="Ops Board",
+        board_type="delivery",
+        objective="Ship fixes",
+        success_metrics={},
+        target_date=None,
+        goal_confirmed=True,
+        require_approval_for_done=False,
+        require_review_before_done=False,
+        comment_required_for_review=False,
+        block_status_changes_with_pending_approval=False,
+        only_lead_can_change_status=False,
+        max_agents=4,
+    )
+    agent = _AgentStub(
+        name="Worker",
+        openclaw_session_id="agent:worker:main",
+        heartbeat_config={"every": "10m"},
+    )
+
+    context = agent_provisioning._build_context(agent, board, gateway, "secret-token", None)
+    rendered = agent_provisioning._render_agent_files(
+        context,
+        agent,
+        {"HEARTBEAT.md"},
+        include_bootstrap=False,
+    )
+    heartbeat = rendered["HEARTBEAT.md"]
+
+    assert "Check in via `./.mission-control/heartbeat.sh`." not in heartbeat
+    assert "Do not trigger another heartbeat from inside the recurring `HEARTBEAT.md` loop." in heartbeat
+
+
+def test_bootstrap_heartbeat_wrapper_reads_tools_md_at_runtime():
+    gateway = _GatewayStub(
+        id=uuid4(),
+        name="Gateway",
+        url="ws://gateway.example/ws",
+        token=None,
+        workspace_root="/tmp/openclaw",
+    )
+    board = SimpleNamespace(
+        id=uuid4(),
+        name="Ops Board",
+        board_type="delivery",
+        objective="Ship fixes",
+        success_metrics={},
+        target_date=None,
+        goal_confirmed=True,
+        require_approval_for_done=False,
+        require_review_before_done=False,
+        comment_required_for_review=False,
+        block_status_changes_with_pending_approval=False,
+        only_lead_can_change_status=False,
+        max_agents=4,
+    )
+    agent = _AgentStub(
+        name="Worker",
+        openclaw_session_id="agent:worker:main",
+        heartbeat_config={"every": "10m"},
+    )
+
+    context = agent_provisioning._build_context(agent, board, gateway, "secret-token", None)
+    rendered = agent_provisioning._render_agent_files(
+        context,
+        agent,
+        {"BOOTSTRAP.md"},
+        include_bootstrap=True,
+    )
+    bootstrap = rendered["BOOTSTRAP.md"]
+
+    assert "read_tools_value()" in bootstrap
+    assert "sub(/^[[:space:]]*-[[:space:]]*/, \"\", line)" in bootstrap
+    assert "gsub(/^`|`$/, \"\", line)" in bootstrap
+    assert "curl -fsS -X POST \"${base_url}/api/v1/agent/heartbeat\"" in bootstrap
+
+
 def test_user_context_uses_email_fallback_when_name_is_missing():
     user = SimpleNamespace(
         name=None,

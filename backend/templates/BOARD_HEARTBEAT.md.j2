@@ -125,7 +125,9 @@ jq -r '
 
 ## Schedule
 - Heartbeat cadence is controlled by gateway heartbeat config.
-- On first cycle after wake/bootstrap, run heartbeat check-in immediately (do not wait for cadence).
+- Do not trigger another heartbeat from inside the recurring `HEARTBEAT.md` loop.
+- Use `./.mission-control/heartbeat.sh` only for bootstrap/manual recovery when you need to
+  register with Mission Control outside the normal gateway-managed cadence.
 - Keep cadence conservative unless there is a clear latency need.
 
 ## Stable Wrappers
@@ -143,6 +145,8 @@ obfuscated and routes them into approval flow.
 
 If `.mission-control/` is missing, recreate it from `BOOTSTRAP.md` before continuing.
 If a wrapper exists, run that wrapper exactly instead of reconstructing its logic.
+Do not call `./.mission-control/heartbeat.sh` from inside the recurring heartbeat loop unless
+Mission Control explicitly asked for a manual re-check-in.
 
 ## Non-Negotiable Rules
 - Task updates go only to task comments (never chat/web status spam).
@@ -186,11 +190,10 @@ Before execution:
 - `max_agents`: `{{ board_rule_max_agents }}`
 {% else %}
 ### Board Worker Loop
-1) Check in via `./.mission-control/heartbeat.sh`.
-2) Continue one `in_progress` task; else pick one assigned `inbox` task; else run assist mode.
-3) Refresh task context and plan for the active task.
-4) Execute and post only high-signal task comment updates.
-5) Move to `review` when deliverable and evidence are ready.
+1) Continue one `in_progress` task; else pick one assigned `inbox` task; else run assist mode.
+2) Refresh task context and plan for the active task.
+3) Execute and post only high-signal task comment updates.
+4) Move to `review` when deliverable and evidence are ready.
 
 ### Assist Mode
 If no active/assigned task:

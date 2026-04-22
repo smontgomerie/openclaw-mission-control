@@ -7,10 +7,11 @@ import mimetypes
 import re
 import subprocess
 import zipfile
-from io import BytesIO
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
 from xml.sax.saxutils import escape
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 from fastapi.responses import FileResponse, Response
@@ -34,6 +35,9 @@ IGNORED_ROOT_NAMES = {"transcribe.sh", "process_wav_files.sh", ".test"}
 SPEAKER_HELPER_NAME = "speaker_identity.py"
 SPEAKER_REGISTRY_DIRNAME = ".speaker_registry"
 TRANSCRIPT_VENV_DIRNAME = ".venv-whisperx"
+CALENDAR_MATCH_FILENAME = "calendar-match.json"
+TITLE_CACHE_FILENAME = "title.txt"
+TITLE_TIMEZONE = ZoneInfo("America/Los_Angeles")
 PROCESS_LOG_DURATION_PATTERN = re.compile(r"duration=(?P<duration>\d+)s")
 WHISPERX_LOG_DURATION_PATTERN = re.compile(r"\[DURATION\]\s+(?P<duration>\d+)s")
 PYTHON_WARNING_LINE_PATTERN = re.compile(
@@ -389,6 +393,83 @@ def _parse_captured_at(entry_id: str, source_files: list[TranscriptionFileRead])
     return None
 
 
+def _epoch_seconds_from_entry_id(entry_id: str) -> int | None:
+    if not entry_id.isdigit():
+        return None
+    try:
+        timestamp = int(entry_id)
+    except ValueError:
+        return None
+    if len(entry_id) >= 13:
+        timestamp = timestamp // 1000
+    if timestamp < 0:
+        return None
+    return timestamp
+
+
+def _title_from_calendar_match(entry_dir: Path) -> str | None:
+    path = entry_dir / CALENDAR_MATCH_FILENAME
+    raw = _safe_read_text(path)
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    confidence = str(data.get("confidence") or "").lower()
+    if confidence not in ("high", "medium"):
+        return None
+    title = data.get("title")
+    if isinstance(title, str) and title.strip():
+        return title.strip()
+    return None
+
+
+def _title_from_cache_file(entry_dir: Path) -> str | None:
+    path = entry_dir / TITLE_CACHE_FILENAME
+    raw = _safe_read_text(path)
+    if not raw:
+        return None
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    first_line = stripped.splitlines()[0].strip()
+    return first_line or None
+
+
+def _title_from_epoch_formatted(entry_id: str) -> str | None:
+    timestamp = _epoch_seconds_from_entry_id(entry_id)
+    if timestamp is None:
+        return None
+    try:
+        dt = datetime.fromtimestamp(timestamp, tz=TITLE_TIMEZONE)
+    except (OverflowError, OSError, ValueError):
+        return None
+    hour12 = dt.hour % 12 or 12
+    ampm = "AM" if dt.hour < 12 else "PM"
+    tz_label = dt.tzname() or "PT"
+    return (
+        f"{dt.strftime('%a')}, {dt.strftime('%b')} {dt.day}, {dt.year} · "
+        f"{hour12}:{dt.minute:02d} {ampm} {tz_label}"
+    )
+
+
+def _resolve_entry_title(entry_id: str, entry_dir: Path | None) -> str:
+    if entry_dir is not None and entry_dir.is_dir():
+        calendar_title = _title_from_calendar_match(entry_dir)
+        if calendar_title:
+            return calendar_title
+        cached_title = _title_from_cache_file(entry_dir)
+        if cached_title:
+            return cached_title
+    epoch_title = _title_from_epoch_formatted(entry_id)
+    if epoch_title:
+        return epoch_title
+    return entry_id
+
+
 class SharedTranscriptionsService:
     """Read processed transcript entries from the mounted shared workspace."""
 
@@ -622,7 +703,7 @@ class SharedTranscriptionsService:
 
         return TranscriptionEntryRead(
             id=entry_id,
-            title=entry_id,
+            title=_resolve_entry_title(entry_id, entry_dir),
             status=_entry_status(done=is_done, has_artifacts=bool(artifact_files)),
             is_done=is_done,
             captured_at=_parse_captured_at(entry_id, resolved_source_files),
@@ -787,24 +868,25 @@ class SharedTranscriptionsService:
             ],
             transcriptions_root=transcriptions_root,
         )
-        self._run_speaker_helper(
-            [
-                python_bin,
-                str(helper_path),
-                "--registry-dir",
-                registry_dir,
-                "annotate",
-                "--audio",
-                str(audio_path),
-                "--transcript",
-                str(raw_json_path),
-                "--output-json",
-                str(transcript_json_path),
-                "--output-text",
-                str(transcript_text_path),
-            ],
-            transcriptions_root=transcriptions_root,
-        )
+        annotate_cmd = [
+            python_bin,
+            str(helper_path),
+            "--registry-dir",
+            registry_dir,
+            "annotate",
+            "--audio",
+            str(audio_path),
+            "--transcript",
+            str(raw_json_path),
+            "--output-json",
+            str(transcript_json_path),
+            "--output-text",
+            str(transcript_text_path),
+        ]
+        calendar_match_path = entry_dir / CALENDAR_MATCH_FILENAME
+        if calendar_match_path.is_file():
+            annotate_cmd.extend(["--calendar-match", str(calendar_match_path)])
+        self._run_speaker_helper(annotate_cmd, transcriptions_root=transcriptions_root)
 
         return self.get_entry(entry_id)
 

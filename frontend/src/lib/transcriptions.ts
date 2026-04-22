@@ -79,6 +79,14 @@ export async function syncTranscriptionsNow(): Promise<TranscriptionSyncResult> 
   return response.data;
 }
 
+export async function reprocessTranscriptionsMetadata(): Promise<TranscriptionSyncResult> {
+  const response = await customFetch<{ data: TranscriptionSyncResult }>(
+    "/api/v1/transcriptions/reprocess-metadata",
+    { method: "POST" },
+  );
+  return response.data;
+}
+
 export async function renameTranscriptionSpeaker(
   entryId: string,
   payload: RenameTranscriptionSpeakerRequest,

@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FileText, Mic, Pause, Play, RefreshCcw, Search } from "lucide-react";
+import { FileText, ListRestart, Mic, Pause, Play, RefreshCcw, Search } from "lucide-react";
 
 import { useAuth } from "@/auth/clerk";
 import { ApiError } from "@/api/mutator";
@@ -11,6 +11,14 @@ import { Markdown } from "@/components/atoms/Markdown";
 import { DashboardPageLayout } from "@/components/templates/DashboardPageLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   countDiarizedSpeakers,
@@ -20,6 +28,7 @@ import {
   fetchTranscriptions,
   getDiarizedTranscriptTurns,
   matchesTranscriptionSearch,
+  reprocessTranscriptionsMetadata,
   renameTranscriptionSpeaker,
   syncTranscriptionsNow,
   type DiarizedTranscriptTurn,
@@ -298,6 +307,10 @@ export default function TranscriptionsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [reprocessDialogOpen, setReprocessDialogOpen] = useState(false);
+  const [isReprocessPending, setIsReprocessPending] = useState(false);
+  const [reprocessError, setReprocessError] = useState<string | null>(null);
+  const [reprocessMessage, setReprocessMessage] = useState<string | null>(null);
   const [editingSpeakerLabel, setEditingSpeakerLabel] = useState<string | null>(null);
   const [editingTurnKey, setEditingTurnKey] = useState<string | null>(null);
   const [editingSpeakerValue, setEditingSpeakerValue] = useState("");
@@ -618,6 +631,31 @@ export default function TranscriptionsPage() {
       });
   };
 
+  const handleReprocessMetadataConfirm = () => {
+    setReprocessDialogOpen(false);
+    setIsReprocessPending(true);
+    setReprocessError(null);
+    setReprocessMessage(null);
+
+    void reprocessTranscriptionsMetadata()
+      .then(() => {
+        setReprocessMessage(
+          "Metadata backfill queued. Calendar match, titles, and speaker labels may take several minutes to refresh.",
+        );
+        setReloadToken((current) => current + 1);
+      })
+      .catch((error: unknown) => {
+        const message =
+          error instanceof ApiError || error instanceof Error
+            ? error.message
+            : "Unable to queue metadata backfill.";
+        setReprocessError(message);
+      })
+      .finally(() => {
+        setIsReprocessPending(false);
+      });
+  };
+
   return (
     <DashboardPageLayout
       signedOut={{
@@ -667,14 +705,30 @@ export default function TranscriptionsPage() {
                     />
                   </div>
                 </div>
-                <Button
-                  onClick={handleSyncNow}
-                  disabled={isSyncPending}
-                  className="gap-2 whitespace-nowrap"
-                >
-                  <RefreshCcw className="h-4 w-4" />
-                  {isSyncPending ? "Starting…" : "Start pending"}
-                </Button>
+                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                  <Button
+                    onClick={handleSyncNow}
+                    disabled={isSyncPending || isReprocessPending}
+                    className="gap-2 whitespace-nowrap"
+                  >
+                    <RefreshCcw className="h-4 w-4" />
+                    {isSyncPending ? "Starting…" : "Start pending"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setReprocessError(null);
+                      setReprocessMessage(null);
+                      setReprocessDialogOpen(true);
+                    }}
+                    disabled={isSyncPending || isReprocessPending}
+                    className="gap-2 whitespace-nowrap"
+                  >
+                    <ListRestart className="h-4 w-4" />
+                    Re-run metadata
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -707,7 +761,39 @@ export default function TranscriptionsPage() {
               {syncMessage}
             </div>
           ) : null}
+          {reprocessError ? (
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {reprocessError}
+            </div>
+          ) : null}
+          {reprocessMessage ? (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {reprocessMessage}
+            </div>
+          ) : null}
         </section>
+
+        <Dialog open={reprocessDialogOpen} onOpenChange={setReprocessDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Re-run metadata for all processed entries?</DialogTitle>
+              <DialogDescription>
+                This queues a gateway job that re-runs calendar matching, title generation, and
+                speaker re-annotation across everything under{" "}
+                <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">processed/</code>. It
+                can take a while and will overwrite derived files where the scripts write output.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setReprocessDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={handleReprocessMetadataConfirm}>
+                Queue backfill
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
           <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">

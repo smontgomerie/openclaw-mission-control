@@ -12,15 +12,21 @@ export interface TranscriptionDetailRead {
     analysis_content?: string | null;
     artifact_files?: TranscriptionFileRead[];
     captured_at?: string | null;
+    diarized_speaker_count?: number | null;
+    diarized_speaker_preview?: string[];
     has_analysis?: boolean;
     has_transcript_json?: boolean;
     has_transcript_text?: boolean;
     id: string;
     is_done?: boolean;
+    process_log_content?: string | null;
     processed_at?: string | null;
+    progress_seconds?: number | null;
     source_files?: TranscriptionFileRead[];
     status?: string;
     title: string;
+    total_duration_seconds?: number | null;
     transcript_json_content?: string | null;
     transcript_text_content?: string | null;
+    whisperx_log_content?: string | null;
 }

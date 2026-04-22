@@ -23,6 +23,9 @@ export declare const listReviewsInputSchema: {
     position_key: z.ZodOptional<z.ZodString>;
     limit: z.ZodOptional<z.ZodNumber>;
 };
+export declare const undoRollInputSchema: {
+    event_id: z.ZodString;
+};
 export declare function portfolioListPositions(config: MissionControlConfig, input: {
     ticker?: string;
     needs_rationale?: boolean;
@@ -46,3 +49,6 @@ export declare function portfolioListReviews(config: MissionControlConfig, input
     limit?: number;
 }): Promise<PortfolioReview[]>;
 export declare function portfolioSyncNow(config: MissionControlConfig): Promise<PortfolioSyncResult>;
+export declare function portfolioUndoRoll(config: MissionControlConfig, input: {
+    event_id: string;
+}): Promise<void>;

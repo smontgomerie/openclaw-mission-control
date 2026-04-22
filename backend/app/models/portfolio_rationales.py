@@ -35,6 +35,7 @@ class PortfolioRationale(QueryModel, table=True):
     profit_take_plan: str | None = Field(default=None)
     risk_plan: str | None = Field(default=None)
     roll_or_reopen_plan: str | None = Field(default=None)
+    rolled_from_position_key: str | None = Field(default=None, index=True)
     tags: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     history: list[dict[str, object]] = Field(
         default_factory=list,
