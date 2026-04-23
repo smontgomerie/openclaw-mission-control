@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.db.session import get_session
 from app.models.organizations import Organization
 from app.models.portfolio_rationales import PortfolioRationale
+from app.services.portfolio.price_enrichment import EnrichmentBundle
 
 
 async def _make_engine() -> AsyncEngine:
@@ -523,3 +524,50 @@ async def test_sync_portfolio_surfaces_structured_gateway_failure(
         "Portfolio sync could not be started: "
         "Google Sheets command failed due to missing keyring password."
     )
+
+
+@pytest.mark.asyncio
+async def test_run_portfolio_review_returns_payload_and_workspace_relative_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    engine = await _make_engine()
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    organization_id = uuid4()
+    async with session_maker() as session:
+        session.add(Organization(id=organization_id, name="Review API Org"))
+        await session.commit()
+
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(tmp_path))
+    monkeypatch.setattr(
+        "app.services.portfolio.review_engine.enrich_positions",
+        lambda positions, workspace_portfolio_root: EnrichmentBundle(),
+    )
+    app = _build_test_app(
+        SimpleNamespace(organization=SimpleNamespace(id=organization_id)),
+        session_maker,
+    )
+
+    positions_rows = [
+        ["Ticker", "Qty", "Strike", "Expiration", "DTE", "Instrument Type", "Strategy"],
+        ["XYZ", "1", "100", "2026-05-01", "10", "put", "csp"],
+    ]
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            "/api/v1/portfolio/review/run",
+            json={"positions_rows": positions_rows, "trades_rows": []},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["review"]["id"] == body["review_id"]
+    assert "Rolls detected" in (body["review"].get("summary_markdown") or "")
+    assert not str(body["snapshot_path"]).startswith("/")
+    assert body["snapshot_path"].startswith("portfolio/")
+    assert body["review_json_path"].startswith("portfolio/reviews/")
+    await engine.dispose()

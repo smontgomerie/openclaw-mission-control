@@ -130,6 +130,39 @@ def _action_read(raw: object) -> PortfolioReviewActionRead | None:
     )
 
 
+def portfolio_review_read_from_dict(
+    payload: dict[str, Any],
+    *,
+    summary_markdown: str | None = None,
+    default_review_id: str = "",
+) -> PortfolioReviewRead:
+    """Build ``PortfolioReviewRead`` from persisted review JSON or an in-memory dict."""
+    review_id = str(payload.get("id", default_review_id)).strip() or default_review_id
+    actions = payload.get("actions")
+    review_actions: list[PortfolioReviewActionRead] = []
+    if isinstance(actions, list):
+        review_actions = [
+            item for item in (_action_read(action) for action in actions) if item is not None
+        ]
+    sm = summary_markdown
+    if not sm:
+        raw_summary = payload.get("summary_markdown")
+        if isinstance(raw_summary, str) and raw_summary.strip():
+            sm = raw_summary
+    raw_position_keys = payload.get("position_keys")
+    position_keys: list[str] = []
+    if isinstance(raw_position_keys, list):
+        position_keys = [str(item).strip() for item in raw_position_keys if str(item).strip()]
+    return PortfolioReviewRead(
+        id=review_id,
+        date=str(payload.get("date")).strip() if isinstance(payload.get("date"), str) else None,
+        generated_at=_coerce_datetime(payload.get("generated_at")),
+        summary_markdown=sm,
+        actions=review_actions,
+        position_keys=position_keys,
+    )
+
+
 def _rationale_read(raw: object) -> PortfolioRationaleRead | None:
     if not isinstance(raw, dict):
         return None
@@ -475,30 +508,9 @@ class SharedPortfolioService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Portfolio review is invalid JSON: {json_path.name}",
             )
-        actions = payload.get("actions")
-        review_actions = []
-        if isinstance(actions, list):
-            review_actions = [
-                item for item in (_action_read(action) for action in actions) if item is not None
-            ]
         summary_markdown = _read_text(json_path.with_suffix(".md"))
-        if not summary_markdown:
-            raw_summary = payload.get("summary_markdown")
-            if isinstance(raw_summary, str) and raw_summary.strip():
-                summary_markdown = raw_summary
-
-        raw_position_keys = payload.get("position_keys")
-        position_keys = []
-        if isinstance(raw_position_keys, list):
-            position_keys = [str(item).strip() for item in raw_position_keys if str(item).strip()]
-
-        return PortfolioReviewRead(
-            id=str(payload.get("id", review_id)).strip() or review_id,
-            date=str(payload.get("date")).strip() if isinstance(payload.get("date"), str) else None,
-            generated_at=_coerce_datetime(payload.get("generated_at")),
-            summary_markdown=summary_markdown,
-            actions=review_actions,
-            position_keys=position_keys,
+        return portfolio_review_read_from_dict(
+            payload, summary_markdown=summary_markdown, default_review_id=review_id
         )
 
     async def list_positions(self) -> list[PortfolioPositionRead]:

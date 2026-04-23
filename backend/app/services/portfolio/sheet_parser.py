@@ -102,8 +102,10 @@ def detect_instrument_type(record: dict[str, Any]) -> str:
 
 
 def _option_side_from_record(record: dict[str, Any]) -> str | None:
+    # Do not use a generic "Type" alias here: Positions sheets often label asset class
+    # (Stock / Option) as "Type", which must not be mistaken for put/call.
     raw = normalize_text(
-        value_for(record, ("Option Side", "Call/Put", "Type", "Put/Call", "Option Type", "Side")),
+        value_for(record, ("Option Side", "Call/Put", "Put/Call", "Option Type")),
     )
     if not raw:
         return None
@@ -115,6 +117,19 @@ def _option_side_from_record(record: dict[str, Any]) -> str | None:
     return low
 
 
+def _format_key_numeric(value: float | None) -> str:
+    """Stable string for strike/qty segments (300 not 300.0; keep fractional strikes)."""
+    if value is None:
+        return "na"
+    f = float(value)
+    if f != f:  # NaN
+        return "na"
+    if f == int(f):
+        return str(int(f))
+    text = format(f, "f").rstrip("0").rstrip(".")
+    return text or "0"
+
+
 def build_position_key(
     *,
     ticker: str,
@@ -124,13 +139,20 @@ def build_position_key(
     expiration: str | None,
     quantity: float | None,
 ) -> str:
+    """Stable id for rationales, roll events, and snapshots.
+
+    The third segment is always the literal ``base`` (historical contract). Call/put
+    are encoded in ``instrument_type`` for options; ``option_side`` is not part of
+    the key so sheet column quirks cannot drift stored rationale filenames.
+    """
+    _ = option_side
     base = [
         ticker or "unknown",
         instrument_type or "position",
-        option_side or "base",
-        strike if strike is not None else "na",
+        "base",
+        _format_key_numeric(strike),
         expiration or "na",
-        quantity if quantity is not None else "na",
+        _format_key_numeric(quantity),
     ]
     joined = "-".join(str(x) for x in base).lower()
     joined = re.sub(r"[^a-z0-9.-]+", "-", joined)
@@ -321,10 +343,13 @@ def normalize_position_record(
         and same_value(previous.get("status"), status)
         and same_value(previous.get("mark"), mark)
     )
-    needs_rationale = not rationale_ok or material_change
+    # Only "no durable rationale" should drive needs_rationale / missing_rationale.
+    # Material changes (e.g. mark move, or previous snapshot keyed under an old format)
+    # must not look like missing rationale when a rationale file or DB row exists.
+    needs_rationale = not rationale_ok
     latest_flags: list[dict[str, Any]] = []
 
-    if needs_rationale:
+    if not rationale_ok:
         latest_flags.append(
             {
                 "code": "missing_rationale",
@@ -334,6 +359,16 @@ def normalize_position_record(
                 "recommendation": (
                     "Open the portfolio module and save the rationale before the next review cycle."
                 ),
+            }
+        )
+    elif material_change:
+        latest_flags.append(
+            {
+                "code": "position_inputs_changed",
+                "severity": "info",
+                "headline": "Position inputs changed since last snapshot",
+                "summary": "Qty, basis, mark, or status differs from the last run; rationale is still on file.",
+                "recommendation": "Re-read the thesis if the change affects risk or exit timing.",
             }
         )
 

@@ -111,7 +111,12 @@ class PortfolioReviewRunRequest(SQLModel):
 
 
 class PortfolioReviewRunResult(SQLModel):
-    """Result of running the portfolio review engine (cron / manual)."""
+    """Result of running the portfolio review engine (cron / manual).
+
+    Path fields are relative to the configured shared OpenClaw workspace root
+    (e.g. portfolio/reviews/2026-04-22.json), not absolute paths on the API
+    host. Remote consumers should prefer the embedded review payload.
+    """
 
     ok: bool = True
     generated_at: str
@@ -123,6 +128,7 @@ class PortfolioReviewRunResult(SQLModel):
     snapshot_path: str
     review_json_path: str
     review_markdown_path: str
+    review: PortfolioReviewRead
 
 
 class PortfolioRollEventRead(SQLModel):
