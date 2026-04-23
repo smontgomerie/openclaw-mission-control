@@ -46,6 +46,10 @@ class TranscriptionDetailRead(TranscriptionEntryRead):
     transcript_json_content: str | None = None
     process_log_content: str | None = None
     whisperx_log_content: str | None = None
+    calendar_match_present: bool = False
+    calendar_match_confidence: str | None = None
+    calendar_match_event_title: str | None = None
+    calendar_match_used_for_title: bool = False
 
 
 class TranscriptionSyncRead(SQLModel):

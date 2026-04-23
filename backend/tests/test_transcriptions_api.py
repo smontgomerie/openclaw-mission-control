@@ -44,6 +44,33 @@ def _write(path: Path, content: str) -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_transcriptions_sorted_newest_first_by_entry_id_timestamp(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    root = workspace / "transcriptions"
+    processed = root / "processed"
+    for entry_id in ("1700000000", "1800000000"):
+        _write(root / f"{entry_id}.m4a", "audio")
+        _write(processed / entry_id / "transcript.txt", "hello")
+        _write(processed / entry_id / ".done", "")
+
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
+    app = _build_test_app(SimpleNamespace())
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/api/v1/transcriptions")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["id"] for item in payload] == ["1800000000", "1700000000"]
+
+
+@pytest.mark.asyncio
 async def test_list_transcriptions_reads_processed_entries(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -225,6 +252,44 @@ async def test_get_transcription_returns_mixed_artifacts(
     assert '"segments": []' in payload["transcript_json_content"]
     assert payload["process_log_content"] == "[START] file=Neil in Boston.m4a"
     assert payload["whisperx_log_content"] == "[WHISPERX_START] chunk_file=Neil.mp3"
+    assert payload["calendar_match_present"] is False
+    assert payload["calendar_match_confidence"] is None
+    assert payload["calendar_match_event_title"] is None
+    assert payload["calendar_match_used_for_title"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_transcription_includes_calendar_match_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    root = workspace / "transcriptions"
+    processed = root / "processed"
+    entry = "1999999997"
+    _write(root / f"{entry}.m4a", "audio")
+    _write(processed / entry / "analysis.md", "## Summary")
+    _write(processed / entry / "transcript.txt", "hello")
+    _write(
+        processed / entry / "calendar-match.json",
+        json.dumps({"confidence": "high", "title": "Q1 planning"}),
+    )
+
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
+    app = _build_test_app(SimpleNamespace())
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get(f"/api/v1/transcriptions/{entry}")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["calendar_match_present"] is True
+    assert payload["calendar_match_confidence"] == "high"
+    assert payload["calendar_match_event_title"] == "Q1 planning"
+    assert payload["calendar_match_used_for_title"] is True
 
 
 @pytest.mark.asyncio

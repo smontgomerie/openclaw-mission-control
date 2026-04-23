@@ -12,6 +12,10 @@ import type { TranscriptionFileRead } from "./transcriptionFileRead";
 export interface TranscriptionDetailRead {
   analysis_content?: string | null;
   artifact_files?: TranscriptionFileRead[];
+  calendar_match_confidence?: string | null;
+  calendar_match_event_title?: string | null;
+  calendar_match_present?: boolean;
+  calendar_match_used_for_title?: boolean;
   captured_at?: string | null;
   diarized_speaker_count?: number | null;
   diarized_speaker_preview?: string[];

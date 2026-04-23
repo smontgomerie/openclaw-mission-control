@@ -31,6 +31,10 @@ export type TranscriptionDetail = TranscriptionEntry & {
   transcript_json_content?: string | null;
   process_log_content?: string | null;
   whisperx_log_content?: string | null;
+  calendar_match_present?: boolean;
+  calendar_match_confidence?: string | null;
+  calendar_match_event_title?: string | null;
+  calendar_match_used_for_title?: boolean;
 };
 
 export type RenameTranscriptionSpeakerRequest = {
@@ -58,7 +62,7 @@ export async function fetchTranscriptions(): Promise<TranscriptionEntry[]> {
     "/api/v1/transcriptions",
     { method: "GET" },
   );
-  return sortTranscriptionsByNewest(response.data);
+  return sortTranscriptionsByRecordingDate(response.data);
 }
 
 export async function fetchTranscriptionDetail(
@@ -233,29 +237,81 @@ export function countDiarizedSpeakers(turns: DiarizedTranscriptTurn[]): number {
   return new Set(turns.map((turn) => turn.speakerLabel)).size;
 }
 
+const RAW_SPEAKER_LABEL_PATTERN = /^SPEAKER_\d+$/i;
+
+/**
+ * Collect unique human-assigned speaker names across known transcriptions plus the
+ * currently-inspected transcript. Raw diarization labels like `SPEAKER_00` and the
+ * fallback "Unknown speaker" placeholder are filtered out so the result is suitable
+ * for autocomplete suggestions when renaming a speaker.
+ */
+export function collectKnownSpeakerNames(
+  entries: ReadonlyArray<Pick<TranscriptionEntry, "diarized_speaker_preview">>,
+  turns: ReadonlyArray<DiarizedTranscriptTurn> = [],
+): string[] {
+  const seen = new Map<string, string>();
+
+  const consider = (candidate: unknown) => {
+    if (typeof candidate !== "string") return;
+    const trimmed = candidate.trim();
+    if (!trimmed) return;
+    if (RAW_SPEAKER_LABEL_PATTERN.test(trimmed)) return;
+    if (trimmed.toLowerCase() === "unknown speaker") return;
+    const key = trimmed.toLowerCase();
+    if (!seen.has(key)) {
+      seen.set(key, trimmed);
+    }
+  };
+
+  for (const entry of entries) {
+    for (const name of entry.diarized_speaker_preview ?? []) {
+      consider(name);
+    }
+  }
+  for (const turn of turns) {
+    consider(turn.speakerLabel);
+  }
+
+  return Array.from(seen.values()).sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" }),
+  );
+}
+
 function parseTimestamp(value: string | null | undefined): number {
   if (!value) return Number.NEGATIVE_INFINITY;
   const timestamp = Date.parse(value);
   return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
 }
 
-export function sortTranscriptionsByNewest(
+/** Unix ms from numeric entry id (seconds or millis), else -Infinity. */
+function epochMsFromNumericEntryId(id: string): number {
+  if (!/^\d+$/.test(id)) return Number.NEGATIVE_INFINITY;
+  const n = Number(id);
+  if (!Number.isFinite(n)) return Number.NEGATIVE_INFINITY;
+  const sec = id.length >= 13 ? Math.floor(n / 1000) : n;
+  if (!Number.isFinite(sec) || sec < 0) return Number.NEGATIVE_INFINITY;
+  return sec * 1000;
+}
+
+function recordingSortTimestampMs(entry: TranscriptionEntry): number {
+  const captured = parseTimestamp(entry.captured_at);
+  if (captured !== Number.NEGATIVE_INFINITY) return captured;
+  const fromId = epochMsFromNumericEntryId(entry.id);
+  if (fromId !== Number.NEGATIVE_INFINITY) return fromId;
+  return parseTimestamp(entry.processed_at);
+}
+
+/** Newest recording first (capture time / id epoch); artifact `processed_at` is only a fallback. */
+export function sortTranscriptionsByRecordingDate(
   entries: TranscriptionEntry[],
 ): TranscriptionEntry[] {
   return [...entries].sort((left, right) => {
-    const rightTimestamp = Math.max(
-      parseTimestamp(right.processed_at),
-      parseTimestamp(right.captured_at),
-    );
-    const leftTimestamp = Math.max(
-      parseTimestamp(left.processed_at),
-      parseTimestamp(left.captured_at),
-    );
-
-    if (rightTimestamp !== leftTimestamp) {
-      return rightTimestamp - leftTimestamp;
-    }
-
+    const rightTs = recordingSortTimestampMs(right);
+    const leftTs = recordingSortTimestampMs(left);
+    if (rightTs !== leftTs) return rightTs - leftTs;
     return right.id.localeCompare(left.id);
   });
 }
+
+/** @deprecated Use {@link sortTranscriptionsByRecordingDate} */
+export const sortTranscriptionsByNewest = sortTranscriptionsByRecordingDate;

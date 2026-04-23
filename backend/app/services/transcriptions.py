@@ -393,6 +393,18 @@ def _parse_captured_at(entry_id: str, source_files: list[TranscriptionFileRead])
     return None
 
 
+def _recording_sort_time(item: TranscriptionEntryRead) -> datetime:
+    """When the recording was captured (newest first), not when artifacts were last processed."""
+    if item.captured_at is not None:
+        return item.captured_at
+    epoch = _epoch_seconds_from_entry_id(item.id)
+    if epoch is not None:
+        return datetime.fromtimestamp(epoch, tz=UTC)
+    if item.processed_at is not None:
+        return item.processed_at
+    return datetime.min.replace(tzinfo=UTC)
+
+
 def _epoch_seconds_from_entry_id(entry_id: str) -> int | None:
     if not entry_id.isdigit():
         return None
@@ -407,7 +419,7 @@ def _epoch_seconds_from_entry_id(entry_id: str) -> int | None:
     return timestamp
 
 
-def _title_from_calendar_match(entry_dir: Path) -> str | None:
+def _parse_calendar_match_file(entry_dir: Path) -> dict[str, object] | None:
     path = entry_dir / CALENDAR_MATCH_FILENAME
     raw = _safe_read_text(path)
     if not raw:
@@ -418,6 +430,13 @@ def _title_from_calendar_match(entry_dir: Path) -> str | None:
         return None
     if not isinstance(data, dict):
         return None
+    return data
+
+
+def _title_from_calendar_match(entry_dir: Path) -> str | None:
+    data = _parse_calendar_match_file(entry_dir)
+    if data is None:
+        return None
     confidence = str(data.get("confidence") or "").lower()
     if confidence not in ("high", "medium"):
         return None
@@ -425,6 +444,22 @@ def _title_from_calendar_match(entry_dir: Path) -> str | None:
     if isinstance(title, str) and title.strip():
         return title.strip()
     return None
+
+
+def _calendar_match_detail_fields(entry_dir: Path | None) -> tuple[bool, str | None, str | None, bool]:
+    """Whether calendar-match.json exists, confidence, event title, and if that file drives the UI title."""
+    if entry_dir is None or not entry_dir.is_dir():
+        return False, None, None, False
+    data = _parse_calendar_match_file(entry_dir)
+    if data is None:
+        return False, None, None, False
+    confidence_raw = data.get("confidence")
+    confidence = str(confidence_raw).strip().lower() if confidence_raw is not None else ""
+    confidence = confidence or None
+    title_val = data.get("title")
+    event_title = title_val.strip() if isinstance(title_val, str) and title_val.strip() else None
+    used = confidence in ("high", "medium") and event_title is not None
+    return True, confidence, event_title, used
 
 
 def _title_from_cache_file(entry_dir: Path) -> str | None:
@@ -749,10 +784,7 @@ class SharedTranscriptionsService:
                 )
             )
         entries.sort(
-            key=lambda item: (
-                item.processed_at or item.captured_at or datetime.min.replace(tzinfo=UTC),
-                item.id.lower(),
-            ),
+            key=lambda item: (_recording_sort_time(item), item.id.lower()),
             reverse=True,
         )
         return entries
@@ -778,6 +810,9 @@ class SharedTranscriptionsService:
             transcriptions_root=transcriptions_root,
             source_files=source_files,
             entry_dir=entry_dir if entry_dir is not None and entry_dir.is_dir() else None,
+        )
+        cal_present, cal_conf, cal_evt, cal_used = _calendar_match_detail_fields(
+            entry_dir if entry_dir is not None and entry_dir.is_dir() else None,
         )
 
         analysis_path = (
@@ -814,6 +849,10 @@ class SharedTranscriptionsService:
             transcript_json_content=transcript_json_content,
             process_log_content=_safe_read_text(process_log_path) if process_log_path else None,
             whisperx_log_content=_safe_read_text(whisperx_log_path) if whisperx_log_path else None,
+            calendar_match_present=cal_present,
+            calendar_match_confidence=cal_conf,
+            calendar_match_event_title=cal_evt,
+            calendar_match_used_for_title=cal_used,
         )
 
     def rename_speaker(
