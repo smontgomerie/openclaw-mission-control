@@ -8,7 +8,9 @@ const fetchTranscriptionsMock = vi.hoisted(() => vi.fn());
 const fetchTranscriptionDetailMock = vi.hoisted(() => vi.fn());
 const renameTranscriptionSpeakerMock = vi.hoisted(() => vi.fn());
 const fetchTranscriptionSourceAudioBlobMock = vi.hoisted(() => vi.fn());
+const exportDiarizedTranscriptionDocxMock = vi.hoisted(() => vi.fn());
 const syncTranscriptionsNowMock = vi.hoisted(() => vi.fn());
+const reprocessTranscriptionsMetadataMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/auth/clerk", () => ({
   useAuth: () => ({ isSignedIn: true }),
@@ -104,7 +106,9 @@ vi.mock("@/lib/transcriptions", async () => {
     fetchTranscriptionDetail: fetchTranscriptionDetailMock,
     renameTranscriptionSpeaker: renameTranscriptionSpeakerMock,
     fetchTranscriptionSourceAudioBlob: fetchTranscriptionSourceAudioBlobMock,
+    exportDiarizedTranscriptionDocx: exportDiarizedTranscriptionDocxMock,
     syncTranscriptionsNow: syncTranscriptionsNowMock,
+    reprocessTranscriptionsMetadata: reprocessTranscriptionsMetadataMock,
   };
 });
 
@@ -114,8 +118,11 @@ describe("TranscriptionsPage", () => {
     fetchTranscriptionDetailMock.mockReset();
     renameTranscriptionSpeakerMock.mockReset();
     fetchTranscriptionSourceAudioBlobMock.mockReset();
+    exportDiarizedTranscriptionDocxMock.mockReset();
     syncTranscriptionsNowMock.mockReset();
+    reprocessTranscriptionsMetadataMock.mockReset();
     fetchTranscriptionSourceAudioBlobMock.mockResolvedValue(new Blob(["audio"]));
+    exportDiarizedTranscriptionDocxMock.mockResolvedValue(undefined);
     vi.stubGlobal(
       "URL",
       Object.assign(globalThis.URL, {
@@ -199,6 +206,7 @@ describe("TranscriptionsPage", () => {
     expect(screen.queryByText("1 speaker")).toBeNull();
     expect(screen.getByText("2 speakers")).toBeTruthy();
     expect(screen.queryByText("plain fallback transcript")).toBeNull();
+    expect(screen.getByRole("button", { name: /export docx/i })).toBeTruthy();
   });
 
   it("falls back to plain transcript text when diarization is unavailable", async () => {
@@ -236,7 +244,56 @@ describe("TranscriptionsPage", () => {
     });
 
     expect(screen.queryByText("Diarized")).toBeNull();
+    expect(screen.queryByRole("button", { name: /export docx/i })).toBeNull();
     expect(screen.queryByText("No speaker labels here")).toBeNull();
+  });
+
+  it("exports a diarized transcript as docx", async () => {
+    fetchTranscriptionsMock.mockResolvedValue([
+      {
+        id: "entry-docx",
+        title: "entry-docx",
+        is_done: true,
+        source_files: [{ name: "entry-docx.m4a", relative_path: "entry-docx.m4a" }],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+      },
+    ]);
+    fetchTranscriptionDetailMock.mockResolvedValue({
+      id: "entry-docx",
+      title: "entry-docx",
+      is_done: true,
+      source_files: [{ name: "entry-docx.m4a", relative_path: "entry-docx.m4a" }],
+      artifact_files: [],
+      has_analysis: false,
+      has_transcript_text: true,
+      has_transcript_json: true,
+      transcript_text_content: "[SPEAKER_00] First line",
+      transcript_json_content: JSON.stringify({
+        segments: [
+          {
+            speaker: "SPEAKER_00",
+            start: 1.2,
+            end: 4.9,
+            text: "First line",
+          },
+        ],
+      }),
+    });
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /export docx/i })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /export docx/i }));
+
+    await waitFor(() => {
+      expect(exportDiarizedTranscriptionDocxMock).toHaveBeenCalledWith("entry-docx");
+    });
   });
 
   it("shows pending entries from source files without processed artifacts", async () => {
@@ -427,11 +484,76 @@ describe("TranscriptionsPage", () => {
     ).toBeTruthy();
   });
 
+  it("queues metadata backfill after confirmation", async () => {
+    fetchTranscriptionsMock.mockResolvedValue([
+      {
+        id: "entry-1",
+        title: "entry-1",
+        status: "done",
+        is_done: true,
+        source_files: [{ name: "entry-1.m4a", relative_path: "entry-1.m4a" }],
+        artifact_files: [{ name: "transcript.txt", relative_path: "processed/entry-1/transcript.txt" }],
+        has_analysis: true,
+        has_transcript_text: true,
+        has_transcript_json: true,
+      },
+    ]);
+    fetchTranscriptionDetailMock.mockResolvedValue({
+      id: "entry-1",
+      title: "entry-1",
+      status: "done",
+      is_done: true,
+      source_files: [{ name: "entry-1.m4a", relative_path: "entry-1.m4a" }],
+      artifact_files: [{ name: "transcript.txt", relative_path: "processed/entry-1/transcript.txt" }],
+      has_analysis: true,
+      has_transcript_text: true,
+      has_transcript_json: true,
+      analysis_content: "# ok",
+      transcript_text_content: "hello",
+      transcript_json_content: "{}",
+    });
+    reprocessTranscriptionsMetadataMock.mockResolvedValue({
+      ok: true,
+      enqueued: true,
+      job_id: "manual-transcriptions-reprocess-metadata-1",
+      run_id: "run-2",
+    });
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /re-run metadata/i })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /re-run metadata/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/re-runs calendar matching, title generation, and speaker re-annotation/i),
+      ).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /queue backfill/i }));
+
+    await waitFor(() => {
+      expect(reprocessTranscriptionsMetadataMock).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(fetchTranscriptionsMock).toHaveBeenCalledTimes(2);
+    });
+    expect(
+      screen.getByText(
+        "Metadata backfill queued. Calendar match, titles, and speaker labels may take several minutes to refresh.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("shows chunked progress for partial transcription runs", async () => {
     fetchTranscriptionsMock.mockResolvedValue([
       {
         id: "1774046932",
-        title: "1774046932",
+        title: "M&A process review",
         status: "partial",
         is_done: false,
         source_files: [{ name: "1774046932.m4a", relative_path: "1774046932.m4a" }],
@@ -447,7 +569,7 @@ describe("TranscriptionsPage", () => {
     ]);
     fetchTranscriptionDetailMock.mockResolvedValue({
       id: "1774046932",
-      title: "1774046932",
+      title: "M&A process review",
       status: "partial",
       is_done: false,
       source_files: [{ name: "1774046932.m4a", relative_path: "1774046932.m4a" }],
@@ -464,6 +586,10 @@ describe("TranscriptionsPage", () => {
     });
 
     render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/M&A process review/).length).toBeGreaterThanOrEqual(1);
+    });
 
     await waitFor(() => {
       expect(screen.getAllByText("In progress 20%").length).toBeGreaterThan(0);
@@ -509,9 +635,15 @@ describe("TranscriptionsPage", () => {
       expect(screen.getByRole("button", { name: "Logs" })).toBeTruthy();
     });
 
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Logs" })).not.toBeDisabled();
+    });
+
     fireEvent.click(screen.getByRole("button", { name: "Logs" }));
 
-    expect(screen.getByText("Process log")).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText("Process log")).toBeTruthy();
+    });
     expect(screen.getByText("[START] file=entry-logs.m4a")).toBeTruthy();
     expect(screen.getByText("WhisperX log")).toBeTruthy();
     expect(screen.getByText("[WHISPERX_START] chunk_file=entry-logs.mp3")).toBeTruthy();
@@ -557,6 +689,8 @@ describe("TranscriptionsPage", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /play clip/i })).toBeTruthy();
     });
+
+    expect(screen.queryByText("Chunked transcription progress")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /play clip/i }));
 

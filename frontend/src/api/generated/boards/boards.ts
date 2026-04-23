@@ -22,10 +22,13 @@ import type {
 
 import type {
   BoardCreate,
+  BoardFilesystemMemoryContentRead,
+  BoardFilesystemMemoryOverviewRead,
   BoardGroupSnapshot,
   BoardRead,
   BoardSnapshot,
   BoardUpdate,
+  GetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetParams,
   GetBoardGroupSnapshotApiV1BoardsBoardIdGroupSnapshotGetParams,
   HTTPValidationError,
   LimitOffsetPageTypeVarCustomizedBoardRead,
@@ -800,6 +803,612 @@ export const useUpdateBoardApiV1BoardsBoardIdPatch = <
     queryClient,
   );
 };
+/**
+ * Get the board lead's filesystem-backed memory overview.
+ * @summary Get Board Filesystem Memory
+ */
+export type getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetResponse200 =
+  {
+    data: BoardFilesystemMemoryOverviewRead;
+    status: 200;
+  };
+
+export type getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetResponseSuccess =
+  getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetResponse200 & {
+    headers: Headers;
+  };
+export type getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetResponseError =
+  getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetResponse422 & {
+    headers: Headers;
+  };
+
+export type getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetResponse =
+
+    | getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetResponseSuccess
+    | getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetResponseError;
+
+export const getGetBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetUrl =
+  (boardId: string) => {
+    return `/api/v1/boards/${boardId}/filesystem-memory`;
+  };
+
+export const getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet =
+  async (
+    boardId: string,
+    options?: RequestInit,
+  ): Promise<getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetResponse> => {
+    return customFetch<getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetResponse>(
+      getGetBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetUrl(
+        boardId,
+      ),
+      {
+        ...options,
+        method: "GET",
+      },
+    );
+  };
+
+export const getGetBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetQueryKey =
+  (boardId: string) => {
+    return [`/api/v1/boards/${boardId}/filesystem-memory`] as const;
+  };
+
+export const getGetBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetQueryOptions =
+  <
+    TData = Awaited<
+      ReturnType<
+        typeof getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet
+      >
+    >,
+    TError = HTTPValidationError,
+  >(
+    boardId: string,
+    options?: {
+      query?: Partial<
+        UseQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+      request?: SecondParameter<typeof customFetch>;
+    },
+  ) => {
+    const { query: queryOptions, request: requestOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetQueryKey(
+        boardId,
+      );
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet
+        >
+      >
+    > = ({ signal }) =>
+      getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet(boardId, {
+        signal,
+        ...requestOptions,
+      });
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!boardId,
+      ...queryOptions,
+    } as UseQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet
+        >
+      >,
+      TError,
+      TData
+    > & { queryKey: DataTag<QueryKey, TData, TError> };
+  };
+
+export type GetBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet
+      >
+    >
+  >;
+export type GetBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetQueryError =
+  HTTPValidationError;
+
+export function useGetBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  boardId: string,
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet
+          >
+        >,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<
+            ReturnType<
+              typeof getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet
+            >
+          >,
+          TError,
+          Awaited<
+            ReturnType<
+              typeof getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet
+            >
+          >
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  boardId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet
+          >
+        >,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<
+            ReturnType<
+              typeof getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet
+            >
+          >,
+          TError,
+          Awaited<
+            ReturnType<
+              typeof getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet
+            >
+          >
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  boardId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+/**
+ * @summary Get Board Filesystem Memory
+ */
+
+export function useGetBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  boardId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions =
+    getGetBoardFilesystemMemoryApiV1BoardsBoardIdFilesystemMemoryGetQueryOptions(
+      boardId,
+      options,
+    );
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Read a specific lead memory file such as MEMORY.md or memory/YYYY-MM-DD.md.
+ * @summary Get Board Filesystem Memory File
+ */
+export type getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetResponse200 =
+  {
+    data: BoardFilesystemMemoryContentRead;
+    status: 200;
+  };
+
+export type getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetResponseSuccess =
+  getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetResponse200 & {
+    headers: Headers;
+  };
+export type getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetResponseError =
+  getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetResponse422 & {
+    headers: Headers;
+  };
+
+export type getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetResponse =
+
+    | getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetResponseSuccess
+    | getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetResponseError;
+
+export const getGetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetUrl =
+  (
+    boardId: string,
+    params: GetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetParams,
+  ) => {
+    const normalizedParams = new URLSearchParams();
+
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value !== undefined) {
+        normalizedParams.append(
+          key,
+          value === null ? "null" : value.toString(),
+        );
+      }
+    });
+
+    const stringifiedParams = normalizedParams.toString();
+
+    return stringifiedParams.length > 0
+      ? `/api/v1/boards/${boardId}/filesystem-memory/file?${stringifiedParams}`
+      : `/api/v1/boards/${boardId}/filesystem-memory/file`;
+  };
+
+export const getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet =
+  async (
+    boardId: string,
+    params: GetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetParams,
+    options?: RequestInit,
+  ): Promise<getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetResponse> => {
+    return customFetch<getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetResponse>(
+      getGetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetUrl(
+        boardId,
+        params,
+      ),
+      {
+        ...options,
+        method: "GET",
+      },
+    );
+  };
+
+export const getGetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetQueryKey =
+  (
+    boardId: string,
+    params?: GetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetParams,
+  ) => {
+    return [
+      `/api/v1/boards/${boardId}/filesystem-memory/file`,
+      ...(params ? [params] : []),
+    ] as const;
+  };
+
+export const getGetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetQueryOptions =
+  <
+    TData = Awaited<
+      ReturnType<
+        typeof getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet
+      >
+    >,
+    TError = HTTPValidationError,
+  >(
+    boardId: string,
+    params: GetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetParams,
+    options?: {
+      query?: Partial<
+        UseQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+      request?: SecondParameter<typeof customFetch>;
+    },
+  ) => {
+    const { query: queryOptions, request: requestOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetQueryKey(
+        boardId,
+        params,
+      );
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet
+        >
+      >
+    > = ({ signal }) =>
+      getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet(
+        boardId,
+        params,
+        { signal, ...requestOptions },
+      );
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!boardId,
+      ...queryOptions,
+    } as UseQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet
+        >
+      >,
+      TError,
+      TData
+    > & { queryKey: DataTag<QueryKey, TData, TError> };
+  };
+
+export type GetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet
+      >
+    >
+  >;
+export type GetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetQueryError =
+  HTTPValidationError;
+
+export function useGetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  boardId: string,
+  params: GetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetParams,
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet
+          >
+        >,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<
+            ReturnType<
+              typeof getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet
+            >
+          >,
+          TError,
+          Awaited<
+            ReturnType<
+              typeof getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet
+            >
+          >
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  boardId: string,
+  params: GetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet
+          >
+        >,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<
+            ReturnType<
+              typeof getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet
+            >
+          >,
+          TError,
+          Awaited<
+            ReturnType<
+              typeof getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet
+            >
+          >
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  boardId: string,
+  params: GetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+/**
+ * @summary Get Board Filesystem Memory File
+ */
+
+export function useGetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  boardId: string,
+  params: GetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions =
+    getGetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetQueryOptions(
+      boardId,
+      params,
+      options,
+    );
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
 /**
  * Get a grouped snapshot across related boards.
 

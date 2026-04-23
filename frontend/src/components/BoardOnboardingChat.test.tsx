@@ -99,6 +99,35 @@ describe("BoardOnboardingChat polling", () => {
     expect(getOnboardingMock.mock.calls.length).toBe(callsBeforeWait);
   });
 
+  it("does not fetch onboarding state before the initial start session resolves", async () => {
+    let resolveStart:
+      | ((value: { status: number; data: BoardOnboardingRead }) => void)
+      | null = null;
+    const startPromise = new Promise<{ status: number; data: BoardOnboardingRead }>(
+      (resolve) => {
+        resolveStart = resolve;
+      },
+    );
+    const session = buildQuestionSession("What should we prioritize?");
+    startOnboardingMock.mockReturnValue(startPromise);
+    getOnboardingMock.mockResolvedValue({ status: 200, data: session });
+
+    render(
+      <BoardOnboardingChat boardId="board-1" onConfirmed={() => undefined} />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(startOnboardingMock).toHaveBeenCalledTimes(1);
+    expect(getOnboardingMock).not.toHaveBeenCalled();
+
+    resolveStart?.({ status: 200, data: session });
+
+    await screen.findByText("What should we prioritize?");
+  });
+
   it("continues polling after an answer is submitted and waiting for assistant", async () => {
     const session = buildQuestionSession("Pick a style");
     startOnboardingMock.mockResolvedValue({ status: 200, data: session });

@@ -34,6 +34,8 @@ class TranscriptionEntryRead(SQLModel):
     has_transcript_json: bool = False
     progress_seconds: int | None = None
     total_duration_seconds: int | None = None
+    diarized_speaker_count: int | None = None
+    diarized_speaker_preview: list[str] = Field(default_factory=list)
 
 
 class TranscriptionDetailRead(TranscriptionEntryRead):
@@ -44,6 +46,10 @@ class TranscriptionDetailRead(TranscriptionEntryRead):
     transcript_json_content: str | None = None
     process_log_content: str | None = None
     whisperx_log_content: str | None = None
+    calendar_match_present: bool = False
+    calendar_match_confidence: str | None = None
+    calendar_match_event_title: str | None = None
+    calendar_match_used_for_title: bool = False
 
 
 class TranscriptionSyncRead(SQLModel):

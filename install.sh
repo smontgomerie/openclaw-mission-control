@@ -655,6 +655,16 @@ docker_compose_repo() {
   docker_compose -f compose.yml "$@"
 }
 
+ensure_openclaw_backend_base() {
+  local script_path="$REPO_ROOT/scripts/ensure_openclaw_backend_base.sh"
+
+  if [[ ! -x "$script_path" ]]; then
+    chmod +x "$script_path"
+  fi
+
+  "$script_path"
+}
+
 wait_for_http() {
   local url="$1"
   local label="$2"
@@ -890,6 +900,9 @@ main() {
     ensure_file_from_example "$REPO_ROOT/backend/.env" "$REPO_ROOT/backend/.env.example"
 
     upsert_env_value "$REPO_ROOT/.env" "DB_AUTO_MIGRATE" "true"
+
+    info "Ensuring shared OpenClaw backend base image is available..."
+    ensure_openclaw_backend_base
 
     info "Starting production-like Docker stack..."
     docker_compose_repo --env-file .env up -d --build

@@ -16,7 +16,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PublicKey,
 )
 
+from app.core.logging import get_logger
+
 DEFAULT_DEVICE_IDENTITY_PATH = Path.home() / ".openclaw" / "identity" / "device.json"
+DEFAULT_DEVICE_IDENTITY_FALLBACK_PATH = Path.home() / ".cache" / "openclaw" / "identity" / "device.json"
+SHARED_WORKSPACE_DEVICE_IDENTITY_SUFFIX = Path(".system") / "gateway-device-identity" / "device.json"
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -33,6 +38,26 @@ def _identity_path() -> Path:
     if raw:
         return Path(raw).expanduser().resolve()
     return DEFAULT_DEVICE_IDENTITY_PATH
+
+
+def _identity_path_candidates() -> list[Path]:
+    primary = _identity_path()
+    candidates: list[Path] = [primary]
+    raw_workspace_root = os.getenv("OPENCLAW_SHARED_WORKSPACE_ROOT", "").strip()
+    if raw_workspace_root:
+        candidates.append(
+            Path(raw_workspace_root).expanduser().resolve() / SHARED_WORKSPACE_DEVICE_IDENTITY_SUFFIX
+        )
+    candidates.append(DEFAULT_DEVICE_IDENTITY_FALLBACK_PATH)
+
+    deduped: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        deduped.append(candidate)
+    return deduped
 
 
 def _base64url_encode(raw: bytes) -> str:
@@ -73,6 +98,34 @@ def _write_identity(path: Path, identity: DeviceIdentity) -> None:
         pass
 
 
+def _load_identity(path: Path) -> DeviceIdentity | None:
+    if not path.exists():
+        return None
+    payload = cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
+    device_id = str(payload.get("deviceId") or "").strip()
+    public_key_pem = str(payload.get("publicKeyPem") or "").strip()
+    private_key_pem = str(payload.get("privateKeyPem") or "").strip()
+    if not (device_id and public_key_pem and private_key_pem):
+        return None
+
+    derived_id = _derive_device_id(public_key_pem)
+    identity = DeviceIdentity(
+        device_id=derived_id,
+        public_key_pem=public_key_pem,
+        private_key_pem=private_key_pem,
+    )
+    if derived_id != device_id:
+        try:
+            _write_identity(path, identity)
+        except OSError as exc:
+            logger.warning(
+                "openclaw.device_identity.rewrite_failed path=%s error=%s",
+                path,
+                exc,
+            )
+    return identity
+
+
 def _generate_identity() -> DeviceIdentity:
     private_key = Ed25519PrivateKey.generate()
     private_key_pem = private_key.private_bytes(
@@ -98,30 +151,56 @@ def _generate_identity() -> DeviceIdentity:
 
 def load_or_create_device_identity() -> DeviceIdentity:
     """Load persisted device identity or create a new one when missing/invalid."""
-    path = _identity_path()
-    try:
-        if path.exists():
-            payload = cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
-            device_id = str(payload.get("deviceId") or "").strip()
-            public_key_pem = str(payload.get("publicKeyPem") or "").strip()
-            private_key_pem = str(payload.get("privateKeyPem") or "").strip()
-            if device_id and public_key_pem and private_key_pem:
-                derived_id = _derive_device_id(public_key_pem)
-                identity = DeviceIdentity(
-                    device_id=derived_id,
-                    public_key_pem=public_key_pem,
-                    private_key_pem=private_key_pem,
-                )
-                if derived_id != device_id:
-                    _write_identity(path, identity)
-                return identity
-    except (OSError, ValueError, json.JSONDecodeError):
-        # Fall through to regenerate.
-        pass
+    generated_identity: DeviceIdentity | None = None
+    primary_path: Path | None = None
+    last_error: OSError | None = None
 
-    identity = _generate_identity()
-    _write_identity(path, identity)
-    return identity
+    for path in _identity_path_candidates():
+        if primary_path is None:
+            primary_path = path
+        try:
+            identity = _load_identity(path)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            if isinstance(exc, OSError):
+                last_error = exc
+            logger.warning(
+                "openclaw.device_identity.load_failed path=%s error=%s",
+                path,
+                exc,
+            )
+            identity = None
+        if identity is not None:
+            if primary_path is not None and path != primary_path:
+                logger.warning(
+                    "openclaw.device_identity.using_fallback_path primary=%s fallback=%s",
+                    primary_path,
+                    path,
+                )
+            return identity
+
+        if generated_identity is None:
+            generated_identity = _generate_identity()
+        try:
+            _write_identity(path, generated_identity)
+            if primary_path is not None and path != primary_path:
+                logger.warning(
+                    "openclaw.device_identity.persisted_to_fallback_path primary=%s fallback=%s",
+                    primary_path,
+                    path,
+                )
+            return generated_identity
+        except OSError as exc:
+            last_error = exc
+            logger.warning(
+                "openclaw.device_identity.write_failed path=%s error=%s",
+                path,
+                exc,
+            )
+
+    if last_error is not None:
+        raise last_error
+    msg = "Unable to load or create a device identity."
+    raise OSError(msg)
 
 
 def public_key_raw_base64url_from_pem(public_key_pem: str) -> str:

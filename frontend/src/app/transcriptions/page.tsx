@@ -2,8 +2,8 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { FileText, Mic, Pause, Play, RefreshCcw, Search } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { FileText, ListRestart, Mic, Pause, Play, RefreshCcw, Search } from "lucide-react";
 
 import { useAuth } from "@/auth/clerk";
 import { ApiError } from "@/api/mutator";
@@ -11,15 +11,27 @@ import { Markdown } from "@/components/atoms/Markdown";
 import { DashboardPageLayout } from "@/components/templates/DashboardPageLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
+  collectKnownSpeakerNames,
   countDiarizedSpeakers,
+  exportDiarizedTranscriptionDocx,
   fetchTranscriptionDetail,
   fetchTranscriptionSourceAudioBlob,
   fetchTranscriptions,
   getDiarizedTranscriptTurns,
   matchesTranscriptionSearch,
+  reprocessTranscriptionsMetadata,
   renameTranscriptionSpeaker,
+  sortTranscriptionsByRecordingDate,
   syncTranscriptionsNow,
   type DiarizedTranscriptTurn,
   type TranscriptionDetail,
@@ -80,7 +92,7 @@ function getEntryStatus(
     entry.status ?? (entry.is_done ? "done" : artifactCount > 0 ? "partial" : "pending");
   const progressPercent = getProgressPercent(entry.progress_seconds, entry.total_duration_seconds);
 
-  if (status === "done") return { label: "Done", variant: "success", progressPercent: 100 };
+  if (status === "done") return { label: "Done", variant: "success", progressPercent: null };
   if (status === "partial") {
     return {
       label: progressPercent !== null ? `In progress ${progressPercent}%` : "Partial",
@@ -89,6 +101,51 @@ function getEntryStatus(
     };
   }
   return { label: "Pending", variant: "outline", progressPercent: null };
+}
+
+function CalendarMatchAnalysisNote({ detail }: { detail: TranscriptionDetail | null }) {
+  if (!detail) return null;
+  const present = detail.calendar_match_present === true;
+  const used = detail.calendar_match_used_for_title === true;
+  const conf = detail.calendar_match_confidence;
+  const eventTitle = detail.calendar_match_event_title;
+
+  if (!present) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+        <span className="font-semibold text-slate-700">Calendar match: </span>
+        No{" "}
+        <code className="rounded bg-white px-1 py-0.5 text-[11px] text-slate-800">calendar-match.json</code> found.
+        The sidebar title may use{" "}
+        <code className="rounded bg-white px-1 py-0.5 text-[11px] text-slate-800">title.txt</code> or capture time
+        instead. This note reflects workspace metadata only; it does not prove how{" "}
+        <code className="rounded bg-white px-1 py-0.5 text-[11px]">analysis.md</code> was written.
+      </div>
+    );
+  }
+
+  if (used) {
+    return (
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+        <p className="font-semibold">Calendar match</p>
+        <p className="mt-1 text-xs text-emerald-900">
+          The sidebar title uses this file (high/medium confidence with an event title)
+          {conf ? ` — confidence: ${conf}` : ""}
+          {eventTitle ? ` — matched event: ${eventTitle}` : "."}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+      <p className="font-semibold">calendar-match.json present</p>
+      <p className="mt-1 text-xs text-amber-900">
+        Not used for the sidebar title (needs high or medium confidence plus an event title).
+        {conf ? ` Current confidence: ${conf}.` : ""}
+      </p>
+    </div>
+  );
 }
 
 function formatTranscriptOffset(value: number | null | undefined): string | null {
@@ -117,6 +174,8 @@ type TranscriptTurnsProps = {
   audioPendingTurnKey: string | null;
   playingTurnKey: string | null;
   audioError: string | null;
+  speakerNameSuggestions: string[];
+  speakerNameDatalistId: string;
   onEditStart: (turn: DiarizedTranscriptTurn) => void;
   onEditChange: (value: string) => void;
   onEditCancel: () => void;
@@ -139,6 +198,8 @@ function TranscriptTurns({
   audioPendingTurnKey,
   playingTurnKey,
   audioError,
+  speakerNameSuggestions,
+  speakerNameDatalistId,
   onEditStart,
   onEditChange,
   onEditCancel,
@@ -147,6 +208,13 @@ function TranscriptTurns({
 }: TranscriptTurnsProps) {
   return (
     <div className="space-y-3">
+      {speakerNameSuggestions.length > 0 ? (
+        <datalist id={speakerNameDatalistId}>
+          {speakerNameSuggestions.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
+      ) : null}
       {turns.map((turn, index) => {
         const startLabel = formatTranscriptOffset(turn.start);
         const endLabel = formatTranscriptOffset(turn.end);
@@ -179,6 +247,10 @@ function TranscriptTurns({
                     }}
                     autoFocus
                     disabled={renamePending}
+                    list={
+                      speakerNameSuggestions.length > 0 ? speakerNameDatalistId : undefined
+                    }
+                    autoComplete="off"
                     className="h-8 w-48 border-0 bg-transparent px-2 shadow-none"
                   />
                   <Button
@@ -297,6 +369,10 @@ export default function TranscriptionsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [reprocessDialogOpen, setReprocessDialogOpen] = useState(false);
+  const [isReprocessPending, setIsReprocessPending] = useState(false);
+  const [reprocessError, setReprocessError] = useState<string | null>(null);
+  const [reprocessMessage, setReprocessMessage] = useState<string | null>(null);
   const [editingSpeakerLabel, setEditingSpeakerLabel] = useState<string | null>(null);
   const [editingTurnKey, setEditingTurnKey] = useState<string | null>(null);
   const [editingSpeakerValue, setEditingSpeakerValue] = useState("");
@@ -308,11 +384,14 @@ export default function TranscriptionsPage() {
   const [playingTurnKey, setPlayingTurnKey] = useState<string | null>(null);
   const [audioStopAt, setAudioStopAt] = useState<number | null>(null);
   const [audioError, setAudioError] = useState<string | null>(null);
+  const [exportPending, setExportPending] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [activePane, setActivePane] = useState<"analysis" | "transcript" | "json" | "artifacts" | "logs">(
     "analysis",
   );
   const [reloadToken, setReloadToken] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const speakerNameDatalistId = useId();
 
   useEffect(() => {
     return () => {
@@ -361,6 +440,7 @@ export default function TranscriptionsPage() {
       setAudioPendingTurnKey(null);
       setAudioError(null);
       setAudioStopAt(null);
+      setExportError(null);
       return;
     }
 
@@ -377,6 +457,7 @@ export default function TranscriptionsPage() {
         setEditingSpeakerValue("");
         setRenameError(null);
         setAudioError(null);
+        setExportError(null);
         setActivePane((current) => {
           if (data.has_analysis) return current === "artifacts" ? "analysis" : current;
           if (data.has_transcript_text) return "transcript";
@@ -446,9 +527,18 @@ export default function TranscriptionsPage() {
   }, [audioStopAt]);
 
   const filteredEntries = useMemo(
-    () => entries.filter((entry) => matchesTranscriptionSearch(entry, searchTerm)),
+    () =>
+      sortTranscriptionsByRecordingDate(
+        entries.filter((entry) => matchesTranscriptionSearch(entry, searchTerm)),
+      ),
     [entries, searchTerm],
   );
+
+  useEffect(() => {
+    if (!selectedId) return;
+    if (filteredEntries.some((entry) => entry.id === selectedId)) return;
+    setSelectedId(filteredEntries[0]?.id ?? null);
+  }, [filteredEntries, selectedId]);
   const diarizedTurns = useMemo(
     () => getDiarizedTranscriptTurns(detail?.transcript_json_content),
     [detail?.transcript_json_content],
@@ -456,6 +546,10 @@ export default function TranscriptionsPage() {
   const diarizedSpeakerCount = useMemo(
     () => countDiarizedSpeakers(diarizedTurns),
     [diarizedTurns],
+  );
+  const knownSpeakerNames = useMemo(
+    () => collectKnownSpeakerNames(entries, diarizedTurns),
+    [entries, diarizedTurns],
   );
 
   const processedCount = entries.filter((entry) => entry.is_done).length;
@@ -573,6 +667,24 @@ export default function TranscriptionsPage() {
       });
   };
 
+  const handleExportDocx = () => {
+    if (!selectedId || exportPending) return;
+    setExportPending(true);
+    setExportError(null);
+
+    void exportDiarizedTranscriptionDocx(selectedId)
+      .catch((error: unknown) => {
+        setExportError(
+          error instanceof ApiError || error instanceof Error
+            ? error.message
+            : "Unable to export diarized transcript.",
+        );
+      })
+      .finally(() => {
+        setExportPending(false);
+      });
+  };
+
   const handleSyncNow = () => {
     setIsSyncPending(true);
     setSyncError(null);
@@ -592,6 +704,31 @@ export default function TranscriptionsPage() {
       })
       .finally(() => {
         setIsSyncPending(false);
+      });
+  };
+
+  const handleReprocessMetadataConfirm = () => {
+    setReprocessDialogOpen(false);
+    setIsReprocessPending(true);
+    setReprocessError(null);
+    setReprocessMessage(null);
+
+    void reprocessTranscriptionsMetadata()
+      .then(() => {
+        setReprocessMessage(
+          "Metadata backfill queued. Calendar match, titles, and speaker labels may take several minutes to refresh.",
+        );
+        setReloadToken((current) => current + 1);
+      })
+      .catch((error: unknown) => {
+        const message =
+          error instanceof ApiError || error instanceof Error
+            ? error.message
+            : "Unable to queue metadata backfill.";
+        setReprocessError(message);
+      })
+      .finally(() => {
+        setIsReprocessPending(false);
       });
   };
 
@@ -624,35 +761,29 @@ export default function TranscriptionsPage() {
                 the shared workspace transcript pipeline.
               </p>
             </div>
-            <div className="flex w-full flex-col gap-3 lg:max-w-md">
-              <div className="flex items-end gap-3">
-                <div className="min-w-0 flex-1">
-                  <label
-                    htmlFor="transcription-search"
-                    className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500"
-                  >
-                    Search transcriptions
-                  </label>
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <Input
-                      id="transcription-search"
-                      value={searchTerm}
-                      onChange={(event) => setSearchTerm(event.target.value)}
-                      placeholder="Search by id or artifact name"
-                      className="pl-9"
-                    />
-                  </div>
-                </div>
-                <Button
-                  onClick={handleSyncNow}
-                  disabled={isSyncPending}
-                  className="gap-2 whitespace-nowrap"
-                >
-                  <RefreshCcw className="h-4 w-4" />
-                  {isSyncPending ? "Starting…" : "Start pending"}
-                </Button>
-              </div>
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-end lg:max-w-md">
+              <Button
+                onClick={handleSyncNow}
+                disabled={isSyncPending || isReprocessPending}
+                className="gap-2 whitespace-nowrap"
+              >
+                <RefreshCcw className="h-4 w-4" />
+                {isSyncPending ? "Starting…" : "Start pending"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setReprocessError(null);
+                  setReprocessMessage(null);
+                  setReprocessDialogOpen(true);
+                }}
+                disabled={isSyncPending || isReprocessPending}
+                className="gap-2 whitespace-nowrap"
+              >
+                <ListRestart className="h-4 w-4" />
+                Re-run metadata
+              </Button>
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
@@ -684,17 +815,63 @@ export default function TranscriptionsPage() {
               {syncMessage}
             </div>
           ) : null}
+          {reprocessError ? (
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {reprocessError}
+            </div>
+          ) : null}
+          {reprocessMessage ? (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {reprocessMessage}
+            </div>
+          ) : null}
         </section>
+
+        <Dialog open={reprocessDialogOpen} onOpenChange={setReprocessDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Re-run metadata for all processed entries?</DialogTitle>
+              <DialogDescription>
+                This queues a gateway job that re-runs calendar matching, title generation, and
+                speaker re-annotation across everything under{" "}
+                <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">processed/</code>. It
+                can take a while and will overwrite derived files where the scripts write output.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setReprocessDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={handleReprocessMetadataConfirm}>
+                Queue backfill
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
           <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 px-5 py-4">
-              <p className="text-sm font-semibold text-slate-900">
-                Transcripts
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                {filteredEntries.length} of {entries.length} entries visible
-              </p>
+            <div className="space-y-3 border-b border-slate-200 px-4 py-4 sm:px-5">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Transcripts</p>
+                  <p className="mt-0.5 text-xs text-slate-500">By recording date (newest first)</p>
+                </div>
+                <p className="text-xs text-slate-500">
+                  {filteredEntries.length} of {entries.length} shown
+                </p>
+              </div>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  id="transcription-list-filter"
+                  aria-label="Filter transcripts"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Filter by id, title, files, speakers…"
+                  className="h-9 pl-9"
+                />
+              </div>
             </div>
             <div className="max-h-[760px] overflow-y-auto p-3">
               {isEntriesLoading ? (
@@ -740,6 +917,28 @@ export default function TranscriptionsPage() {
                                 >
                                   Captured {formatTimestamp(entry.captured_at)}
                                 </p>
+                                {typeof entry.diarized_speaker_count === "number"
+                                && entry.diarized_speaker_count > 0 ? (
+                                  <p
+                                    className={cn(
+                                      "mt-1 line-clamp-2 text-[11px] leading-snug",
+                                      selectedId === entry.id
+                                        ? "text-slate-200"
+                                        : "text-slate-600",
+                                    )}
+                                  >
+                                    <span className="font-semibold">Speakers</span>
+                                    {": "}
+                                    {(entry.diarized_speaker_preview ?? []).join(", ")}
+                                    {entry.diarized_speaker_count
+                                    > (entry.diarized_speaker_preview?.length ?? 0)
+                                      ? ` (+${
+                                          entry.diarized_speaker_count
+                                          - (entry.diarized_speaker_preview?.length ?? 0)
+                                        } more)`
+                                      : null}
+                                  </p>
+                                ) : null}
                               </div>
                               <Badge variant={status.variant}>{status.label}</Badge>
                             </div>
@@ -931,24 +1130,39 @@ export default function TranscriptionsPage() {
 
                   <div className="rounded-xl border border-slate-200 bg-white p-4">
                     {activePane === "analysis" ? (
-                      detail?.analysis_content ? (
-                        <div className="prose prose-slate max-w-none">
-                          <Markdown content={detail.analysis_content} variant="basic" />
-                        </div>
-                      ) : (
-                        <p className="text-sm text-slate-500">
-                          No `analysis.md` found for this transcript.
-                        </p>
-                      )
+                      <div className="space-y-4">
+                        <CalendarMatchAnalysisNote detail={detail} />
+                        {detail?.analysis_content ? (
+                          <div className="prose prose-slate max-w-none">
+                            <Markdown content={detail.analysis_content} variant="basic" />
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-500">
+                            No `analysis.md` found for this transcript.
+                          </p>
+                        )}
+                      </div>
                     ) : null}
 
                     {activePane === "transcript" ? (
                       diarizedTurns.length > 0 ? (
                         <div className="space-y-4">
                           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                              Source audio
-                            </p>
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                Source audio
+                              </p>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                onClick={handleExportDocx}
+                                disabled={exportPending}
+                              >
+                                <FileText className="h-4 w-4" />
+                                {exportPending ? "Exporting…" : "Export DOCX"}
+                              </Button>
+                            </div>
                             <audio
                               ref={audioRef}
                               src={audioObjectUrl ?? undefined}
@@ -959,6 +1173,9 @@ export default function TranscriptionsPage() {
                             <p className="mt-2 text-xs text-slate-500">
                               Use “Play clip” on a turn to jump to that speaker segment.
                             </p>
+                            {exportError ? (
+                              <p className="mt-2 text-xs text-red-600">{exportError}</p>
+                            ) : null}
                           </div>
                           <TranscriptTurns
                             turns={diarizedTurns}
@@ -971,6 +1188,8 @@ export default function TranscriptionsPage() {
                             audioPendingTurnKey={audioPendingTurnKey}
                             playingTurnKey={playingTurnKey}
                             audioError={audioError}
+                            speakerNameSuggestions={knownSpeakerNames}
+                            speakerNameDatalistId={speakerNameDatalistId}
                             onEditStart={handleRenameStart}
                             onEditChange={setEditingSpeakerValue}
                             onEditCancel={handleRenameCancel}

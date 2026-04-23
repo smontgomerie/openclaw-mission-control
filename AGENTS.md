@@ -12,7 +12,16 @@
 ## Build, Test, and Development Commands
 - `make setup`: install/sync backend and frontend dependencies.
 - `make check`: closest CI parity run (lint, typecheck, tests/coverage, frontend build).
+- `./scripts/ensure_openclaw_backend_base.sh`: ensure the shared OpenClaw WhisperX/PyTorch base image exists locally before Docker builds.
 - `docker compose -f compose.yml --env-file .env up -d --build`: run full stack.
+- Optional GPU backend runtime: `env OPENCLAW_TORCH_BACKEND=cu128 docker compose -f compose.yml -f compose.gpu.yml --env-file .env up -d --build backend webhook-worker`
+  Use this when the host has NVIDIA Container Toolkit configured and transcription/speaker workloads should see the GPU.
+- GPU safety rule: when restarting, recreating, or rebuilding any GPU-capable Mission Control or adjacent OpenClaw containers on a CUDA host, never use plain `docker compose up` by itself. Always keep `OPENCLAW_TORCH_BACKEND=cu128` set for builds that touch the backend image, and always include `-f compose.gpu.yml` for Mission Control GPU services so Docker requests NVIDIA devices instead of silently falling back to a CPU or stale container path.
+- For container recreation without rebuild, prefer `docker compose -f compose.yml -f compose.gpu.yml --env-file .env up -d --force-recreate backend webhook-worker`. If the OpenClaw gateway is being recreated from its own repo, use the equivalent GPU-enabled compose command there instead of a plain restart.
+- After any GPU-targeted recreate or rebuild, verify inside the live container with a command equivalent to `python3 -c "import torch; print(torch.cuda.is_available(), torch.cuda.device_count())"` and confirm `/dev/nvidia0` opens successfully before treating the service as GPU-enabled.
+- When rebuilding Docker services, keep `OPENCLAW_TORCH_BACKEND=cu128` set if you want Compose to stay on the CUDA base image. A plain frontend rebuild can still trigger backend image resolution, which falls back to the CPU base if the env var is omitted.
+- The backend image expects the shared runtime identity to stay aligned with the live containers. Current working values are `OPENCLAW_APP_UID=1000` and `OPENCLAW_APP_GID=1000`.
+- Docker Compose writes build metadata under `/tmp`; if builds fail with `no space left on device`, clear unused Docker build cache before retrying.
 - Fast local loop:
   - `docker compose -f compose.yml --env-file .env up -d db`
   - `cd backend && uv run uvicorn app.main:app --reload --port 8000`

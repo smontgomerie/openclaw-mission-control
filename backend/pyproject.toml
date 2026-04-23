@@ -25,6 +25,7 @@ dependencies = [
     "sse-starlette==3.2.0",
     "uvicorn[standard]==0.40.0",
     "websockets==16.0",
+    "yfinance==0.2.65",
     "redis==6.3.0",
     "rq==2.6.0",
     "cryptography==45.0.7",

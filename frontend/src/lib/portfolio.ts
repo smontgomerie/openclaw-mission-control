@@ -10,6 +10,7 @@ export type PortfolioReviewAction = {
 
 export type PortfolioRationale = {
   position_key?: string | null;
+  rolled_from_position_key?: string | null;
   strategy?: string | null;
   why?: string | null;
   entry_plan?: string | null;
@@ -63,6 +64,17 @@ export type PortfolioSyncResult = {
   enqueued: boolean;
   job_id: string;
   run_id?: string | null;
+};
+
+export type PortfolioRollEvent = {
+  id: string;
+  rolled_from_position_key: string;
+  rolled_to_position_key: string;
+  rolled_at: string;
+  net_credit_cents: number;
+  source_trade_ids: string[];
+  status: string;
+  confidence?: number | null;
 };
 
 export type PortfolioRationaleUpdate = {
@@ -120,6 +132,21 @@ export async function syncPortfolioNow(): Promise<PortfolioSyncResult> {
     method: "POST",
   });
   return response.data;
+}
+
+export async function fetchPortfolioRollEvents(days = 7): Promise<PortfolioRollEvent[]> {
+  const response = await customFetch<{ data: PortfolioRollEvent[] }>(
+    `/api/v1/portfolio/roll-events?days=${encodeURIComponent(String(days))}`,
+    { method: "GET" },
+  );
+  return Array.isArray(response.data) ? response.data : [];
+}
+
+export async function undoPortfolioRollEvent(eventId: string): Promise<void> {
+  await customFetch<{ data: undefined }>(
+    `/api/v1/portfolio/roll-events/${encodeURIComponent(eventId)}/undo`,
+    { method: "POST" },
+  );
 }
 
 export function matchesPortfolioPositionSearch(

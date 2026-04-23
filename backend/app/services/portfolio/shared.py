@@ -130,9 +130,43 @@ def _action_read(raw: object) -> PortfolioReviewActionRead | None:
     )
 
 
+def portfolio_review_read_from_dict(
+    payload: dict[str, Any],
+    *,
+    summary_markdown: str | None = None,
+    default_review_id: str = "",
+) -> PortfolioReviewRead:
+    """Build ``PortfolioReviewRead`` from persisted review JSON or an in-memory dict."""
+    review_id = str(payload.get("id", default_review_id)).strip() or default_review_id
+    actions = payload.get("actions")
+    review_actions: list[PortfolioReviewActionRead] = []
+    if isinstance(actions, list):
+        review_actions = [
+            item for item in (_action_read(action) for action in actions) if item is not None
+        ]
+    sm = summary_markdown
+    if not sm:
+        raw_summary = payload.get("summary_markdown")
+        if isinstance(raw_summary, str) and raw_summary.strip():
+            sm = raw_summary
+    raw_position_keys = payload.get("position_keys")
+    position_keys: list[str] = []
+    if isinstance(raw_position_keys, list):
+        position_keys = [str(item).strip() for item in raw_position_keys if str(item).strip()]
+    return PortfolioReviewRead(
+        id=review_id,
+        date=str(payload.get("date")).strip() if isinstance(payload.get("date"), str) else None,
+        generated_at=_coerce_datetime(payload.get("generated_at")),
+        summary_markdown=sm,
+        actions=review_actions,
+        position_keys=position_keys,
+    )
+
+
 def _rationale_read(raw: object) -> PortfolioRationaleRead | None:
     if not isinstance(raw, dict):
         return None
+    rolled_from = raw.get("rolled_from_position_key")
     return PortfolioRationaleRead(
         position_key=(
             str(raw.get("position_key")).strip()
@@ -159,6 +193,11 @@ def _rationale_read(raw: object) -> PortfolioRationaleRead | None:
         ),
         tags=_coerce_tags(raw.get("tags")),
         updated_at=_coerce_datetime(raw.get("updated_at")),
+        rolled_from_position_key=(
+            str(rolled_from).strip()
+            if isinstance(rolled_from, str) and str(rolled_from).strip()
+            else None
+        ),
     )
 
 
@@ -184,7 +223,9 @@ def _position_read(raw: object) -> PortfolioPositionRead | None:
     actions = raw.get("latest_flags")
     latest_flags = []
     if isinstance(actions, list):
-        latest_flags = [item for item in (_action_read(action) for action in actions) if item is not None]
+        latest_flags = [
+            item for item in (_action_read(action) for action in actions) if item is not None
+        ]
 
     return PortfolioPositionRead(
         position_key=position_key,
@@ -202,12 +243,12 @@ def _position_read(raw: object) -> PortfolioPositionRead | None:
         ),
         strategy=str(raw.get("strategy")).strip() if isinstance(raw.get("strategy"), str) else None,
         option_side=(
-            str(raw.get("option_side")).strip()
-            if isinstance(raw.get("option_side"), str)
-            else None
+            str(raw.get("option_side")).strip() if isinstance(raw.get("option_side"), str) else None
         ),
         quantity=_coerce_float(raw.get("quantity")),
-        expiration=str(raw.get("expiration")).strip() if isinstance(raw.get("expiration"), str) else None,
+        expiration=(
+            str(raw.get("expiration")).strip() if isinstance(raw.get("expiration"), str) else None
+        ),
         strike=_coerce_float(raw.get("strike")),
         cost_basis=_coerce_float(raw.get("cost_basis")),
         mark=_coerce_float(raw.get("mark")),
@@ -307,7 +348,12 @@ class SharedPortfolioService:
         return root
 
     def _validate_position_key(self, position_key: str) -> None:
-        if not position_key or "/" in position_key or "\\" in position_key or position_key in {".", ".."}:
+        if (
+            not position_key
+            or "/" in position_key
+            or "\\" in position_key
+            or position_key in {".", ".."}
+        ):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Portfolio position was not found.",
@@ -371,9 +417,12 @@ class SharedPortfolioService:
             roll_or_reopen_plan=record.roll_or_reopen_plan,
             tags=_coerce_tags(record.tags),
             updated_at=record.updated_at,
+            rolled_from_position_key=record.rolled_from_position_key,
         )
 
-    def _history_from_record(self, record: PortfolioRationale) -> list[PortfolioRationaleHistoryRead]:
+    def _history_from_record(
+        self, record: PortfolioRationale
+    ) -> list[PortfolioRationaleHistoryRead]:
         return _history_reads(record.history)
 
     async def _rationale_record(self, position_key: str) -> PortfolioRationale | None:
@@ -411,9 +460,15 @@ class SharedPortfolioService:
         *,
         position_key: str,
         payload: PortfolioRationaleRead,
-        history: list[PortfolioRationaleHistoryRead],
+        history: list[PortfolioRationaleHistoryRead] | list[dict[str, Any]],
     ) -> None:
         path = self._rationale_path(position_key)
+        hist_out: list[dict[str, Any]] = []
+        for item in history:
+            if isinstance(item, PortfolioRationaleHistoryRead):
+                hist_out.append(item.model_dump(mode="json"))
+            elif isinstance(item, dict):
+                hist_out.append(item)
         document = {
             "position_key": position_key,
             "strategy": payload.strategy,
@@ -423,8 +478,11 @@ class SharedPortfolioService:
             "risk_plan": payload.risk_plan,
             "roll_or_reopen_plan": payload.roll_or_reopen_plan,
             "tags": payload.tags,
-            "updated_at": payload.updated_at.isoformat() if payload.updated_at is not None else None,
-            "history": [item.model_dump(mode="json") for item in history],
+            "updated_at": (
+                payload.updated_at.isoformat() if payload.updated_at is not None else None
+            ),
+            "rolled_from_position_key": payload.rolled_from_position_key,
+            "history": hist_out,
         }
         path.write_text(json.dumps(document, indent=2, sort_keys=True), encoding="utf-8")
 
@@ -450,28 +508,9 @@ class SharedPortfolioService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Portfolio review is invalid JSON: {json_path.name}",
             )
-        actions = payload.get("actions")
-        review_actions = []
-        if isinstance(actions, list):
-            review_actions = [item for item in (_action_read(action) for action in actions) if item is not None]
         summary_markdown = _read_text(json_path.with_suffix(".md"))
-        if not summary_markdown:
-            raw_summary = payload.get("summary_markdown")
-            if isinstance(raw_summary, str) and raw_summary.strip():
-                summary_markdown = raw_summary
-
-        raw_position_keys = payload.get("position_keys")
-        position_keys = []
-        if isinstance(raw_position_keys, list):
-            position_keys = [str(item).strip() for item in raw_position_keys if str(item).strip()]
-
-        return PortfolioReviewRead(
-            id=str(payload.get("id", review_id)).strip() or review_id,
-            date=str(payload.get("date")).strip() if isinstance(payload.get("date"), str) else None,
-            generated_at=_coerce_datetime(payload.get("generated_at")),
-            summary_markdown=summary_markdown,
-            actions=review_actions,
-            position_keys=position_keys,
+        return portfolio_review_read_from_dict(
+            payload, summary_markdown=summary_markdown, default_review_id=review_id
         )
 
     async def list_positions(self) -> list[PortfolioPositionRead]:
@@ -490,7 +529,9 @@ class SharedPortfolioService:
         return positions
 
     async def get_position(self, position_key: str) -> PortfolioPositionDetailRead:
-        position = next((item for item in self._snapshot_positions() if item.position_key == position_key), None)
+        position = next(
+            (item for item in self._snapshot_positions() if item.position_key == position_key), None
+        )
         if position is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -533,7 +574,9 @@ class SharedPortfolioService:
         position_key: str,
         payload: PortfolioRationaleUpdate,
     ) -> PortfolioPositionDetailRead:
-        position = next((item for item in self._snapshot_positions() if item.position_key == position_key), None)
+        position = next(
+            (item for item in self._snapshot_positions() if item.position_key == position_key), None
+        )
         if position is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -566,6 +609,10 @@ class SharedPortfolioService:
         record.tags = payload.tags
         record.history = history_payload
         record.updated_at = now
+        if record.rolled_from_position_key is None and current_rationale is not None:
+            rf = getattr(current_rationale, "rolled_from_position_key", None)
+            if isinstance(rf, str) and rf.strip():
+                record.rolled_from_position_key = rf.strip()
 
         self._session.add(record)
         await self._session.commit()

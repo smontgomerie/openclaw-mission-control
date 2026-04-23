@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  collectKnownSpeakerNames,
   countDiarizedSpeakers,
   getDiarizedTranscriptTurns,
   matchesTranscriptionSearch,
-  sortTranscriptionsByNewest,
+  sortTranscriptionsByRecordingDate,
+  type DiarizedTranscriptTurn,
   type TranscriptionEntry,
 } from "./transcriptions";
 
@@ -31,7 +33,33 @@ describe("transcriptions helpers", () => {
     expect(matchesTranscriptionSearch(entry, "roadmap")).toBe(false);
   });
 
-  it("sorts entries newest first by processed date with captured date fallback", () => {
+  it("sorts by recording time (captured / id), not artifact processed_at", () => {
+    const entries: TranscriptionEntry[] = [
+      {
+        id: "1700000000",
+        title: "old recording",
+        captured_at: "2001-09-09T01:46:40.000Z",
+        processed_at: "2026-04-20T12:00:00.000Z",
+        source_files: [],
+        artifact_files: [],
+      },
+      {
+        id: "1800000000",
+        title: "new recording",
+        captured_at: "2007-01-14T22:40:00.000Z",
+        processed_at: "2008-01-01T00:00:00.000Z",
+        source_files: [],
+        artifact_files: [],
+      },
+    ];
+
+    expect(sortTranscriptionsByRecordingDate(entries).map((entry) => entry.id)).toEqual([
+      "1800000000",
+      "1700000000",
+    ]);
+  });
+
+  it("falls back to processed_at only when there is no capture time or numeric id", () => {
     const entries: TranscriptionEntry[] = [
       {
         id: "older-processed",
@@ -41,24 +69,16 @@ describe("transcriptions helpers", () => {
         artifact_files: [],
       },
       {
-        id: "newer-captured",
-        title: "newer-captured",
-        captured_at: "2026-03-18T09:00:00Z",
-        source_files: [],
-        artifact_files: [],
-      },
-      {
-        id: "newest-processed",
-        title: "newest-processed",
+        id: "newer-processed",
+        title: "newer-processed",
         processed_at: "2026-03-18T11:00:00Z",
         source_files: [],
         artifact_files: [],
       },
     ];
 
-    expect(sortTranscriptionsByNewest(entries).map((entry) => entry.id)).toEqual([
-      "newest-processed",
-      "newer-captured",
+    expect(sortTranscriptionsByRecordingDate(entries).map((entry) => entry.id)).toEqual([
+      "newer-processed",
       "older-processed",
     ]);
   });
@@ -88,6 +108,27 @@ describe("transcriptions helpers", () => {
       },
     ]);
     expect(countDiarizedSpeakers(turns)).toBe(2);
+  });
+
+  it("collects unique human speaker names from entries and current turns, excluding raw labels", () => {
+    const entries: Array<Pick<TranscriptionEntry, "diarized_speaker_preview">> = [
+      { diarized_speaker_preview: ["Scott", "Ava", "SPEAKER_00"] },
+      { diarized_speaker_preview: ["ava", "Unknown speaker", "  "] },
+      { diarized_speaker_preview: undefined },
+    ];
+    const turns: DiarizedTranscriptTurn[] = [
+      { speakerLabel: "Jamie", rawSpeakerLabel: "SPEAKER_02", text: "hi", start: 0, end: 1 },
+      { speakerLabel: "SPEAKER_03", rawSpeakerLabel: "SPEAKER_03", text: "yo", start: 1, end: 2 },
+      { speakerLabel: "scott", rawSpeakerLabel: "SPEAKER_00", text: "again", start: 2, end: 3 },
+    ];
+
+    expect(collectKnownSpeakerNames(entries, turns)).toEqual(["Ava", "Jamie", "Scott"]);
+  });
+
+  it("returns an empty list when no human speaker names are present", () => {
+    expect(
+      collectKnownSpeakerNames([{ diarized_speaker_preview: ["SPEAKER_00", "Unknown speaker"] }]),
+    ).toEqual([]);
   });
 
   it("ignores non-diarized and malformed transcript json", () => {
