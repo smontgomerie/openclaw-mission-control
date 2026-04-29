@@ -46,7 +46,7 @@ PYTHON_WARNING_LINE_PATTERN = re.compile(
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
-def _normalize_speaker_label(segment: dict[str, object]) -> tuple[str | None, str | None]:
+def _normalize_speaker_label(segment: dict[str, object]) -> tuple[str, str | None]:
     speaker_name = segment.get("speaker_name")
     speaker = segment.get("speaker")
     normalized_name = speaker_name.strip() if isinstance(speaker_name, str) else ""
@@ -54,6 +54,22 @@ def _normalize_speaker_label(segment: dict[str, object]) -> tuple[str | None, st
     return (
         normalized_name or normalized_speaker or "Unknown speaker",
         normalized_speaker or None,
+    )
+
+
+def _transcript_has_speaker_label(transcript: object, speaker_label: str) -> bool:
+    if not isinstance(transcript, dict):
+        return False
+
+    segments = transcript.get("segments")
+    if not isinstance(segments, list):
+        return False
+
+    normalized_label = speaker_label.strip()
+    return any(
+        isinstance(segment, dict)
+        and str(segment.get("speaker") or "").strip() == normalized_label
+        for segment in segments
     )
 
 
@@ -454,8 +470,8 @@ def _calendar_match_detail_fields(entry_dir: Path | None) -> tuple[bool, str | N
     if data is None:
         return False, None, None, False
     confidence_raw = data.get("confidence")
-    confidence = str(confidence_raw).strip().lower() if confidence_raw is not None else ""
-    confidence = confidence or None
+    confidence_value = str(confidence_raw).strip().lower() if confidence_raw is not None else ""
+    confidence = confidence_value or None
     title_val = data.get("title")
     event_title = title_val.strip() if isinstance(title_val, str) and title_val.strip() else None
     used = confidence in ("high", "medium") and event_title is not None
@@ -865,16 +881,22 @@ class SharedTranscriptionsService:
         audio_path = self._source_audio_path(entry_id, transcriptions_root=transcriptions_root)
         raw_json_path = self._raw_transcript_json_path(entry_dir)
         transcript = json.loads(raw_json_path.read_text(encoding="utf-8"))
-        segments = transcript.get("segments")
-        if not isinstance(segments, list) or not any(
-            isinstance(segment, dict)
-            and str(segment.get("speaker") or "").strip() == payload.speaker_label.strip()
-            for segment in segments
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Speaker label was not found in the transcript diarization data.",
-            )
+        speaker_label = payload.speaker_label.strip()
+        enroll_transcript_path = raw_json_path
+        if not _transcript_has_speaker_label(transcript, speaker_label):
+            display_json_path = _find_best_transcript_json(entry_dir)
+            if display_json_path is None or display_json_path == raw_json_path:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Speaker label was not found in the transcript diarization data.",
+                )
+            display_transcript = json.loads(display_json_path.read_text(encoding="utf-8"))
+            if not _transcript_has_speaker_label(display_transcript, speaker_label):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Speaker label was not found in the transcript diarization data.",
+                )
+            enroll_transcript_path = display_json_path
 
         helper_path = self._speaker_helper_path(transcriptions_root=transcriptions_root)
         normalized_name = " ".join(payload.new_name.strip().split())
@@ -901,9 +923,9 @@ class SharedTranscriptionsService:
                 "--audio",
                 str(audio_path),
                 "--transcript",
-                str(raw_json_path),
+                str(enroll_transcript_path),
                 "--speaker",
-                payload.speaker_label.strip(),
+                speaker_label,
             ],
             transcriptions_root=transcriptions_root,
         )

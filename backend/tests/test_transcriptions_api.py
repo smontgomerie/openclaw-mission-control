@@ -743,6 +743,63 @@ async def test_rename_transcription_speaker_enrolls_and_reannotates(
 
 
 @pytest.mark.asyncio
+async def test_rename_transcription_speaker_uses_display_transcript_for_merged_label(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    root = workspace / "transcriptions"
+    processed = root / "processed" / "meeting-merged"
+    _write(root / "speaker_identity.py", "#!/usr/bin/env python3\n")
+    _write(root / "meeting-merged.m4a", "audio")
+    _write(
+        processed / "meeting-merged.json",
+        '{"segments":[{"speaker":"C002_SPEAKER_02","text":"hello"}]}',
+    )
+    _write(
+        processed / "transcript.json",
+        (
+            '{"segments":[{"speaker":"SPEAKER_07","speaker_chunk_local":"C002_SPEAKER_02",'
+            '"text":"hello"}]}'
+        ),
+    )
+    _write(processed / "transcript.txt", "[SPEAKER_07] hello")
+
+    calls: list[list[str]] = []
+
+    def _fake_run(*args, **kwargs):
+        command = list(args[0])
+        calls.append(command)
+        if "annotate" in command:
+            output_json = Path(command[command.index("--output-json") + 1])
+            output_text = Path(command[command.index("--output-text") + 1])
+            output_json.write_text(
+                '{"segments":[{"speaker":"SPEAKER_07","speaker_name":"Jamie","text":"hello"}]}',
+                encoding="utf-8",
+            )
+            output_text.write_text("[Jamie] hello", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("app.services.transcriptions.subprocess.run", _fake_run)
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
+    app = _build_test_app(SimpleNamespace())
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            "/api/v1/transcriptions/meeting-merged/speakers/rename",
+            json={"speaker_label": "SPEAKER_07", "new_name": "Jamie"},
+        )
+
+    assert response.status_code == 200
+    assert calls[0][calls[0].index("--transcript") + 1] == str(processed / "transcript.json")
+    assert calls[0][calls[0].index("--speaker") + 1] == "SPEAKER_07"
+    assert calls[1][calls[1].index("--transcript") + 1] == str(processed / "meeting-merged.json")
+
+
+@pytest.mark.asyncio
 async def test_rename_transcription_speaker_prefers_workspace_venv_python(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
