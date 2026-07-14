@@ -166,6 +166,23 @@ mcp-test: frontend-tooling ## Run the Mission Control MCP package tests
 docker-up: docker-backend-base ## Start full Docker stack with image rebuild
 	docker compose -f compose.yml --env-file .env up -d --build
 
+.PHONY: docker-gpu-up
+docker-gpu-up: ## Start full Docker stack with CUDA backend and GPU reservations
+	OPENCLAW_TORCH_BACKEND=cu128 ./scripts/ensure_openclaw_backend_base.sh
+	OPENCLAW_TORCH_BACKEND=cu128 docker compose -f compose.yml -f compose.gpu.yml --env-file .env up -d --build
+
+.PHONY: docker-gpu-recreate
+docker-gpu-recreate: ## Recreate GPU services without rebuilding images
+	OPENCLAW_TORCH_BACKEND=cu128 docker compose -f compose.yml -f compose.gpu.yml --env-file .env up -d --force-recreate backend webhook-worker
+
+.PHONY: docker-gpu-check
+docker-gpu-check: ## Verify CUDA inside the backend container
+	docker --context default exec openclaw-mission-control-backend-1 sh -lc 'nvidia-smi && python3 -c "import torch; print(torch.__version__); print(torch.cuda.is_available(), torch.cuda.device_count())"'
+
+.PHONY: docker-gpu-repair
+docker-gpu-repair: ## Recreate GPU services only when in-container CUDA/NVML is unhealthy
+	./scripts/repair_cuda_containers.sh
+
 .PHONY: docker-backend-base
 docker-backend-base: ## Ensure the shared OpenClaw backend base image exists locally
 	./scripts/ensure_openclaw_backend_base.sh
