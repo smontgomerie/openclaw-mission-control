@@ -73,6 +73,129 @@ def _transcript_has_speaker_label(transcript: object, speaker_label: str) -> boo
     )
 
 
+def _segment_fingerprint(segment: dict[str, object]) -> tuple[float | None, float | None, str]:
+    text = segment.get("text")
+    return (
+        _parse_offset_seconds(segment.get("start")),
+        _parse_offset_seconds(segment.get("end")),
+        text.strip() if isinstance(text, str) else "",
+    )
+
+
+def _speaker_labels_for_display_label(transcript: object, speaker_label: str) -> set[str]:
+    if not isinstance(transcript, dict):
+        return set()
+
+    segments = transcript.get("segments")
+    if not isinstance(segments, list):
+        return set()
+
+    labels: set[str] = set()
+    normalized_label = speaker_label.strip()
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        if str(segment.get("speaker") or "").strip() != normalized_label:
+            continue
+        for key in ("speaker", "speaker_chunk_local"):
+            value = segment.get(key)
+            if isinstance(value, str) and value.strip():
+                labels.add(value.strip())
+    return labels
+
+
+def _segment_fingerprints_for_speaker_label(
+    transcript: object,
+    speaker_label: str,
+) -> set[tuple[float | None, float | None, str]]:
+    if not isinstance(transcript, dict):
+        return set()
+
+    segments = transcript.get("segments")
+    if not isinstance(segments, list):
+        return set()
+
+    fingerprints: set[tuple[float | None, float | None, str]] = set()
+    normalized_label = speaker_label.strip()
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        if str(segment.get("speaker") or "").strip() == normalized_label:
+            fingerprints.add(_segment_fingerprint(segment))
+    return fingerprints
+
+
+def _write_diarized_transcript_text(transcript: object, output_path: Path) -> None:
+    if not isinstance(transcript, dict):
+        return
+
+    segments = transcript.get("segments")
+    if not isinstance(segments, list):
+        return
+
+    lines: list[str] = []
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        text = segment.get("text")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        display_label, _raw_label = _normalize_speaker_label(segment)
+        lines.append(f"[{display_label}] {text.strip()}")
+
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _apply_manual_speaker_name(
+    transcript_path: Path,
+    text_path: Path,
+    *,
+    speaker_label: str,
+    new_name: str,
+    source_transcripts: list[object],
+) -> None:
+    transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
+    if not isinstance(transcript, dict):
+        return
+
+    segments = transcript.get("segments")
+    if not isinstance(segments, list):
+        return
+
+    matching_labels = {speaker_label.strip()}
+    matching_fingerprints: set[tuple[float | None, float | None, str]] = set()
+    for source_transcript in source_transcripts:
+        matching_labels.update(
+            _speaker_labels_for_display_label(source_transcript, speaker_label)
+        )
+        matching_fingerprints.update(
+            _segment_fingerprints_for_speaker_label(source_transcript, speaker_label)
+        )
+
+    changed = False
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+
+        segment_labels = {
+            str(segment.get("speaker") or "").strip(),
+            str(segment.get("speaker_chunk_local") or "").strip(),
+        }
+        if (
+            segment_labels & matching_labels
+            or _segment_fingerprint(segment) in matching_fingerprints
+        ):
+            segment["speaker_name"] = new_name
+            changed = True
+
+    if changed:
+        transcript_path.write_text(
+            json.dumps(transcript, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        _write_diarized_transcript_text(transcript, text_path)
+
+
 def _parse_offset_seconds(value: object) -> float | None:
     if isinstance(value, int | float) and not isinstance(value, bool):
         return float(value)
@@ -663,9 +786,11 @@ class SharedTranscriptionsService:
     def _speaker_registry_root(self) -> Path:
         configured = settings.openclaw_transcriptions_speaker_registry_root.strip()
         if configured:
-            root = Path(configured)
+            root = Path(configured).expanduser()
         else:
-            root = Path.home() / ".cache" / "openclaw" / "transcriptions" / SPEAKER_REGISTRY_DIRNAME
+            root = Path.home() / ".cache" / "openclaw" / "transcriptions"
+        if root.name == SPEAKER_REGISTRY_DIRNAME:
+            root = root.parent
         try:
             root.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
@@ -882,6 +1007,7 @@ class SharedTranscriptionsService:
         raw_json_path = self._raw_transcript_json_path(entry_dir)
         transcript = json.loads(raw_json_path.read_text(encoding="utf-8"))
         speaker_label = payload.speaker_label.strip()
+        source_transcripts: list[object] = [transcript]
         enroll_transcript_path = raw_json_path
         if not _transcript_has_speaker_label(transcript, speaker_label):
             display_json_path = _find_best_transcript_json(entry_dir)
@@ -891,6 +1017,7 @@ class SharedTranscriptionsService:
                     detail="Speaker label was not found in the transcript diarization data.",
                 )
             display_transcript = json.loads(display_json_path.read_text(encoding="utf-8"))
+            source_transcripts.append(display_transcript)
             if not _transcript_has_speaker_label(display_transcript, speaker_label):
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -948,6 +1075,13 @@ class SharedTranscriptionsService:
         if calendar_match_path.is_file():
             annotate_cmd.extend(["--calendar-match", str(calendar_match_path)])
         self._run_speaker_helper(annotate_cmd, transcriptions_root=transcriptions_root)
+        _apply_manual_speaker_name(
+            transcript_json_path,
+            transcript_text_path,
+            speaker_label=speaker_label,
+            new_name=normalized_name,
+            source_transcripts=source_transcripts,
+        )
 
         return self.get_entry(entry_id)
 

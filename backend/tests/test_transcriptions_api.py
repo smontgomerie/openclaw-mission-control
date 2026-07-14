@@ -19,6 +19,7 @@ from app.api.deps import require_org_admin
 from app.api.transcriptions import router as transcriptions_router
 from app.core.config import settings
 from app.db.session import get_session
+from app.services.transcriptions import SharedTranscriptionsService
 
 
 def _build_test_app(ctx: object) -> FastAPI:
@@ -687,6 +688,23 @@ async def test_reprocess_transcriptions_metadata_requires_gateway(
 
 
 @pytest.mark.asyncio
+async def test_speaker_registry_root_strips_registry_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        settings,
+        "openclaw_transcriptions_speaker_registry_root",
+        str(tmp_path / ".speaker_registry"),
+    )
+
+    root = SharedTranscriptionsService()._speaker_registry_root()
+
+    assert root == tmp_path
+    assert root.is_dir()
+
+
+@pytest.mark.asyncio
 async def test_rename_transcription_speaker_enrolls_and_reannotates(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -740,6 +758,62 @@ async def test_rename_transcription_speaker_enrolls_and_reannotates(
     assert calls[0][calls[0].index("--registry-dir") + 1] == str(registry_root)
     assert calls[1][calls[1].index("--registry-dir") + 1] == str(registry_root)
     assert registry_root.exists()
+
+
+@pytest.mark.asyncio
+async def test_rename_transcription_speaker_applies_name_to_selected_label_when_annotation_misses(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    root = workspace / "transcriptions"
+    processed = root / "processed" / "meeting-missed"
+    _write(root / "speaker_identity.py", "#!/usr/bin/env python3\n")
+    _write(root / "meeting-missed.m4a", "audio")
+    _write(
+        processed / "meeting-missed.json",
+        '{"segments":['
+        '{"speaker":"SPEAKER_00","start":0,"end":1,"text":"hello"},'
+        '{"speaker":"SPEAKER_01","start":1,"end":2,"text":"back"}'
+        ']}',
+    )
+    _write(processed / "transcript.json", (processed / "meeting-missed.json").read_text())
+    _write(processed / "transcript.txt", "[SPEAKER_00] hello\n[SPEAKER_01] back")
+
+    def _fake_run(*args, **kwargs):
+        command = list(args[0])
+        if "annotate" in command:
+            output_json = Path(command[command.index("--output-json") + 1])
+            output_text = Path(command[command.index("--output-text") + 1])
+            output_json.write_text(
+                '{"segments":['
+                '{"speaker":"SPEAKER_00","start":0,"end":1,"text":"hello"},'
+                '{"speaker":"SPEAKER_01","start":1,"end":2,"text":"back"}'
+                ']}',
+                encoding="utf-8",
+            )
+            output_text.write_text(
+                "[SPEAKER_00] hello\n[SPEAKER_01] back", encoding="utf-8"
+            )
+        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("app.services.transcriptions.subprocess.run", _fake_run)
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
+    app = _build_test_app(SimpleNamespace())
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            "/api/v1/transcriptions/meeting-missed/speakers/rename",
+            json={"speaker_label": "SPEAKER_00", "new_name": "Scott"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["transcript_text_content"] == "[Scott] hello\n[SPEAKER_01] back"
+    assert '"speaker_name": "Scott"' in payload["transcript_json_content"]
 
 
 @pytest.mark.asyncio
