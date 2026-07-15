@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse, Response
 from sqlmodel import col
 
@@ -21,6 +21,7 @@ from app.schemas.transcriptions import (
 from app.services.openclaw.error_messages import normalize_gateway_error_message
 from app.services.openclaw.gateway_resolver import gateway_client_config
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError, openclaw_call
+from app.services.speaker_learning import SpeakerLearningService
 from app.services.transcriptions import SharedTranscriptionsService
 
 if TYPE_CHECKING:
@@ -91,7 +92,17 @@ def _job_identifier(job: dict[str, Any]) -> str:
 
 def _job_score(job: dict[str, Any]) -> int:
     haystack_parts: list[str] = []
-    for key in ("id", "jobId", "job_id", "name", "label", "title", "description", "command", "schedule"):
+    for key in (
+        "id",
+        "jobId",
+        "job_id",
+        "name",
+        "label",
+        "title",
+        "description",
+        "command",
+        "schedule",
+    ):
         value = job.get(key)
         if isinstance(value, str):
             haystack_parts.append(value)
@@ -277,18 +288,20 @@ async def _enqueue_transcription_agent_job(
 
 @router.get("", response_model=list[TranscriptionEntryRead])
 async def list_transcriptions(
-    _ctx=ORG_ADMIN_DEP,
-    _session=SESSION_DEP,
+    offset: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=100),
+    _ctx: OrganizationContext = ORG_ADMIN_DEP,
+    _session: AsyncSession = SESSION_DEP,
 ) -> list[TranscriptionEntryRead]:
     """List processed transcript entries from the shared workspace."""
-    return SharedTranscriptionsService().list_entries()
+    return SharedTranscriptionsService().list_entries(offset=offset, limit=limit)
 
 
 @router.get("/{entry_id}", response_model=TranscriptionDetailRead)
 async def get_transcription(
     entry_id: str,
-    _ctx=ORG_ADMIN_DEP,
-    _session=SESSION_DEP,
+    _ctx: OrganizationContext = ORG_ADMIN_DEP,
+    _session: AsyncSession = SESSION_DEP,
 ) -> TranscriptionDetailRead:
     """Get one processed transcript entry and its key artifact contents."""
     return SharedTranscriptionsService().get_entry(entry_id)
@@ -297,8 +310,8 @@ async def get_transcription(
 @router.get("/{entry_id}/audio", response_class=FileResponse)
 async def get_transcription_audio(
     entry_id: str,
-    _ctx=ORG_ADMIN_DEP,
-    _session=SESSION_DEP,
+    _ctx: OrganizationContext = ORG_ADMIN_DEP,
+    _session: AsyncSession = SESSION_DEP,
 ) -> FileResponse:
     """Get the source audio file for one transcription entry."""
     return SharedTranscriptionsService().get_source_audio_response(entry_id)
@@ -307,8 +320,8 @@ async def get_transcription_audio(
 @router.get("/{entry_id}/export.docx")
 async def export_transcription_docx(
     entry_id: str,
-    _ctx=ORG_ADMIN_DEP,
-    _session=SESSION_DEP,
+    _ctx: OrganizationContext = ORG_ADMIN_DEP,
+    _session: AsyncSession = SESSION_DEP,
 ) -> Response:
     """Export one diarized transcription entry as a DOCX document."""
     return SharedTranscriptionsService().export_diarized_transcript_docx_response(entry_id)
@@ -354,8 +367,24 @@ async def reprocess_transcriptions_metadata(
 async def rename_transcription_speaker(
     entry_id: str,
     payload: TranscriptionSpeakerRenameRequest,
-    _ctx=ORG_ADMIN_DEP,
-    _session=SESSION_DEP,
+    ctx: OrganizationContext = ORG_ADMIN_DEP,
+    session: AsyncSession = SESSION_DEP,
 ) -> TranscriptionDetailRead:
     """Enroll a diarized speaker label under a new name and refresh transcript artifacts."""
-    return SharedTranscriptionsService().rename_speaker(entry_id, payload)
+    transcription_service = SharedTranscriptionsService()
+    organization = getattr(ctx, "organization", None)
+    organization_id = getattr(organization, "id", None)
+    learning_service = (
+        SpeakerLearningService(
+            session,
+            organization_id,
+            transcription_service._speaker_registry_root(),
+        )
+        if organization_id is not None and hasattr(session, "exec")
+        else None
+    )
+    return await transcription_service.rename_speaker(
+        entry_id,
+        payload,
+        learning_service=learning_service,
+    )

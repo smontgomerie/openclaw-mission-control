@@ -5,6 +5,7 @@ SHELL := /usr/bin/env bash
 
 BACKEND_DIR := backend
 FRONTEND_DIR := frontend
+OPENCLAW_SHARED_WORKSPACE_PATH ?= $(HOME)/.openclaw-docker/workspace
 
 NODE_WRAP := bash scripts/with_node.sh
 
@@ -182,6 +183,12 @@ docker-gpu-check: ## Verify CUDA inside the backend container
 .PHONY: docker-gpu-repair
 docker-gpu-repair: ## Recreate GPU services only when in-container CUDA/NVML is unhealthy
 	./scripts/repair_cuda_containers.sh
+
+.PHONY: transcriptions-speaker-tools-sync
+transcriptions-speaker-tools-sync: ## Install the speaker observation extractor in the shared workspace
+	install -d "$(OPENCLAW_SHARED_WORKSPACE_PATH)/transcriptions"
+	install -m 0755 scripts/openclaw-transcriptions/speaker_observations.py \
+		"$(OPENCLAW_SHARED_WORKSPACE_PATH)/transcriptions/speaker_observations.py"
 
 .PHONY: docker-backend-base
 docker-backend-base: ## Ensure the shared OpenClaw backend base image exists locally

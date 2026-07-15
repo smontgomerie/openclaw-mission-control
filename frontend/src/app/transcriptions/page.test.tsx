@@ -11,6 +11,7 @@ const fetchTranscriptionSourceAudioBlobMock = vi.hoisted(() => vi.fn());
 const exportDiarizedTranscriptionDocxMock = vi.hoisted(() => vi.fn());
 const syncTranscriptionsNowMock = vi.hoisted(() => vi.fn());
 const reprocessTranscriptionsMetadataMock = vi.hoisted(() => vi.fn());
+const fetchSpeakerDirectoryMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/auth/clerk", () => ({
   useAuth: () => ({ isSignedIn: true }),
@@ -96,10 +97,9 @@ vi.mock("@/components/ui/input", () => ({
 }));
 
 vi.mock("@/lib/transcriptions", async () => {
-  const actual =
-    await vi.importActual<typeof import("@/lib/transcriptions")>(
-      "@/lib/transcriptions",
-    );
+  const actual = await vi.importActual<typeof import("@/lib/transcriptions")>(
+    "@/lib/transcriptions",
+  );
   return {
     ...actual,
     fetchTranscriptions: fetchTranscriptionsMock,
@@ -109,6 +109,7 @@ vi.mock("@/lib/transcriptions", async () => {
     exportDiarizedTranscriptionDocx: exportDiarizedTranscriptionDocxMock,
     syncTranscriptionsNow: syncTranscriptionsNowMock,
     reprocessTranscriptionsMetadata: reprocessTranscriptionsMetadataMock,
+    fetchSpeakerDirectory: fetchSpeakerDirectoryMock,
   };
 });
 
@@ -121,7 +122,14 @@ describe("TranscriptionsPage", () => {
     exportDiarizedTranscriptionDocxMock.mockReset();
     syncTranscriptionsNowMock.mockReset();
     reprocessTranscriptionsMetadataMock.mockReset();
-    fetchTranscriptionSourceAudioBlobMock.mockResolvedValue(new Blob(["audio"]));
+    fetchSpeakerDirectoryMock.mockReset();
+    fetchSpeakerDirectoryMock.mockResolvedValue({
+      profiles: [],
+      pending_samples: [],
+    });
+    fetchTranscriptionSourceAudioBlobMock.mockResolvedValue(
+      new Blob(["audio"]),
+    );
     exportDiarizedTranscriptionDocxMock.mockResolvedValue(undefined);
     vi.stubGlobal(
       "URL",
@@ -254,7 +262,9 @@ describe("TranscriptionsPage", () => {
         id: "entry-docx",
         title: "entry-docx",
         is_done: true,
-        source_files: [{ name: "entry-docx.m4a", relative_path: "entry-docx.m4a" }],
+        source_files: [
+          { name: "entry-docx.m4a", relative_path: "entry-docx.m4a" },
+        ],
         artifact_files: [],
         has_analysis: false,
         has_transcript_text: true,
@@ -265,7 +275,9 @@ describe("TranscriptionsPage", () => {
       id: "entry-docx",
       title: "entry-docx",
       is_done: true,
-      source_files: [{ name: "entry-docx.m4a", relative_path: "entry-docx.m4a" }],
+      source_files: [
+        { name: "entry-docx.m4a", relative_path: "entry-docx.m4a" },
+      ],
       artifact_files: [],
       has_analysis: false,
       has_transcript_text: true,
@@ -292,7 +304,9 @@ describe("TranscriptionsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /export docx/i }));
 
     await waitFor(() => {
-      expect(exportDiarizedTranscriptionDocxMock).toHaveBeenCalledWith("entry-docx");
+      expect(exportDiarizedTranscriptionDocxMock).toHaveBeenCalledWith(
+        "entry-docx",
+      );
     });
   });
 
@@ -303,7 +317,9 @@ describe("TranscriptionsPage", () => {
         title: "pending-1",
         status: "pending",
         is_done: false,
-        source_files: [{ name: "pending-1.m4a", relative_path: "pending-1.m4a" }],
+        source_files: [
+          { name: "pending-1.m4a", relative_path: "pending-1.m4a" },
+        ],
         artifact_files: [],
         has_analysis: false,
         has_transcript_text: false,
@@ -424,7 +440,9 @@ describe("TranscriptionsPage", () => {
           title: "pending-2",
           status: "pending",
           is_done: false,
-          source_files: [{ name: "pending-2.m4a", relative_path: "pending-2.m4a" }],
+          source_files: [
+            { name: "pending-2.m4a", relative_path: "pending-2.m4a" },
+          ],
           artifact_files: [],
           has_analysis: false,
           has_transcript_text: false,
@@ -437,8 +455,15 @@ describe("TranscriptionsPage", () => {
           title: "pending-2",
           status: "partial",
           is_done: false,
-          source_files: [{ name: "pending-2.m4a", relative_path: "pending-2.m4a" }],
-          artifact_files: [{ name: "transcript.txt", relative_path: "processed/pending-2/transcript.txt" }],
+          source_files: [
+            { name: "pending-2.m4a", relative_path: "pending-2.m4a" },
+          ],
+          artifact_files: [
+            {
+              name: "transcript.txt",
+              relative_path: "processed/pending-2/transcript.txt",
+            },
+          ],
           has_analysis: false,
           has_transcript_text: true,
           has_transcript_json: false,
@@ -480,7 +505,9 @@ describe("TranscriptionsPage", () => {
       expect(fetchTranscriptionsMock).toHaveBeenCalledTimes(2);
     });
     expect(
-      screen.getByText("Transcription run queued. Pending files may take a few seconds to update."),
+      screen.getByText(
+        "Transcription run queued. Pending files may take a few seconds to update.",
+      ),
     ).toBeTruthy();
   });
 
@@ -492,7 +519,12 @@ describe("TranscriptionsPage", () => {
         status: "done",
         is_done: true,
         source_files: [{ name: "entry-1.m4a", relative_path: "entry-1.m4a" }],
-        artifact_files: [{ name: "transcript.txt", relative_path: "processed/entry-1/transcript.txt" }],
+        artifact_files: [
+          {
+            name: "transcript.txt",
+            relative_path: "processed/entry-1/transcript.txt",
+          },
+        ],
         has_analysis: true,
         has_transcript_text: true,
         has_transcript_json: true,
@@ -504,7 +536,12 @@ describe("TranscriptionsPage", () => {
       status: "done",
       is_done: true,
       source_files: [{ name: "entry-1.m4a", relative_path: "entry-1.m4a" }],
-      artifact_files: [{ name: "transcript.txt", relative_path: "processed/entry-1/transcript.txt" }],
+      artifact_files: [
+        {
+          name: "transcript.txt",
+          relative_path: "processed/entry-1/transcript.txt",
+        },
+      ],
       has_analysis: true,
       has_transcript_text: true,
       has_transcript_json: true,
@@ -522,14 +559,18 @@ describe("TranscriptionsPage", () => {
     render(<TranscriptionsPage />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /re-run metadata/i })).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: /re-run metadata/i }),
+      ).toBeTruthy();
     });
 
     fireEvent.click(screen.getByRole("button", { name: /re-run metadata/i }));
 
     await waitFor(() => {
       expect(
-        screen.getByText(/re-runs calendar matching, title generation, and speaker re-annotation/i),
+        screen.getByText(
+          /re-runs calendar matching, title generation, and speaker re-annotation/i,
+        ),
       ).toBeTruthy();
     });
 
@@ -556,9 +597,14 @@ describe("TranscriptionsPage", () => {
         title: "M&A process review",
         status: "partial",
         is_done: false,
-        source_files: [{ name: "1774046932.m4a", relative_path: "1774046932.m4a" }],
+        source_files: [
+          { name: "1774046932.m4a", relative_path: "1774046932.m4a" },
+        ],
         artifact_files: [
-          { name: "transcript.txt", relative_path: "processed/1774046932/transcript.txt" },
+          {
+            name: "transcript.txt",
+            relative_path: "processed/1774046932/transcript.txt",
+          },
         ],
         has_analysis: false,
         has_transcript_text: true,
@@ -572,9 +618,14 @@ describe("TranscriptionsPage", () => {
       title: "M&A process review",
       status: "partial",
       is_done: false,
-      source_files: [{ name: "1774046932.m4a", relative_path: "1774046932.m4a" }],
+      source_files: [
+        { name: "1774046932.m4a", relative_path: "1774046932.m4a" },
+      ],
       artifact_files: [
-        { name: "transcript.txt", relative_path: "processed/1774046932/transcript.txt" },
+        {
+          name: "transcript.txt",
+          relative_path: "processed/1774046932/transcript.txt",
+        },
       ],
       has_analysis: false,
       has_transcript_text: true,
@@ -588,7 +639,9 @@ describe("TranscriptionsPage", () => {
     render(<TranscriptionsPage />);
 
     await waitFor(() => {
-      expect(screen.getAllByText(/M&A process review/).length).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.getAllByText(/M&A process review/).length,
+      ).toBeGreaterThanOrEqual(1);
     });
 
     await waitFor(() => {
@@ -606,7 +659,9 @@ describe("TranscriptionsPage", () => {
         title: "entry-logs",
         status: "partial",
         is_done: false,
-        source_files: [{ name: "entry-logs.m4a", relative_path: "entry-logs.m4a" }],
+        source_files: [
+          { name: "entry-logs.m4a", relative_path: "entry-logs.m4a" },
+        ],
         artifact_files: [],
         has_analysis: false,
         has_transcript_text: false,
@@ -618,7 +673,9 @@ describe("TranscriptionsPage", () => {
       title: "entry-logs",
       status: "partial",
       is_done: false,
-      source_files: [{ name: "entry-logs.m4a", relative_path: "entry-logs.m4a" }],
+      source_files: [
+        { name: "entry-logs.m4a", relative_path: "entry-logs.m4a" },
+      ],
       artifact_files: [],
       has_analysis: false,
       has_transcript_text: false,
@@ -646,7 +703,9 @@ describe("TranscriptionsPage", () => {
     });
     expect(screen.getByText("[START] file=entry-logs.m4a")).toBeTruthy();
     expect(screen.getByText("WhisperX log")).toBeTruthy();
-    expect(screen.getByText("[WHISPERX_START] chunk_file=entry-logs.mp3")).toBeTruthy();
+    expect(
+      screen.getByText("[WHISPERX_START] chunk_file=entry-logs.mp3"),
+    ).toBeTruthy();
   });
 
   it("loads source audio and plays the diarized snippet for a turn", async () => {
@@ -695,7 +754,9 @@ describe("TranscriptionsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /play clip/i }));
 
     await waitFor(() => {
-      expect(fetchTranscriptionSourceAudioBlobMock).toHaveBeenCalledWith("entry-4");
+      expect(fetchTranscriptionSourceAudioBlobMock).toHaveBeenCalledWith(
+        "entry-4",
+      );
     });
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
   });

@@ -36,6 +36,31 @@ Admins can enqueue the same work via the API (requires a gateway with the transc
 - `POST /api/v1/transcriptions/sync` — run the normal transcription sync once.
 - `POST /api/v1/transcriptions/reprocess-metadata` — enqueue `reprocess_metadata_all.sh` (calendar + titles + `reannotate_all` for all `processed/*`).
 
+## Database-backed speaker observations
+
+Install the repository-owned observation extractor into the mounted workspace:
+
+```bash
+make transcriptions-speaker-tools-sync \
+  OPENCLAW_SHARED_WORKSPACE_PATH="$HOME/.openclaw-docker/workspace"
+```
+
+After `speaker_identity.py annotate` writes a processed transcript, the pipeline must emit the
+review manifest consumed by Mission Control:
+
+```bash
+python3 ./speaker_observations.py \
+  --helper ./speaker_identity.py \
+  --registry-dir /home/node/.openclaw/workspace/transcriptions \
+  --audio "$process_file" \
+  --transcript "$raw_json" \
+  --output "$processed_dir/speaker-observations.json"
+```
+
+Mission Control imports these manifests idempotently when an administrator opens the speaker
+directory. Observations remain pending until confirmed; only confirmed embeddings contribute to
+the generated `.speaker_registry/registry.json` used by future annotation runs.
+
 ## `gog` preflight (v0.13+)
 
 See workspace `TOOLS.md` (Google Access + multi-account). Verify:

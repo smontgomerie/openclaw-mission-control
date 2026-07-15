@@ -49,6 +49,43 @@ export type TranscriptionSyncResult = {
   run_id?: string | null;
 };
 
+export type SpeakerProfile = {
+  id: string;
+  display_name: string;
+  aliases: string[];
+  encoder: string;
+  confirmed_sample_count: number;
+  represented_sample_count: number;
+  pending_sample_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SpeakerVoiceSample = {
+  id: string;
+  profile_id?: string | null;
+  candidate_profile_id?: string | null;
+  candidate_name?: string | null;
+  transcription_entry_id?: string | null;
+  speaker_label?: string | null;
+  source_audio_path?: string | null;
+  encoder: string;
+  speech_duration_seconds?: number | null;
+  segment_count?: number | null;
+  similarity?: number | null;
+  second_similarity?: number | null;
+  status: string;
+  source_type: string;
+  represented_sample_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SpeakerDirectory = {
+  profiles: SpeakerProfile[];
+  pending_samples: SpeakerVoiceSample[];
+};
+
 export type DiarizedTranscriptTurn = {
   speakerLabel: string;
   rawSpeakerLabel: string | null;
@@ -57,9 +94,16 @@ export type DiarizedTranscriptTurn = {
   end: number | null;
 };
 
-export async function fetchTranscriptions(): Promise<TranscriptionEntry[]> {
+export async function fetchTranscriptions(options?: {
+  offset?: number;
+  limit?: number;
+}): Promise<TranscriptionEntry[]> {
+  const query = new URLSearchParams();
+  if (options?.offset) query.set("offset", String(options.offset));
+  if (options?.limit) query.set("limit", String(options.limit));
+  const suffix = query.size ? `?${query.toString()}` : "";
   const response = await customFetch<{ data: TranscriptionEntry[] }>(
-    "/api/v1/transcriptions",
+    `/api/v1/transcriptions${suffix}`,
     { method: "GET" },
   );
   return sortTranscriptionsByRecordingDate(response.data);
@@ -105,6 +149,72 @@ export async function renameTranscriptionSpeaker(
   return response.data;
 }
 
+export async function fetchSpeakerDirectory(): Promise<SpeakerDirectory> {
+  const response = await customFetch<{ data: SpeakerDirectory }>(
+    "/api/v1/transcriptions/speakers",
+    { method: "GET" },
+  );
+  return response.data;
+}
+
+export async function importLegacySpeakerRegistry(): Promise<SpeakerDirectory> {
+  const response = await customFetch<{ data: SpeakerDirectory }>(
+    "/api/v1/transcriptions/speakers/import-legacy",
+    { method: "POST" },
+  );
+  return response.data;
+}
+
+export async function confirmSpeakerSample(
+  sampleId: string,
+  payload: { profile_id?: string; new_name?: string },
+): Promise<SpeakerProfile> {
+  const response = await customFetch<{ data: SpeakerProfile }>(
+    `/api/v1/transcriptions/speakers/samples/${encodeURIComponent(sampleId)}/confirm`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+  return response.data;
+}
+
+export async function rejectSpeakerSample(sampleId: string): Promise<void> {
+  await customFetch<{ data: { ok: boolean } }>(
+    `/api/v1/transcriptions/speakers/samples/${encodeURIComponent(sampleId)}/reject`,
+    { method: "POST" },
+  );
+}
+
+export async function renameSpeakerProfile(
+  profileId: string,
+  displayName: string,
+): Promise<SpeakerProfile> {
+  const response = await customFetch<{ data: SpeakerProfile }>(
+    `/api/v1/transcriptions/speakers/${encodeURIComponent(profileId)}`,
+    { method: "PATCH", body: JSON.stringify({ display_name: displayName }) },
+  );
+  return response.data;
+}
+
+export async function mergeSpeakerProfiles(
+  sourceProfileId: string,
+  targetProfileId: string,
+): Promise<SpeakerProfile> {
+  const response = await customFetch<{ data: SpeakerProfile }>(
+    `/api/v1/transcriptions/speakers/${encodeURIComponent(sourceProfileId)}/merge`,
+    {
+      method: "POST",
+      body: JSON.stringify({ target_profile_id: targetProfileId }),
+    },
+  );
+  return response.data;
+}
+
+export async function deleteSpeakerProfile(profileId: string): Promise<void> {
+  await customFetch<{ data: { ok: boolean } }>(
+    `/api/v1/transcriptions/speakers/${encodeURIComponent(profileId)}`,
+    { method: "DELETE" },
+  );
+}
+
 export async function fetchTranscriptionSourceAudioBlob(
   entryId: string,
 ): Promise<Blob> {
@@ -127,7 +237,9 @@ export async function fetchTranscriptionSourceAudioBlob(
   return response.blob();
 }
 
-export async function exportDiarizedTranscriptionDocx(entryId: string): Promise<void> {
+export async function exportDiarizedTranscriptionDocx(
+  entryId: string,
+): Promise<void> {
   const response = await authenticatedFetch(
     `/api/v1/transcriptions/${encodeURIComponent(entryId)}/export.docx`,
     { method: "GET" },
@@ -150,7 +262,8 @@ export async function exportDiarizedTranscriptionDocx(entryId: string): Promise<
   try {
     const contentDisposition = response.headers.get("content-disposition");
     const filenameMatch = contentDisposition?.match(/filename="([^"]+)"/i);
-    const filename = filenameMatch?.[1] ?? `${entryId}-diarized-transcript.docx`;
+    const filename =
+      filenameMatch?.[1] ?? `${entryId}-diarized-transcript.docx`;
     const link = document.createElement("a");
     link.href = objectUrl;
     link.download = filename;
@@ -207,7 +320,8 @@ export function getDiarizedTranscriptTurns(
   const hasSpeakerData = parsed.segments.some(
     (segment) =>
       isObjectRecord(segment) &&
-      (typeof segment.speaker === "string" || typeof segment.speaker_name === "string"),
+      (typeof segment.speaker === "string" ||
+        typeof segment.speaker_name === "string"),
   );
   if (!hasSpeakerData) return [];
 
@@ -218,8 +332,11 @@ export function getDiarizedTranscriptTurns(
     if (!text) return [];
 
     const speakerName =
-      typeof segment.speaker_name === "string" ? segment.speaker_name.trim() : "";
-    const speaker = typeof segment.speaker === "string" ? segment.speaker.trim() : "";
+      typeof segment.speaker_name === "string"
+        ? segment.speaker_name.trim()
+        : "";
+    const speaker =
+      typeof segment.speaker === "string" ? segment.speaker.trim() : "";
 
     return [
       {

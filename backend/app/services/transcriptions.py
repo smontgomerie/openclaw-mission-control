@@ -10,6 +10,8 @@ import zipfile
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from typing import TYPE_CHECKING
 from xml.sax.saxutils import escape
 from zoneinfo import ZoneInfo
 
@@ -23,6 +25,11 @@ from app.schemas.transcriptions import (
     TranscriptionFileRead,
     TranscriptionSpeakerRenameRequest,
 )
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    from app.services.speaker_learning import SpeakerLearningService
 
 TRANSCRIPTIONS_DIRNAME = "transcriptions"
 PROCESSED_DIRNAME = "processed"
@@ -40,10 +47,17 @@ TITLE_CACHE_FILENAME = "title.txt"
 TITLE_TIMEZONE = ZoneInfo("America/Los_Angeles")
 PROCESS_LOG_DURATION_PATTERN = re.compile(r"duration=(?P<duration>\d+)s")
 WHISPERX_LOG_DURATION_PATTERN = re.compile(r"\[DURATION\]\s+(?P<duration>\d+)s")
-PYTHON_WARNING_LINE_PATTERN = re.compile(
-    r"^(?:.+:\d+:\s+)?(?:\w+Warning|warnings\.\w+Warning):"
-)
+PYTHON_WARNING_LINE_PATTERN = re.compile(r"^(?:.+:\d+:\s+)?(?:\w+Warning|warnings\.\w+Warning):")
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+# Shared-workspace metadata can be expensive to stat over network mounts.
+_WORKSPACE_LIST_INDEX: tuple[
+    Path,
+    int,
+    int,
+    dict[str, list[TranscriptionFileRead]],
+    dict[str, Path],
+] | None = None
 
 
 def _normalize_speaker_label(segment: dict[str, object]) -> tuple[str, str | None]:
@@ -67,8 +81,7 @@ def _transcript_has_speaker_label(transcript: object, speaker_label: str) -> boo
 
     normalized_label = speaker_label.strip()
     return any(
-        isinstance(segment, dict)
-        and str(segment.get("speaker") or "").strip() == normalized_label
+        isinstance(segment, dict) and str(segment.get("speaker") or "").strip() == normalized_label
         for segment in segments
     )
 
@@ -165,9 +178,7 @@ def _apply_manual_speaker_name(
     matching_labels = {speaker_label.strip()}
     matching_fingerprints: set[tuple[float | None, float | None, str]] = set()
     for source_transcript in source_transcripts:
-        matching_labels.update(
-            _speaker_labels_for_display_label(source_transcript, speaker_label)
-        )
+        matching_labels.update(_speaker_labels_for_display_label(source_transcript, speaker_label))
         matching_fingerprints.update(
             _segment_fingerprints_for_speaker_label(source_transcript, speaker_label)
         )
@@ -220,11 +231,11 @@ def _format_docx_offset(value: float | None) -> str | None:
 
 
 def _docx_paragraph_xml(text: str, *, style: str | None = None) -> str:
-    style_xml = f"<w:pPr><w:pStyle w:val=\"{escape(style)}\"/></w:pPr>" if style else ""
+    style_xml = f'<w:pPr><w:pStyle w:val="{escape(style)}"/></w:pPr>' if style else ""
     return (
         "<w:p>"
         f"{style_xml}"
-        "<w:r><w:t xml:space=\"preserve\">"
+        '<w:r><w:t xml:space="preserve">'
         f"{escape(text)}"
         "</w:t></w:r>"
         "</w:p>"
@@ -238,83 +249,83 @@ def _build_docx_bytes(*, title: str, turns: list[dict[str, str]]) -> bytes:
         document_paragraphs.append(_docx_paragraph_xml(turn["text"]))
 
     document_xml = (
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         "<w:document "
-        "xmlns:wpc=\"http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas\" "
-        "xmlns:mc=\"http://schemas.openxmlformats.org/markup-compatibility/2006\" "
-        "xmlns:o=\"urn:schemas-microsoft-com:office:office\" "
-        "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" "
-        "xmlns:m=\"http://schemas.openxmlformats.org/officeDocument/2006/math\" "
-        "xmlns:v=\"urn:schemas-microsoft-com:vml\" "
-        "xmlns:wp14=\"http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing\" "
-        "xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" "
-        "xmlns:w10=\"urn:schemas-microsoft-com:office:word\" "
-        "xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" "
-        "xmlns:w14=\"http://schemas.microsoft.com/office/word/2010/wordml\" "
-        "xmlns:wpg=\"http://schemas.microsoft.com/office/word/2010/wordprocessingGroup\" "
-        "xmlns:wpi=\"http://schemas.microsoft.com/office/word/2010/wordprocessingInk\" "
-        "xmlns:wne=\"http://schemas.microsoft.com/office/word/2006/wordml\" "
-        "xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\" "
-        "mc:Ignorable=\"w14 wp14\">"
+        'xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" '
+        'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
+        'xmlns:o="urn:schemas-microsoft-com:office:office" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+        'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" '
+        'xmlns:v="urn:schemas-microsoft-com:vml" '
+        'xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" '
+        'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
+        'xmlns:w10="urn:schemas-microsoft-com:office:word" '
+        'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+        'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" '
+        'xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" '
+        'xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" '
+        'xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" '
+        'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" '
+        'mc:Ignorable="w14 wp14">'
         "<w:body>"
         f"{''.join(document_paragraphs)}"
         "<w:sectPr>"
-        "<w:pgSz w:w=\"12240\" w:h=\"15840\"/>"
-        "<w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" "
-        "w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/>"
+        '<w:pgSz w:w="12240" w:h="15840"/>'
+        '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" '
+        'w:header="720" w:footer="720" w:gutter="0"/>'
         "</w:sectPr>"
         "</w:body>"
         "</w:document>"
     )
 
     styles_xml = (
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-        "<w:styles xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">"
-        "<w:style w:type=\"paragraph\" w:default=\"1\" w:styleId=\"Normal\">"
-        "<w:name w:val=\"Normal\"/>"
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:style w:type="paragraph" w:default="1" w:styleId="Normal">'
+        '<w:name w:val="Normal"/>'
         "</w:style>"
-        "<w:style w:type=\"paragraph\" w:styleId=\"Title\">"
-        "<w:name w:val=\"Title\"/>"
-        "<w:basedOn w:val=\"Normal\"/>"
+        '<w:style w:type="paragraph" w:styleId="Title">'
+        '<w:name w:val="Title"/>'
+        '<w:basedOn w:val="Normal"/>'
         "<w:qFormat/>"
-        "<w:rPr><w:b/><w:sz w:val=\"32\"/></w:rPr>"
+        '<w:rPr><w:b/><w:sz w:val="32"/></w:rPr>'
         "</w:style>"
-        "<w:style w:type=\"paragraph\" w:styleId=\"Heading2\">"
-        "<w:name w:val=\"heading 2\"/>"
-        "<w:basedOn w:val=\"Normal\"/>"
+        '<w:style w:type="paragraph" w:styleId="Heading2">'
+        '<w:name w:val="heading 2"/>'
+        '<w:basedOn w:val="Normal"/>'
         "<w:qFormat/>"
-        "<w:rPr><w:b/><w:sz w:val=\"24\"/></w:rPr>"
+        '<w:rPr><w:b/><w:sz w:val="24"/></w:rPr>'
         "</w:style>"
         "</w:styles>"
     )
 
     content_types_xml = (
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-        "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
-        "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
-        "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
-        "<Override PartName=\"/word/document.xml\" "
-        "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>"
-        "<Override PartName=\"/word/styles.xml\" "
-        "ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml\"/>"
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/word/document.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+        '<Override PartName="/word/styles.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
         "</Types>"
     )
 
     package_rels_xml = (
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-        "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
-        "<Relationship Id=\"rId1\" "
-        "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" "
-        "Target=\"word/document.xml\"/>"
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+        'Target="word/document.xml"/>'
         "</Relationships>"
     )
 
     document_rels_xml = (
-        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-        "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
-        "<Relationship Id=\"rId1\" "
-        "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" "
-        "Target=\"styles.xml\"/>"
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" '
+        'Target="styles.xml"/>'
         "</Relationships>"
     )
 
@@ -532,6 +543,25 @@ def _parse_captured_at(entry_id: str, source_files: list[TranscriptionFileRead])
     return None
 
 
+def _entry_id_sort_time(
+    entry_id: str,
+    source_files: list[TranscriptionFileRead],
+    entry_dir: Path | None,
+) -> datetime:
+    captured_at = _parse_captured_at(entry_id, source_files)
+    if captured_at is not None:
+        return captured_at
+    epoch = _epoch_seconds_from_entry_id(entry_id)
+    if epoch is not None:
+        return datetime.fromtimestamp(epoch, tz=UTC)
+    if entry_dir is not None:
+        try:
+            return datetime.fromtimestamp(entry_dir.stat().st_mtime, tz=UTC)
+        except OSError:
+            pass
+    return datetime.min.replace(tzinfo=UTC)
+
+
 def _recording_sort_time(item: TranscriptionEntryRead) -> datetime:
     """When the recording was captured (newest first), not when artifacts were last processed."""
     if item.captured_at is not None:
@@ -585,7 +615,9 @@ def _title_from_calendar_match(entry_dir: Path) -> str | None:
     return None
 
 
-def _calendar_match_detail_fields(entry_dir: Path | None) -> tuple[bool, str | None, str | None, bool]:
+def _calendar_match_detail_fields(
+    entry_dir: Path | None,
+) -> tuple[bool, str | None, str | None, bool]:
     """Whether calendar-match.json exists, confidence, event title, and if that file drives the UI title."""
     if entry_dir is None or not entry_dir.is_dir():
         return False, None, None, False
@@ -715,15 +747,21 @@ class SharedTranscriptionsService:
                 detail="Transcription entry not found.",
             )
 
-    def _source_file_map(self, *, transcriptions_root: Path) -> dict[str, list[TranscriptionFileRead]]:
+    def _source_file_map(
+        self, *, transcriptions_root: Path
+    ) -> dict[str, list[TranscriptionFileRead]]:
         files_by_id: dict[str, list[TranscriptionFileRead]] = {}
         for path in sorted(transcriptions_root.iterdir(), key=lambda item: item.name.lower()):
             if not _is_transcription_source_file(path):
                 continue
-            files_by_id.setdefault(path.stem, []).append(_file_read(path, relative_to=transcriptions_root))
+            files_by_id.setdefault(path.stem, []).append(
+                _file_read(path, relative_to=transcriptions_root)
+            )
         return files_by_id
 
-    def _source_files(self, entry_id: str, *, transcriptions_root: Path) -> list[TranscriptionFileRead]:
+    def _source_files(
+        self, entry_id: str, *, transcriptions_root: Path
+    ) -> list[TranscriptionFileRead]:
         matches: list[TranscriptionFileRead] = []
         for path in sorted(transcriptions_root.iterdir(), key=lambda item: item.name.lower()):
             if not _is_transcription_source_file(path):
@@ -733,7 +771,9 @@ class SharedTranscriptionsService:
             matches.append(_file_read(path, relative_to=transcriptions_root))
         return matches
 
-    def _artifact_files(self, entry_dir: Path, *, transcriptions_root: Path) -> list[TranscriptionFileRead]:
+    def _artifact_files(
+        self, entry_dir: Path, *, transcriptions_root: Path
+    ) -> list[TranscriptionFileRead]:
         artifact_files: list[TranscriptionFileRead] = []
         for path in sorted(entry_dir.iterdir(), key=lambda item: item.name.lower()):
             if not path.is_file():
@@ -788,7 +828,10 @@ class SharedTranscriptionsService:
         if configured:
             root = Path(configured).expanduser()
         else:
-            root = Path.home() / ".cache" / "openclaw" / "transcriptions"
+            # The annotator and API must share one registry. Keeping the
+            # default inside the mounted transcription workspace avoids a
+            # container-private cache that the annotator cannot see.
+            root = self._transcriptions_root()
         if root.name == SPEAKER_REGISTRY_DIRNAME:
             root = root.parent
         try:
@@ -868,14 +911,19 @@ class SharedTranscriptionsService:
             None if entry_dir is None else _read_processing_total_duration(entry_dir)
         )
         processed_at = (
-            max((item.modified_at for item in artifact_files if item.modified_at is not None), default=None)
+            max(
+                (item.modified_at for item in artifact_files if item.modified_at is not None),
+                default=None,
+            )
             if artifact_files
             else None
         )
         diarized_speaker_count: int | None = None
         diarized_speaker_preview: list[str] = []
         if json_path is not None and json_path.is_file():
-            diarized_speaker_count, diarized_speaker_preview = _diarized_speaker_list_metadata(json_path)
+            diarized_speaker_count, diarized_speaker_preview = _diarized_speaker_list_metadata(
+                json_path
+            )
 
         return TranscriptionEntryRead(
             id=entry_id,
@@ -895,35 +943,77 @@ class SharedTranscriptionsService:
             diarized_speaker_preview=diarized_speaker_preview,
         )
 
-    def list_entries(self) -> list[TranscriptionEntryRead]:
-        transcriptions_root = self._transcriptions_root()
-        processed_root = self._processed_root_if_present()
+    def _workspace_list_index(
+        self,
+        *,
+        transcriptions_root: Path,
+        processed_root: Path | None,
+    ) -> tuple[dict[str, list[TranscriptionFileRead]], dict[str, Path]]:
+        global _WORKSPACE_LIST_INDEX
+
+        root_mtime = transcriptions_root.stat().st_mtime_ns
+        processed_mtime = processed_root.stat().st_mtime_ns if processed_root else -1
+        cached = _WORKSPACE_LIST_INDEX
+        if (
+            cached is not None
+            and cached[0] == transcriptions_root
+            and cached[1] == root_mtime
+            and cached[2] == processed_mtime
+        ):
+            return cached[3], cached[4]
+
         source_files_by_id = self._source_file_map(transcriptions_root=transcriptions_root)
-        entries: list[TranscriptionEntryRead] = []
         processed_dirs = (
-            {
-                path.name: path
-                for path in sorted(
-                    processed_root.iterdir(), key=lambda item: item.name.lower(), reverse=True
-                )
-                if path.is_dir()
-            }
+            {path.name: path for path in processed_root.iterdir() if path.is_dir()}
             if processed_root is not None
             else {}
         )
-        for entry_id in sorted(
+        _WORKSPACE_LIST_INDEX = (
+            transcriptions_root,
+            root_mtime,
+            processed_mtime,
+            source_files_by_id,
+            processed_dirs,
+        )
+        return source_files_by_id, processed_dirs
+
+    def list_entries(
+        self,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> list[TranscriptionEntryRead]:
+        transcriptions_root = self._transcriptions_root()
+        processed_root = self._processed_root_if_present()
+        source_files_by_id, processed_dirs = self._workspace_list_index(
+            transcriptions_root=transcriptions_root,
+            processed_root=processed_root,
+        )
+        entry_ids = sorted(
             set(source_files_by_id.keys()) | set(processed_dirs.keys()),
-            key=str.lower,
-            reverse=True,
-        ):
-            entries.append(
-                self._build_entry(
+            key=lambda entry_id: (
+                _entry_id_sort_time(
                     entry_id,
-                    transcriptions_root=transcriptions_root,
-                    source_files=source_files_by_id.get(entry_id, []),
-                    entry_dir=processed_dirs.get(entry_id),
-                )
+                    source_files_by_id.get(entry_id, []),
+                    processed_dirs.get(entry_id),
+                ),
+                entry_id.lower(),
+            ),
+            reverse=True,
+        )
+        if offset:
+            entry_ids = entry_ids[offset:]
+        if limit is not None:
+            entry_ids = entry_ids[:limit]
+        entries = [
+            self._build_entry(
+                entry_id,
+                transcriptions_root=transcriptions_root,
+                source_files=source_files_by_id.get(entry_id, []),
+                entry_dir=processed_dirs.get(entry_id),
             )
+            for entry_id in entry_ids
+        ]
         entries.sort(
             key=lambda item: (_recording_sort_time(item), item.id.lower()),
             reverse=True,
@@ -962,13 +1052,21 @@ class SharedTranscriptionsService:
             else None
         )
         text_path = (
-            _find_best_transcript_text(entry_dir) if entry_dir is not None and entry_dir.is_dir() else None
+            _find_best_transcript_text(entry_dir)
+            if entry_dir is not None and entry_dir.is_dir()
+            else None
         )
         json_path = (
-            _find_best_transcript_json(entry_dir) if entry_dir is not None and entry_dir.is_dir() else None
+            _find_best_transcript_json(entry_dir)
+            if entry_dir is not None and entry_dir.is_dir()
+            else None
         )
-        process_log_path = entry_dir / "process.log" if entry_dir is not None and entry_dir.is_dir() else None
-        whisperx_log_path = entry_dir / "whisperx.log" if entry_dir is not None and entry_dir.is_dir() else None
+        process_log_path = (
+            entry_dir / "process.log" if entry_dir is not None and entry_dir.is_dir() else None
+        )
+        whisperx_log_path = (
+            entry_dir / "whisperx.log" if entry_dir is not None and entry_dir.is_dir() else None
+        )
 
         transcript_json_content: str | None = None
         if json_path is not None:
@@ -996,10 +1094,13 @@ class SharedTranscriptionsService:
             calendar_match_used_for_title=cal_used,
         )
 
-    def rename_speaker(
+    async def rename_speaker(
         self,
         entry_id: str,
         payload: TranscriptionSpeakerRenameRequest,
+        *,
+        learning_service: SpeakerLearningService | None = None,
+        reviewed_by_user_id: UUID | None = None,
     ) -> TranscriptionDetailRead:
         transcriptions_root = self._transcriptions_root()
         entry_dir = self._require_processed_entry_dir(entry_id)
@@ -1038,24 +1139,87 @@ class SharedTranscriptionsService:
         python_bin = self._speaker_python_bin(transcriptions_root=transcriptions_root)
         registry_dir = str(self._speaker_registry_root())
 
-        self._run_speaker_helper(
-            [
-                python_bin,
-                str(helper_path),
-                "--registry-dir",
-                registry_dir,
-                "enroll-from-transcript",
-                "--name",
-                normalized_name,
-                "--audio",
-                str(audio_path),
-                "--transcript",
-                str(enroll_transcript_path),
-                "--speaker",
-                speaker_label,
-            ],
-            transcriptions_root=transcriptions_root,
-        )
+        enroll_command = [
+            python_bin,
+            str(helper_path),
+            "--registry-dir",
+            registry_dir,
+            "enroll-from-transcript",
+            "--name",
+            normalized_name,
+            "--audio",
+            str(audio_path),
+            "--transcript",
+            str(enroll_transcript_path),
+            "--speaker",
+            speaker_label,
+        ]
+        if learning_service is None:
+            self._run_speaker_helper(
+                enroll_command,
+                transcriptions_root=transcriptions_root,
+            )
+        else:
+            with TemporaryDirectory(prefix="speaker-sample-") as temporary:
+                temporary_root = Path(temporary)
+                temporary_registry = temporary_root / SPEAKER_REGISTRY_DIRNAME
+                temporary_registry.mkdir()
+                shared_models = Path(registry_dir) / SPEAKER_REGISTRY_DIRNAME / "models"
+                if shared_models.exists():
+                    (temporary_registry / "models").symlink_to(
+                        shared_models,
+                        target_is_directory=True,
+                    )
+                isolated_command = list(enroll_command)
+                isolated_command[isolated_command.index("--registry-dir") + 1] = temporary
+                self._run_speaker_helper(
+                    isolated_command,
+                    transcriptions_root=transcriptions_root,
+                )
+                sample_registry = json.loads(
+                    (temporary_registry / "registry.json").read_text(encoding="utf-8")
+                )
+                speakers = sample_registry.get("speakers")
+                embedding = (
+                    speakers[0].get("embedding")
+                    if (isinstance(speakers, list) and speakers and isinstance(speakers[0], dict))
+                    else None
+                )
+                if not isinstance(embedding, list):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="Speaker embedding could not be extracted.",
+                    )
+            enroll_payload = json.loads(enroll_transcript_path.read_text(encoding="utf-8"))
+            segments = enroll_payload.get("segments")
+            matching_segments = (
+                [
+                    segment
+                    for segment in segments
+                    if isinstance(segment, dict)
+                    and str(segment.get("speaker") or "").strip() == speaker_label
+                ]
+                if isinstance(segments, list)
+                else []
+            )
+            speech_duration = sum(
+                max(
+                    0.0,
+                    (_parse_offset_seconds(segment.get("end")) or 0.0)
+                    - (_parse_offset_seconds(segment.get("start")) or 0.0),
+                )
+                for segment in matching_segments
+            )
+            await learning_service.add_confirmed_embedding(
+                name=normalized_name,
+                entry_id=entry_id,
+                speaker_label=speaker_label,
+                source_audio_path=str(audio_path),
+                embedding=[float(value) for value in embedding],
+                speech_duration_seconds=speech_duration,
+                segment_count=len(matching_segments),
+                reviewed_by_user_id=reviewed_by_user_id,
+            )
         annotate_cmd = [
             python_bin,
             str(helper_path),
@@ -1135,9 +1299,7 @@ class SharedTranscriptionsService:
             time_range = (
                 f" ({start_label} - {end_label})"
                 if start_label and end_label and start_label != end_label
-                else f" ({start_label or end_label})"
-                if start_label or end_label
-                else ""
+                else f" ({start_label or end_label})" if start_label or end_label else ""
             )
             turns.append(
                 {

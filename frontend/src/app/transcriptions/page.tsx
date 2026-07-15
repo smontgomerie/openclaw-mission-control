@@ -3,7 +3,20 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { FileText, ListRestart, Mic, Pause, Play, RefreshCcw, Search } from "lucide-react";
+import {
+  Brain,
+  Check,
+  FileText,
+  ListRestart,
+  Mic,
+  Pause,
+  Play,
+  RefreshCcw,
+  Search,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react";
 
 import { useAuth } from "@/auth/clerk";
 import { ApiError } from "@/api/mutator";
@@ -22,24 +35,35 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   collectKnownSpeakerNames,
+  confirmSpeakerSample,
   countDiarizedSpeakers,
+  deleteSpeakerProfile,
   exportDiarizedTranscriptionDocx,
+  fetchSpeakerDirectory,
   fetchTranscriptionDetail,
   fetchTranscriptionSourceAudioBlob,
   fetchTranscriptions,
   getDiarizedTranscriptTurns,
+  importLegacySpeakerRegistry,
   matchesTranscriptionSearch,
+  mergeSpeakerProfiles,
+  rejectSpeakerSample,
   reprocessTranscriptionsMetadata,
+  renameSpeakerProfile,
   renameTranscriptionSpeaker,
   sortTranscriptionsByRecordingDate,
   syncTranscriptionsNow,
   type DiarizedTranscriptTurn,
+  type SpeakerDirectory,
+  type SpeakerProfile,
   type TranscriptionDetail,
   type TranscriptionEntry,
   type TranscriptionFile,
 } from "@/lib/transcriptions";
 import { useOrganizationMembership } from "@/lib/use-organization-membership";
 import { cn } from "@/lib/utils";
+
+const TRANSCRIPTION_PAGE_SIZE = 100;
 
 function formatTimestamp(value: string | null | undefined): string {
   if (!value) return "Unknown";
@@ -63,12 +87,12 @@ function getProgressPercent(
   totalDurationSeconds: number | null | undefined,
 ): number | null {
   if (
-    typeof progressSeconds !== "number"
-    || Number.isNaN(progressSeconds)
-    || progressSeconds < 0
-    || typeof totalDurationSeconds !== "number"
-    || Number.isNaN(totalDurationSeconds)
-    || totalDurationSeconds <= 0
+    typeof progressSeconds !== "number" ||
+    Number.isNaN(progressSeconds) ||
+    progressSeconds < 0 ||
+    typeof totalDurationSeconds !== "number" ||
+    Number.isNaN(totalDurationSeconds) ||
+    totalDurationSeconds <= 0
   ) {
     return null;
   }
@@ -80,7 +104,11 @@ function getProgressPercent(
 function getEntryStatus(
   entry: Pick<
     TranscriptionEntry,
-    "status" | "is_done" | "artifact_files" | "progress_seconds" | "total_duration_seconds"
+    | "status"
+    | "is_done"
+    | "artifact_files"
+    | "progress_seconds"
+    | "total_duration_seconds"
   >,
 ): {
   label: string;
@@ -89,13 +117,21 @@ function getEntryStatus(
 } {
   const artifactCount = entry.artifact_files?.length ?? 0;
   const status =
-    entry.status ?? (entry.is_done ? "done" : artifactCount > 0 ? "partial" : "pending");
-  const progressPercent = getProgressPercent(entry.progress_seconds, entry.total_duration_seconds);
+    entry.status ??
+    (entry.is_done ? "done" : artifactCount > 0 ? "partial" : "pending");
+  const progressPercent = getProgressPercent(
+    entry.progress_seconds,
+    entry.total_duration_seconds,
+  );
 
-  if (status === "done") return { label: "Done", variant: "success", progressPercent: null };
+  if (status === "done")
+    return { label: "Done", variant: "success", progressPercent: null };
   if (status === "partial") {
     return {
-      label: progressPercent !== null ? `In progress ${progressPercent}%` : "Partial",
+      label:
+        progressPercent !== null
+          ? `In progress ${progressPercent}%`
+          : "Partial",
       variant: "warning",
       progressPercent,
     };
@@ -103,7 +139,11 @@ function getEntryStatus(
   return { label: "Pending", variant: "outline", progressPercent: null };
 }
 
-function CalendarMatchAnalysisNote({ detail }: { detail: TranscriptionDetail | null }) {
+function CalendarMatchAnalysisNote({
+  detail,
+}: {
+  detail: TranscriptionDetail | null;
+}) {
   if (!detail) return null;
   const present = detail.calendar_match_present === true;
   const used = detail.calendar_match_used_for_title === true;
@@ -115,11 +155,19 @@ function CalendarMatchAnalysisNote({ detail }: { detail: TranscriptionDetail | n
       <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
         <span className="font-semibold text-slate-700">Calendar match: </span>
         No{" "}
-        <code className="rounded bg-white px-1 py-0.5 text-[11px] text-slate-800">calendar-match.json</code> found.
-        The sidebar title may use{" "}
-        <code className="rounded bg-white px-1 py-0.5 text-[11px] text-slate-800">title.txt</code> or capture time
-        instead. This note reflects workspace metadata only; it does not prove how{" "}
-        <code className="rounded bg-white px-1 py-0.5 text-[11px]">analysis.md</code> was written.
+        <code className="rounded bg-white px-1 py-0.5 text-[11px] text-slate-800">
+          calendar-match.json
+        </code>{" "}
+        found. The sidebar title may use{" "}
+        <code className="rounded bg-white px-1 py-0.5 text-[11px] text-slate-800">
+          title.txt
+        </code>{" "}
+        or capture time instead. This note reflects workspace metadata only; it
+        does not prove how{" "}
+        <code className="rounded bg-white px-1 py-0.5 text-[11px]">
+          analysis.md
+        </code>{" "}
+        was written.
       </div>
     );
   }
@@ -129,7 +177,8 @@ function CalendarMatchAnalysisNote({ detail }: { detail: TranscriptionDetail | n
       <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
         <p className="font-semibold">Calendar match</p>
         <p className="mt-1 text-xs text-emerald-900">
-          The sidebar title uses this file (high/medium confidence with an event title)
+          The sidebar title uses this file (high/medium confidence with an event
+          title)
           {conf ? ` — confidence: ${conf}` : ""}
           {eventTitle ? ` — matched event: ${eventTitle}` : "."}
         </p>
@@ -141,15 +190,19 @@ function CalendarMatchAnalysisNote({ detail }: { detail: TranscriptionDetail | n
     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
       <p className="font-semibold">calendar-match.json present</p>
       <p className="mt-1 text-xs text-amber-900">
-        Not used for the sidebar title (needs high or medium confidence plus an event title).
+        Not used for the sidebar title (needs high or medium confidence plus an
+        event title).
         {conf ? ` Current confidence: ${conf}.` : ""}
       </p>
     </div>
   );
 }
 
-function formatTranscriptOffset(value: number | null | undefined): string | null {
-  if (typeof value !== "number" || Number.isNaN(value) || value < 0) return null;
+function formatTranscriptOffset(
+  value: number | null | undefined,
+): string | null {
+  if (typeof value !== "number" || Number.isNaN(value) || value < 0)
+    return null;
 
   const totalSeconds = Math.floor(value);
   const hours = Math.floor(totalSeconds / 3600);
@@ -222,7 +275,7 @@ function TranscriptTurns({
         const timeRange =
           startLabel && endLabel && endLabel !== startLabel
             ? `${startLabel} - ${endLabel}`
-            : startLabel ?? endLabel;
+            : (startLabel ?? endLabel);
 
         return (
           <div
@@ -230,7 +283,9 @@ function TranscriptTurns({
             className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
           >
             <div className="flex flex-wrap items-center gap-2">
-              {editingTurnKey === turnKey && editingSpeakerLabel === turn.rawSpeakerLabel && turn.rawSpeakerLabel ? (
+              {editingTurnKey === turnKey &&
+              editingSpeakerLabel === turn.rawSpeakerLabel &&
+              turn.rawSpeakerLabel ? (
                 <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-2 py-1 shadow-sm">
                   <Input
                     value={editingValue}
@@ -248,7 +303,9 @@ function TranscriptTurns({
                     autoFocus
                     disabled={renamePending}
                     list={
-                      speakerNameSuggestions.length > 0 ? speakerNameDatalistId : undefined
+                      speakerNameSuggestions.length > 0
+                        ? speakerNameDatalistId
+                        : undefined
                     }
                     autoComplete="off"
                     className="h-8 w-48 border-0 bg-transparent px-2 shadow-none"
@@ -282,13 +339,19 @@ function TranscriptTurns({
                   {turn.speakerLabel}
                 </button>
               ) : (
-                <p className="text-sm font-semibold text-slate-900">{turn.speakerLabel}</p>
+                <p className="text-sm font-semibold text-slate-900">
+                  {turn.speakerLabel}
+                </p>
               )}
               {renamePending && editingSpeakerLabel === turn.rawSpeakerLabel ? (
-                <span className="text-xs font-medium text-slate-500">Saving…</span>
+                <span className="text-xs font-medium text-slate-500">
+                  Saving…
+                </span>
               ) : null}
               {timeRange ? (
-                <span className="text-xs font-medium text-slate-500">{timeRange}</span>
+                <span className="text-xs font-medium text-slate-500">
+                  {timeRange}
+                </span>
               ) : null}
               <Button
                 type="button"
@@ -354,6 +417,399 @@ function ArtifactList({ files }: { files: TranscriptionFile[] }) {
   );
 }
 
+function SpeakerDirectoryPanel({
+  onOpenTranscript,
+}: {
+  onOpenTranscript: (entryId: string) => void;
+}) {
+  const [directory, setDirectory] = useState<SpeakerDirectory | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [reviewProfiles, setReviewProfiles] = useState<Record<string, string>>(
+    {},
+  );
+  const [reviewNames, setReviewNames] = useState<Record<string, string>>({});
+  const [profileNames, setProfileNames] = useState<Record<string, string>>({});
+  const [mergeTargets, setMergeTargets] = useState<Record<string, string>>({});
+
+  const load = async () => {
+    const next = await fetchSpeakerDirectory();
+    setDirectory(next);
+    setProfileNames(
+      Object.fromEntries(
+        next.profiles.map((profile) => [profile.id, profile.display_name]),
+      ),
+    );
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchSpeakerDirectory()
+      .then((next) => {
+        if (cancelled) return;
+        setDirectory(next);
+        setProfileNames(
+          Object.fromEntries(
+            next.profiles.map((profile) => [profile.id, profile.display_name]),
+          ),
+        );
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled)
+          setError(
+            cause instanceof Error ? cause.message : "Unable to load speakers.",
+          );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const run = async (key: string, action: () => Promise<unknown>) => {
+    setBusyKey(key);
+    setError(null);
+    try {
+      await action();
+      await load();
+    } catch (cause: unknown) {
+      setError(
+        cause instanceof Error ? cause.message : "Speaker update failed.",
+      );
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const confirmSample = (sampleId: string) => {
+    const newName = (reviewNames[sampleId] ?? "").trim();
+    const profileId = reviewProfiles[sampleId];
+    if (!newName && !profileId) {
+      setError("Choose an existing profile or enter a new speaker name.");
+      return;
+    }
+    void run(`sample:${sampleId}`, () =>
+      confirmSpeakerSample(
+        sampleId,
+        newName ? { new_name: newName } : { profile_id: profileId },
+      ),
+    );
+  };
+
+  const profiles = directory?.profiles ?? [];
+  const pending = directory?.pending_samples ?? [];
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-amber-200 bg-[linear-gradient(135deg,#fff7ed_0%,#ffffff_55%,#f0fdfa_100%)] shadow-sm">
+      <div className="flex flex-col gap-4 border-b border-amber-100 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="rounded-xl bg-slate-950 p-2.5 text-amber-300">
+            <Brain className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-950">
+              Speaker intelligence
+            </p>
+            <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">
+              Confirmed examples improve future matching. Automatic detections
+              stay in review and never train a profile until an administrator
+              confirms them.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="outline">{profiles.length} profiles</Badge>
+          <Badge variant={pending.length ? "warning" : "success"}>
+            {pending.length} pending
+          </Badge>
+          {profiles.length === 0 ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={busyKey !== null}
+              onClick={() => void run("import", importLegacySpeakerRegistry)}
+            >
+              Import legacy registry
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      {error ? (
+        <div className="mx-5 mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
+        <div>
+          <div className="mb-3 flex items-center gap-2">
+            <Users className="h-4 w-4 text-slate-500" />
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Known speakers
+            </p>
+          </div>
+          {directory === null ? (
+            <p className="text-sm text-slate-500">Loading speaker profiles…</p>
+          ) : profiles.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-300 bg-white/70 p-4 text-sm text-slate-500">
+              No database-backed profiles yet. Import the existing registry or
+              confirm a pending observation to create one.
+            </p>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              {profiles.map((profile: SpeakerProfile) => {
+                const mergeTarget = mergeTargets[profile.id] ?? "";
+                return (
+                  <article
+                    key={profile.id}
+                    className="rounded-xl border border-slate-200 bg-white/90 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-slate-950">
+                          {profile.display_name}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {profile.represented_sample_count} represented example
+                          {profile.represented_sample_count === 1
+                            ? ""
+                            : "s"} · {profile.encoder}
+                        </p>
+                      </div>
+                      {profile.pending_sample_count ? (
+                        <Badge variant="warning">
+                          {profile.pending_sample_count} review
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <div className="mt-4 flex gap-2">
+                      <Input
+                        aria-label={`Rename ${profile.display_name}`}
+                        value={profileNames[profile.id] ?? profile.display_name}
+                        onChange={(event) =>
+                          setProfileNames((current) => ({
+                            ...current,
+                            [profile.id]: event.target.value,
+                          }))
+                        }
+                        className="h-8"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        disabled={busyKey !== null}
+                        onClick={() =>
+                          void run(`rename:${profile.id}`, () =>
+                            renameSpeakerProfile(
+                              profile.id,
+                              profileNames[profile.id] ?? profile.display_name,
+                            ),
+                          )
+                        }
+                      >
+                        Save
+                      </Button>
+                    </div>
+                    {profiles.length > 1 ? (
+                      <div className="mt-2 flex gap-2">
+                        <select
+                          aria-label={`Merge ${profile.display_name} into`}
+                          value={mergeTarget}
+                          onChange={(event) =>
+                            setMergeTargets((current) => ({
+                              ...current,
+                              [profile.id]: event.target.value,
+                            }))
+                          }
+                          className="h-8 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs"
+                        >
+                          <option value="">Merge into…</option>
+                          {profiles
+                            .filter((candidate) => candidate.id !== profile.id)
+                            .map((candidate) => (
+                              <option key={candidate.id} value={candidate.id}>
+                                {candidate.display_name}
+                              </option>
+                            ))}
+                        </select>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={!mergeTarget || busyKey !== null}
+                          onClick={() =>
+                            void run(`merge:${profile.id}`, () =>
+                              mergeSpeakerProfiles(profile.id, mergeTarget),
+                            )
+                          }
+                        >
+                          Merge
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Delete ${profile.display_name}`}
+                          disabled={busyKey !== null}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `Delete ${profile.display_name} and all voice embeddings?`,
+                              )
+                            ) {
+                              void run(`delete:${profile.id}`, () =>
+                                deleteSpeakerProfile(profile.id),
+                              );
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="mt-2"
+                        disabled={busyKey !== null}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `Delete ${profile.display_name} and all voice embeddings?`,
+                            )
+                          ) {
+                            void run(`delete:${profile.id}`, () =>
+                              deleteSpeakerProfile(profile.id),
+                            );
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-600" /> Delete
+                        profile
+                      </Button>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+            Review queue
+          </p>
+          {pending.length === 0 ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 text-sm text-emerald-800">
+              No speaker observations need review.
+            </div>
+          ) : (
+            <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
+              {pending.map((sample) => (
+                <article
+                  key={sample.id}
+                  className="rounded-xl border border-amber-200 bg-white p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {sample.candidate_name ?? "Unknown speaker"}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {sample.transcription_entry_id ?? "Unknown transcript"}{" "}
+                        · {sample.speaker_label}
+                      </p>
+                    </div>
+                    {typeof sample.similarity === "number" ? (
+                      <Badge variant="outline">
+                        {Math.round(sample.similarity * 100)}%
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <select
+                      aria-label="Existing speaker profile"
+                      value={
+                        reviewProfiles[sample.id] ??
+                        sample.candidate_profile_id ??
+                        ""
+                      }
+                      onChange={(event) =>
+                        setReviewProfiles((current) => ({
+                          ...current,
+                          [sample.id]: event.target.value,
+                        }))
+                      }
+                      className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs"
+                    >
+                      <option value="">Choose profile…</option>
+                      {profiles.map((profile) => (
+                        <option key={profile.id} value={profile.id}>
+                          {profile.display_name}
+                        </option>
+                      ))}
+                    </select>
+                    <Input
+                      aria-label="New speaker name"
+                      value={reviewNames[sample.id] ?? ""}
+                      onChange={(event) =>
+                        setReviewNames((current) => ({
+                          ...current,
+                          [sample.id]: event.target.value,
+                        }))
+                      }
+                      placeholder="Or create a new speaker"
+                      className="h-9"
+                    />
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={busyKey !== null}
+                      onClick={() => confirmSample(sample.id)}
+                    >
+                      <Check className="h-4 w-4" /> Confirm
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busyKey !== null}
+                      onClick={() =>
+                        void run(`reject:${sample.id}`, () =>
+                          rejectSpeakerSample(sample.id),
+                        )
+                      }
+                    >
+                      <X className="h-4 w-4" /> Reject
+                    </Button>
+                    {sample.transcription_entry_id ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() =>
+                          onOpenTranscript(sample.transcription_entry_id!)
+                        }
+                      >
+                        Open transcript
+                      </Button>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function TranscriptionsPage() {
   const { isSignedIn } = useAuth();
   const { isAdmin } = useOrganizationMembership(isSignedIn);
@@ -361,6 +817,8 @@ export default function TranscriptionsPage() {
   const [entries, setEntries] = useState<TranscriptionEntry[]>([]);
   const [entriesError, setEntriesError] = useState<string | null>(null);
   const [isEntriesLoading, setIsEntriesLoading] = useState(false);
+  const [isLoadingMoreEntries, setIsLoadingMoreEntries] = useState(false);
+  const [hasMoreEntries, setHasMoreEntries] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<TranscriptionDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -373,22 +831,26 @@ export default function TranscriptionsPage() {
   const [isReprocessPending, setIsReprocessPending] = useState(false);
   const [reprocessError, setReprocessError] = useState<string | null>(null);
   const [reprocessMessage, setReprocessMessage] = useState<string | null>(null);
-  const [editingSpeakerLabel, setEditingSpeakerLabel] = useState<string | null>(null);
+  const [editingSpeakerLabel, setEditingSpeakerLabel] = useState<string | null>(
+    null,
+  );
   const [editingTurnKey, setEditingTurnKey] = useState<string | null>(null);
   const [editingSpeakerValue, setEditingSpeakerValue] = useState("");
   const [renamePending, setRenamePending] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
   const [audioObjectUrl, setAudioObjectUrl] = useState<string | null>(null);
   const [audioLoading, setAudioLoading] = useState(false);
-  const [audioPendingTurnKey, setAudioPendingTurnKey] = useState<string | null>(null);
+  const [audioPendingTurnKey, setAudioPendingTurnKey] = useState<string | null>(
+    null,
+  );
   const [playingTurnKey, setPlayingTurnKey] = useState<string | null>(null);
   const [audioStopAt, setAudioStopAt] = useState<number | null>(null);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [exportPending, setExportPending] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
-  const [activePane, setActivePane] = useState<"analysis" | "transcript" | "json" | "artifacts" | "logs">(
-    "analysis",
-  );
+  const [activePane, setActivePane] = useState<
+    "analysis" | "transcript" | "json" | "artifacts" | "logs"
+  >("analysis");
   const [reloadToken, setReloadToken] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const speakerNameDatalistId = useId();
@@ -406,10 +868,11 @@ export default function TranscriptionsPage() {
     setIsEntriesLoading(true);
     setEntriesError(null);
 
-    void fetchTranscriptions()
+    void fetchTranscriptions({ limit: TRANSCRIPTION_PAGE_SIZE })
       .then((data) => {
         if (cancelled) return;
         setEntries(data);
+        setHasMoreEntries(data.length === TRANSCRIPTION_PAGE_SIZE);
         setSelectedId((current) => current ?? data[0]?.id ?? null);
       })
       .catch((error: unknown) => {
@@ -428,6 +891,28 @@ export default function TranscriptionsPage() {
       cancelled = true;
     };
   }, [reloadToken]);
+
+  const loadMoreEntries = () => {
+    if (isLoadingMoreEntries || !hasMoreEntries) return;
+    setIsLoadingMoreEntries(true);
+    setEntriesError(null);
+    void fetchTranscriptions({
+      offset: entries.length,
+      limit: TRANSCRIPTION_PAGE_SIZE,
+    })
+      .then((data) => {
+        setEntries((current) => [...current, ...data]);
+        setHasMoreEntries(data.length === TRANSCRIPTION_PAGE_SIZE);
+      })
+      .catch((error: unknown) => {
+        const message =
+          error instanceof ApiError || error instanceof Error
+            ? error.message
+            : "Unable to load more transcriptions.";
+        setEntriesError(message);
+      })
+      .finally(() => setIsLoadingMoreEntries(false));
+  };
 
   useEffect(() => {
     if (!selectedId) {
@@ -459,10 +944,12 @@ export default function TranscriptionsPage() {
         setAudioError(null);
         setExportError(null);
         setActivePane((current) => {
-          if (data.has_analysis) return current === "artifacts" ? "analysis" : current;
+          if (data.has_analysis)
+            return current === "artifacts" ? "analysis" : current;
           if (data.has_transcript_text) return "transcript";
           if (data.has_transcript_json) return "json";
-          if (data.process_log_content || data.whisperx_log_content) return "logs";
+          if (data.process_log_content || data.whisperx_log_content)
+            return "logs";
           return "artifacts";
         });
       })
@@ -529,7 +1016,9 @@ export default function TranscriptionsPage() {
   const filteredEntries = useMemo(
     () =>
       sortTranscriptionsByRecordingDate(
-        entries.filter((entry) => matchesTranscriptionSearch(entry, searchTerm)),
+        entries.filter((entry) =>
+          matchesTranscriptionSearch(entry, searchTerm),
+        ),
       ),
     [entries, searchTerm],
   );
@@ -553,8 +1042,11 @@ export default function TranscriptionsPage() {
   );
 
   const processedCount = entries.filter((entry) => entry.is_done).length;
-  const pendingCount = entries.filter((entry) => getEntryStatus(entry).label === "Pending").length;
-  const selectedEntry = detail ?? entries.find((entry) => entry.id === selectedId) ?? null;
+  const pendingCount = entries.filter(
+    (entry) => getEntryStatus(entry).label === "Pending",
+  ).length;
+  const selectedEntry =
+    detail ?? entries.find((entry) => entry.id === selectedId) ?? null;
 
   const handleRenameStart = (turn: DiarizedTranscriptTurn) => {
     if (!turn.rawSpeakerLabel || renamePending) return;
@@ -608,7 +1100,8 @@ export default function TranscriptionsPage() {
       if (audio.readyState < 1) {
         await new Promise<void>((resolve, reject) => {
           const onLoaded = () => resolve();
-          const onError = () => reject(new Error("Unable to load audio for playback."));
+          const onError = () =>
+            reject(new Error("Unable to load audio for playback."));
           audio.addEventListener("loadedmetadata", onLoaded, { once: true });
           audio.addEventListener("error", onError, { once: true });
           audio.load();
@@ -624,7 +1117,9 @@ export default function TranscriptionsPage() {
     } catch (error: unknown) {
       setPlayingTurnKey(null);
       setAudioStopAt(null);
-      setAudioError(error instanceof Error ? error.message : "Unable to play audio clip.");
+      setAudioError(
+        error instanceof Error ? error.message : "Unable to play audio clip.",
+      );
     } finally {
       setAudioLoading(false);
       setAudioPendingTurnKey(turnKey);
@@ -649,7 +1144,9 @@ export default function TranscriptionsPage() {
       .then((updated) => {
         setDetail(updated);
         setEntries((current) =>
-          current.map((entry) => (entry.id === updated.id ? { ...entry, ...updated } : entry)),
+          current.map((entry) =>
+            entry.id === updated.id ? { ...entry, ...updated } : entry,
+          ),
         );
         setEditingSpeakerLabel(null);
         setEditingTurnKey(null);
@@ -692,7 +1189,9 @@ export default function TranscriptionsPage() {
 
     void syncTranscriptionsNow()
       .then(() => {
-        setSyncMessage("Transcription run queued. Pending files may take a few seconds to update.");
+        setSyncMessage(
+          "Transcription run queued. Pending files may take a few seconds to update.",
+        );
         setReloadToken((current) => current + 1);
       })
       .catch((error: unknown) => {
@@ -756,9 +1255,9 @@ export default function TranscriptionsPage() {
                 Transcript explorer
               </h2>
               <p className="mt-2 max-w-3xl text-sm text-slate-600">
-                Inspect transcript artifacts and refine diarized speaker names in
-                `transcriptions/processed` generated by
-                the shared workspace transcript pipeline.
+                Inspect transcript artifacts and refine diarized speaker names
+                in `transcriptions/processed` generated by the shared workspace
+                transcript pipeline.
               </p>
             </div>
             <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-end lg:max-w-md">
@@ -788,7 +1287,7 @@ export default function TranscriptionsPage() {
           </div>
           <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
             <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
-              Total entries: {entries.length}
+              Loaded entries: {entries.length}
             </span>
             <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
               Done markers: {processedCount}
@@ -827,19 +1326,31 @@ export default function TranscriptionsPage() {
           ) : null}
         </section>
 
-        <Dialog open={reprocessDialogOpen} onOpenChange={setReprocessDialogOpen}>
+        <Dialog
+          open={reprocessDialogOpen}
+          onOpenChange={setReprocessDialogOpen}
+        >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Re-run metadata for all processed entries?</DialogTitle>
+              <DialogTitle>
+                Re-run metadata for all processed entries?
+              </DialogTitle>
               <DialogDescription>
-                This queues a gateway job that re-runs calendar matching, title generation, and
-                speaker re-annotation across everything under{" "}
-                <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">processed/</code>. It
-                can take a while and will overwrite derived files where the scripts write output.
+                This queues a gateway job that re-runs calendar matching, title
+                generation, and speaker re-annotation across everything under{" "}
+                <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">
+                  processed/
+                </code>
+                . It can take a while and will overwrite derived files where the
+                scripts write output.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-              <Button type="button" variant="ghost" onClick={() => setReprocessDialogOpen(false)}>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setReprocessDialogOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="button" onClick={handleReprocessMetadataConfirm}>
@@ -849,13 +1360,21 @@ export default function TranscriptionsPage() {
           </DialogContent>
         </Dialog>
 
+        {isAdmin ? (
+          <SpeakerDirectoryPanel onOpenTranscript={setSelectedId} />
+        ) : null}
+
         <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
           <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="space-y-3 border-b border-slate-200 px-4 py-4 sm:px-5">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">Transcripts</p>
-                  <p className="mt-0.5 text-xs text-slate-500">By recording date (newest first)</p>
+                  <p className="text-sm font-semibold text-slate-900">
+                    Transcripts
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    By recording date (newest first)
+                  </p>
                 </div>
                 <p className="text-xs text-slate-500">
                   {filteredEntries.length} of {entries.length} shown
@@ -917,8 +1436,9 @@ export default function TranscriptionsPage() {
                                 >
                                   Captured {formatTimestamp(entry.captured_at)}
                                 </p>
-                                {typeof entry.diarized_speaker_count === "number"
-                                && entry.diarized_speaker_count > 0 ? (
+                                {typeof entry.diarized_speaker_count ===
+                                  "number" &&
+                                entry.diarized_speaker_count > 0 ? (
                                   <p
                                     className={cn(
                                       "mt-1 line-clamp-2 text-[11px] leading-snug",
@@ -927,53 +1447,88 @@ export default function TranscriptionsPage() {
                                         : "text-slate-600",
                                     )}
                                   >
-                                    <span className="font-semibold">Speakers</span>
+                                    <span className="font-semibold">
+                                      Speakers
+                                    </span>
                                     {": "}
-                                    {(entry.diarized_speaker_preview ?? []).join(", ")}
-                                    {entry.diarized_speaker_count
-                                    > (entry.diarized_speaker_preview?.length ?? 0)
+                                    {(
+                                      entry.diarized_speaker_preview ?? []
+                                    ).join(", ")}
+                                    {entry.diarized_speaker_count >
+                                    (entry.diarized_speaker_preview?.length ??
+                                      0)
                                       ? ` (+${
-                                          entry.diarized_speaker_count
-                                          - (entry.diarized_speaker_preview?.length ?? 0)
+                                          entry.diarized_speaker_count -
+                                          (entry.diarized_speaker_preview
+                                            ?.length ?? 0)
                                         } more)`
                                       : null}
                                   </p>
                                 ) : null}
                               </div>
-                              <Badge variant={status.variant}>{status.label}</Badge>
+                              <Badge variant={status.variant}>
+                                {status.label}
+                              </Badge>
                             </div>
                             {status.progressPercent !== null ? (
                               <div
                                 className={cn(
                                   "mt-3 h-2 overflow-hidden rounded-full",
-                                  selectedId === entry.id ? "bg-slate-700" : "bg-slate-200",
+                                  selectedId === entry.id
+                                    ? "bg-slate-700"
+                                    : "bg-slate-200",
                                 )}
                               >
                                 <div
                                   className={cn(
                                     "h-full rounded-full",
-                                    selectedId === entry.id ? "bg-white" : "bg-amber-500",
+                                    selectedId === entry.id
+                                      ? "bg-white"
+                                      : "bg-amber-500",
                                   )}
-                                  style={{ width: `${status.progressPercent}%` }}
+                                  style={{
+                                    width: `${status.progressPercent}%`,
+                                  }}
                                 />
                               </div>
                             ) : null}
                             <div
                               className={cn(
                                 "mt-3 flex flex-wrap gap-1 text-[11px]",
-                                selectedId === entry.id ? "text-slate-200" : "text-slate-500",
+                                selectedId === entry.id
+                                  ? "text-slate-200"
+                                  : "text-slate-500",
                               )}
                             >
-                              {entry.has_analysis ? <span>analysis</span> : null}
-                              {entry.has_transcript_text ? <span>transcript</span> : null}
-                              {entry.has_transcript_json ? <span>json</span> : null}
-                              <span>{entry.source_files.length} source file(s)</span>
+                              {entry.has_analysis ? (
+                                <span>analysis</span>
+                              ) : null}
+                              {entry.has_transcript_text ? (
+                                <span>transcript</span>
+                              ) : null}
+                              {entry.has_transcript_json ? (
+                                <span>json</span>
+                              ) : null}
+                              <span>
+                                {entry.source_files.length} source file(s)
+                              </span>
                             </div>
                           </>
                         );
                       })()}
                     </button>
                   ))}
+                  {hasMoreEntries ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={loadMoreEntries}
+                      disabled={isLoadingMoreEntries}
+                    >
+                      {isLoadingMoreEntries ? "Loading more…" : "Load 100 more"}
+                    </Button>
+                  ) : null}
                 </div>
               )}
             </div>
@@ -996,7 +1551,9 @@ export default function TranscriptionsPage() {
                   <div className="flex flex-wrap gap-2">
                     {(() => {
                       const status = getEntryStatus(selectedEntry);
-                      return <Badge variant={status.variant}>{status.label}</Badge>;
+                      return (
+                        <Badge variant={status.variant}>{status.label}</Badge>
+                      );
                     })()}
                     <Badge variant="outline">
                       {selectedEntry.source_files.length} source
@@ -1009,7 +1566,8 @@ export default function TranscriptionsPage() {
                     ) : null}
                     {diarizedSpeakerCount > 0 ? (
                       <Badge variant="outline">
-                        {diarizedSpeakerCount} speaker{diarizedSpeakerCount === 1 ? "" : "s"}
+                        {diarizedSpeakerCount} speaker
+                        {diarizedSpeakerCount === 1 ? "" : "s"}
                       </Badge>
                     ) : null}
                   </div>
@@ -1029,7 +1587,9 @@ export default function TranscriptionsPage() {
                   Select a processed transcript entry to inspect it.
                 </p>
               ) : isDetailLoading && !detail ? (
-                <p className="text-sm text-slate-500">Loading transcript detail…</p>
+                <p className="text-sm text-slate-500">
+                  Loading transcript detail…
+                </p>
               ) : !selectedEntry ? (
                 <p className="text-sm text-slate-500">
                   This transcript entry is unavailable.
@@ -1094,7 +1654,9 @@ export default function TranscriptionsPage() {
                     <Button
                       type="button"
                       size="sm"
-                      variant={activePane === "transcript" ? "primary" : "ghost"}
+                      variant={
+                        activePane === "transcript" ? "primary" : "ghost"
+                      }
                       onClick={() => setActivePane("transcript")}
                       disabled={!detail?.has_transcript_text}
                     >
@@ -1122,7 +1684,10 @@ export default function TranscriptionsPage() {
                       size="sm"
                       variant={activePane === "logs" ? "primary" : "ghost"}
                       onClick={() => setActivePane("logs")}
-                      disabled={!detail?.process_log_content && !detail?.whisperx_log_content}
+                      disabled={
+                        !detail?.process_log_content &&
+                        !detail?.whisperx_log_content
+                      }
                     >
                       Logs
                     </Button>
@@ -1134,7 +1699,10 @@ export default function TranscriptionsPage() {
                         <CalendarMatchAnalysisNote detail={detail} />
                         {detail?.analysis_content ? (
                           <div className="prose prose-slate max-w-none">
-                            <Markdown content={detail.analysis_content} variant="basic" />
+                            <Markdown
+                              content={detail.analysis_content}
+                              variant="basic"
+                            />
                           </div>
                         ) : (
                           <p className="text-sm text-slate-500">
@@ -1171,10 +1739,13 @@ export default function TranscriptionsPage() {
                               className="mt-3 w-full"
                             />
                             <p className="mt-2 text-xs text-slate-500">
-                              Use “Play clip” on a turn to jump to that speaker segment.
+                              Use “Play clip” on a turn to jump to that speaker
+                              segment.
                             </p>
                             {exportError ? (
-                              <p className="mt-2 text-xs text-red-600">{exportError}</p>
+                              <p className="mt-2 text-xs text-red-600">
+                                {exportError}
+                              </p>
                             ) : null}
                           </div>
                           <TranscriptTurns
@@ -1265,7 +1836,8 @@ export default function TranscriptionsPage() {
                             </pre>
                           </div>
                         ) : null}
-                        {!detail?.process_log_content && !detail?.whisperx_log_content ? (
+                        {!detail?.process_log_content &&
+                        !detail?.whisperx_log_content ? (
                           <p className="text-sm text-slate-500">
                             No processing logs found for this entry.
                           </p>
