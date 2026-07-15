@@ -999,3 +999,29 @@ async def test_rename_transcription_speaker_skips_warning_prefixed_stderr(
 
     assert response.status_code == 409
     assert response.json()["detail"] == "RuntimeError: Model checkpoint is missing"
+
+
+@pytest.mark.asyncio
+async def test_list_transcriptions_honors_offset_and_limit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    root = workspace / "transcriptions"
+    processed = root / "processed"
+    for entry_id in ("1700000000", "1800000000", "1900000000"):
+        _write(root / f"{entry_id}.m4a", "audio")
+        _write(processed / entry_id / "transcript.txt", "hello")
+        _write(processed / entry_id / ".done", "")
+
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
+    app = _build_test_app(SimpleNamespace())
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/api/v1/transcriptions?offset=1&limit=1")
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == ["1800000000"]
