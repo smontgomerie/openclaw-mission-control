@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import require_org_admin, require_user_auth
 from app.core.auth import AuthContext
 from app.db.session import get_session
-from app.models.speaker_profiles import SpeakerProfile
+from app.models.speaker_profiles import SpeakerBackfillRun, SpeakerProfile
 from app.schemas.common import OkResponse
 from app.schemas.speaker_profiles import (
+    SpeakerBackfillPreviewRead,
+    SpeakerBackfillRunRead,
+    SpeakerBackfillStartRequest,
     SpeakerDirectoryRead,
     SpeakerProfileMergeRequest,
     SpeakerProfileRead,
@@ -21,6 +24,7 @@ from app.schemas.speaker_profiles import (
     SpeakerVoiceSampleRead,
 )
 from app.services.organizations import OrganizationContext
+from app.services.speaker_backfill import enqueue_backfill, preview_annotation_backfill
 from app.services.speaker_learning import SpeakerLearningService
 from app.services.transcriptions import SharedTranscriptionsService
 
@@ -83,6 +87,68 @@ async def get_speaker_directory(
     )
 
 
+@router.get("/annotation-import/preview", response_model=SpeakerBackfillPreviewRead)
+async def preview_speaker_annotation_import(
+    _session: AsyncSession = SESSION_DEP,
+    _ctx: OrganizationContext = ORG_ADMIN_DEP,
+) -> SpeakerBackfillPreviewRead:
+    root = SharedTranscriptionsService()._transcriptions_root()
+    return SpeakerBackfillPreviewRead.model_validate(preview_annotation_backfill(root))
+
+
+@router.post(
+    "/annotation-imports",
+    response_model=SpeakerBackfillRunRead,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def start_speaker_annotation_import(
+    payload: SpeakerBackfillStartRequest,
+    session: AsyncSession = SESSION_DEP,
+    ctx: OrganizationContext = ORG_ADMIN_DEP,
+) -> SpeakerBackfillRunRead:
+    root = SharedTranscriptionsService()._transcriptions_root()
+    preview = preview_annotation_backfill(root)
+    if preview["snapshot_hash"] != payload.snapshot_hash:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Transcripts changed after preview; preview the import again.",
+        )
+    run = SpeakerBackfillRun(
+        organization_id=ctx.organization.id,
+        snapshot_hash=payload.snapshot_hash,
+        total_recordings=cast(int, preview["transcript_count"]),
+    )
+    session.add(run)
+    await session.commit()
+    await session.refresh(run)
+    if not enqueue_backfill(run):
+        run.status = "failed"
+        run.errors = [{"reason": "Unable to enqueue speaker annotation import."}]
+        session.add(run)
+        await session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to enqueue speaker annotation import.",
+        )
+    return SpeakerBackfillRunRead.model_validate(run)
+
+
+@router.get("/annotation-imports/{run_id}", response_model=SpeakerBackfillRunRead)
+async def get_speaker_annotation_import(
+    run_id: UUID,
+    session: AsyncSession = SESSION_DEP,
+    ctx: OrganizationContext = ORG_ADMIN_DEP,
+) -> SpeakerBackfillRunRead:
+    run = (
+        await SpeakerBackfillRun.objects.by_id(run_id)
+        .filter_by(organization_id=ctx.organization.id)
+        .first(session)
+    )
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Import run not found.")
+    return SpeakerBackfillRunRead.model_validate(run)
+
+
 @router.post("/import-legacy", response_model=SpeakerDirectoryRead)
 async def import_legacy_speakers(
     session: AsyncSession = SESSION_DEP,
@@ -100,12 +166,22 @@ async def confirm_speaker_sample(
     ctx: OrganizationContext = ORG_ADMIN_DEP,
     auth: AuthContext = AUTH_DEP,
 ) -> SpeakerProfileRead:
-    profile = await _service(session, ctx).confirm_sample(
+    learning_service = _service(session, ctx)
+    profile = await learning_service.confirm_sample(
         sample_id,
         profile_id=payload.profile_id,
         new_name=payload.new_name,
         reviewed_by_user_id=auth.user.id if auth.user else None,
+        excluded_segment_ids=payload.excluded_segment_ids,
     )
+    sample = await learning_service.require_sample(sample_id)
+    if sample.transcription_entry_id and sample.speaker_label:
+        SharedTranscriptionsService().apply_confirmed_speaker_name(
+            sample.transcription_entry_id,
+            speaker_label=sample.speaker_label,
+            display_name=profile.display_name,
+            segment_evidence=sample.segment_evidence,
+        )
     return _profile_read(profile)
 
 

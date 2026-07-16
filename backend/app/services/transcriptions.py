@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import mimetypes
 import re
@@ -51,13 +52,16 @@ PYTHON_WARNING_LINE_PATTERN = re.compile(r"^(?:.+:\d+:\s+)?(?:\w+Warning|warning
 DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 # Shared-workspace metadata can be expensive to stat over network mounts.
-_WORKSPACE_LIST_INDEX: tuple[
-    Path,
-    int,
-    int,
-    dict[str, list[TranscriptionFileRead]],
-    dict[str, Path],
-] | None = None
+_WORKSPACE_LIST_INDEX: (
+    tuple[
+        Path,
+        int,
+        int,
+        dict[str, list[TranscriptionFileRead]],
+        dict[str, Path],
+    ]
+    | None
+) = None
 
 
 def _normalize_speaker_label(segment: dict[str, object]) -> tuple[str, str | None]:
@@ -86,7 +90,9 @@ def _transcript_has_speaker_label(transcript: object, speaker_label: str) -> boo
     )
 
 
-def _segment_fingerprint(segment: dict[str, object]) -> tuple[float | None, float | None, str]:
+def _segment_fingerprint(
+    segment: dict[str, object],
+) -> tuple[float | None, float | None, str]:
     text = segment.get("text")
     return (
         _parse_offset_seconds(segment.get("start")),
@@ -205,6 +211,49 @@ def _apply_manual_speaker_name(
             encoding="utf-8",
         )
         _write_diarized_transcript_text(transcript, text_path)
+
+
+def _write_speaker_annotation_overlay(transcript_path: Path) -> None:
+    transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
+    segments = transcript.get("segments") if isinstance(transcript, dict) else None
+    assignments = []
+    if isinstance(segments, list):
+        for segment in segments:
+            if not isinstance(segment, dict):
+                continue
+            name = str(segment.get("speaker_name") or "").strip()
+            if not name:
+                continue
+            start, end, text = _segment_fingerprint(segment)
+            segment_id = hashlib.sha256(f"{start}\0{end}\0{text}".encode()).hexdigest()
+            assignments.append(
+                {
+                    "segment_id": segment_id,
+                    "speaker_name": name,
+                    "speaker": segment.get("speaker"),
+                    "speaker_chunk_local": segment.get("speaker_chunk_local"),
+                    "start": start,
+                    "end": end,
+                    "text": text,
+                    "source": "manual_confirmation",
+                }
+            )
+    output = transcript_path.parent / "speaker-annotations.json"
+    temporary = output.with_suffix(".json.tmp")
+    temporary.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "entry_id": transcript_path.parent.name,
+                "assignments": assignments,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(output)
 
 
 def _parse_offset_seconds(value: object) -> float | None:
@@ -888,39 +937,56 @@ class SharedTranscriptionsService:
         transcriptions_root: Path,
         source_files: list[TranscriptionFileRead] | None = None,
         entry_dir: Path | None = None,
+        include_diarized_metadata: bool = True,
+        include_artifact_metadata: bool = True,
     ) -> TranscriptionEntryRead:
         resolved_source_files = source_files or self._source_files(
             entry_id, transcriptions_root=transcriptions_root
         )
-        artifact_files = (
-            self._artifact_files(entry_dir, transcriptions_root=transcriptions_root)
-            if entry_dir is not None
-            else []
-        )
-        analysis_path = (
-            _find_first_existing(entry_dir, ANALYSIS_CANDIDATES) if entry_dir is not None else None
-        )
-        text_path = _find_best_transcript_text(entry_dir) if entry_dir is not None else None
-        json_path = _find_best_transcript_json(entry_dir) if entry_dir is not None else None
-        done_path = entry_dir / ".done" if entry_dir is not None else None
-        is_done = done_path.is_file() if done_path is not None else False
-        progress_seconds = (
-            None if entry_dir is None or is_done else _read_processing_progress(entry_dir)
-        )
-        total_duration_seconds = (
-            None if entry_dir is None else _read_processing_total_duration(entry_dir)
-        )
-        processed_at = (
-            max(
+        if entry_dir is not None and include_artifact_metadata:
+            artifact_files = self._artifact_files(
+                entry_dir, transcriptions_root=transcriptions_root
+            )
+            analysis_path = _find_first_existing(entry_dir, ANALYSIS_CANDIDATES)
+            text_path = _find_best_transcript_text(entry_dir)
+            json_path = _find_best_transcript_json(entry_dir)
+            done_path = entry_dir / ".done"
+            is_done = done_path.is_file()
+            progress_seconds = None if is_done else _read_processing_progress(entry_dir)
+            total_duration_seconds = _read_processing_total_duration(entry_dir)
+            processed_at = max(
                 (item.modified_at for item in artifact_files if item.modified_at is not None),
                 default=None,
             )
-            if artifact_files
-            else None
+        elif entry_dir is not None:
+            # List views avoid traversing each artifact directory and reading logs.
+            artifact_files = []
+            analysis_path = entry_dir / "analysis.md"
+            analysis_path = analysis_path if analysis_path.is_file() else None
+            text_path = entry_dir / "transcript.txt"
+            text_path = text_path if text_path.is_file() else None
+            json_path = entry_dir / "transcript.json"
+            json_path = json_path if json_path.is_file() else None
+            done_path = entry_dir / ".done"
+            is_done = done_path.is_file()
+            progress_seconds = None if is_done else _read_processing_progress(entry_dir)
+            total_duration_seconds = None if is_done else _read_processing_total_duration(entry_dir)
+            processed_at = None
+        else:
+            artifact_files = []
+            analysis_path = None
+            text_path = None
+            json_path = None
+            is_done = False
+            progress_seconds = None
+            total_duration_seconds = None
+            processed_at = None
+        has_artifacts = bool(artifact_files) or any(
+            (analysis_path, text_path, json_path, entry_dir and is_done)
         )
         diarized_speaker_count: int | None = None
         diarized_speaker_preview: list[str] = []
-        if json_path is not None and json_path.is_file():
+        if include_diarized_metadata and json_path is not None and json_path.is_file():
             diarized_speaker_count, diarized_speaker_preview = _diarized_speaker_list_metadata(
                 json_path
             )
@@ -928,7 +994,7 @@ class SharedTranscriptionsService:
         return TranscriptionEntryRead(
             id=entry_id,
             title=_resolve_entry_title(entry_id, entry_dir),
-            status=_entry_status(done=is_done, has_artifacts=bool(artifact_files)),
+            status=_entry_status(done=is_done, has_artifacts=has_artifacts),
             is_done=is_done,
             captured_at=_parse_captured_at(entry_id, resolved_source_files),
             processed_at=processed_at,
@@ -1011,6 +1077,8 @@ class SharedTranscriptionsService:
                 transcriptions_root=transcriptions_root,
                 source_files=source_files_by_id.get(entry_id, []),
                 entry_dir=processed_dirs.get(entry_id),
+                include_diarized_metadata=False,
+                include_artifact_metadata=False,
             )
             for entry_id in entry_ids
         ]
@@ -1247,7 +1315,47 @@ class SharedTranscriptionsService:
             source_transcripts=source_transcripts,
         )
 
+        _write_speaker_annotation_overlay(transcript_json_path)
         return self.get_entry(entry_id)
+
+    def apply_confirmed_speaker_name(
+        self,
+        entry_id: str,
+        *,
+        speaker_label: str,
+        display_name: str,
+        segment_evidence: list[dict[str, object]],
+    ) -> None:
+        entry_dir = self._require_processed_entry_dir(entry_id)
+        transcript_path = entry_dir / "transcript.json"
+        text_path = entry_dir / "transcript.txt"
+        transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
+        evidence_ids = {str(item.get("id") or "") for item in segment_evidence}
+        segments = transcript.get("segments") if isinstance(transcript, dict) else None
+        if not isinstance(segments, list):
+            return
+        for segment in segments:
+            if not isinstance(segment, dict):
+                continue
+            start, end, text = _segment_fingerprint(segment)
+            segment_id = hashlib.sha256(f"{start}\0{end}\0{text}".encode()).hexdigest()
+            labels = {
+                str(segment.get("speaker") or "").strip(),
+                str(segment.get("speaker_chunk_local") or "").strip(),
+            }
+            if (evidence_ids and segment_id in evidence_ids) or (
+                not evidence_ids and speaker_label in labels
+            ):
+                segment["speaker_name"] = display_name
+                segment.pop("speaker_name_tentative", None)
+        temporary = transcript_path.with_suffix(".json.tmp")
+        temporary.write_text(
+            json.dumps(transcript, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        temporary.replace(transcript_path)
+        _write_diarized_transcript_text(transcript, text_path)
+        _write_speaker_annotation_overlay(transcript_path)
 
     def get_source_audio_response(self, entry_id: str) -> FileResponse:
         transcriptions_root = self._transcriptions_root()

@@ -20,7 +20,9 @@ class SpeakerProfile(QueryModel, table=True):
     __tablename__ = "speaker_profiles"  # pyright: ignore[reportAssignmentType]
     __table_args__ = (
         UniqueConstraint(
-            "organization_id", "normalized_name", name="uq_speaker_profiles_org_normalized_name"
+            "organization_id",
+            "normalized_name",
+            name="uq_speaker_profiles_org_normalized_name",
         ),
     )
 
@@ -45,7 +47,9 @@ class SpeakerVoiceSample(QueryModel, table=True):
     __tablename__ = "speaker_voice_samples"  # pyright: ignore[reportAssignmentType]
     __table_args__ = (
         UniqueConstraint(
-            "organization_id", "fingerprint", name="uq_speaker_voice_samples_org_fingerprint"
+            "organization_id",
+            "fingerprint",
+            name="uq_speaker_voice_samples_org_fingerprint",
         ),
     )
 
@@ -62,7 +66,12 @@ class SpeakerVoiceSample(QueryModel, table=True):
     embedding: list[float] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     encoder: str = Field(default="ecapa")
     speech_duration_seconds: float | None = None
+    clip_start_seconds: float | None = None
+    clip_end_seconds: float | None = None
     segment_count: int | None = None
+    segment_evidence: list[dict[str, object]] = Field(
+        default_factory=list, sa_column=Column(JSON, nullable=False)
+    )
     similarity: float | None = None
     second_similarity: float | None = None
     status: str = Field(default="pending", index=True)
@@ -70,5 +79,31 @@ class SpeakerVoiceSample(QueryModel, table=True):
     represented_sample_count: int = Field(default=1)
     reviewed_by_user_id: UUID | None = Field(default=None, foreign_key="users.id")
     reviewed_at: datetime | None = None
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class SpeakerBackfillRun(QueryModel, table=True):
+    """Durable progress for an annotation-preserving historical import."""
+
+    __tablename__ = "speaker_backfill_runs"  # pyright: ignore[reportAssignmentType]
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    organization_id: UUID = Field(foreign_key="organizations.id", index=True)
+    snapshot_hash: str = Field(index=True)
+    status: str = Field(default="queued", index=True)
+    total_recordings: int = Field(default=0)
+    processed_recordings: int = Field(default=0)
+    confirmed_samples: int = Field(default=0)
+    pending_samples: int = Field(default=0)
+    skipped_recordings: int = Field(default=0)
+    processed_entry_ids: list[str] = Field(
+        default_factory=list, sa_column=Column(JSON, nullable=False)
+    )
+    errors: list[dict[str, object]] = Field(
+        default_factory=list, sa_column=Column(JSON, nullable=False)
+    )
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

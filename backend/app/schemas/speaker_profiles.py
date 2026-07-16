@@ -31,7 +31,10 @@ class SpeakerVoiceSampleRead(SQLModel):
     encoder: str
     speech_duration_seconds: float | None = None
     segment_count: int | None = None
+    segment_evidence: list[dict[str, object]] = Field(default_factory=list)
     similarity: float | None = None
+    clip_start_seconds: float | None = None
+    clip_end_seconds: float | None = None
     second_similarity: float | None = None
     status: str
     source_type: str
@@ -48,6 +51,38 @@ class SpeakerDirectoryRead(SQLModel):
 class SpeakerSampleConfirmRequest(SQLModel):
     profile_id: UUID | None = None
     new_name: str | None = None
+    excluded_segment_ids: list[str] = Field(default_factory=list)
+
+
+class SpeakerBackfillPreviewRead(SQLModel):
+    snapshot_hash: str
+    recording_count: int
+    transcript_count: int
+    annotated_recording_count: int
+    unannotated_recording_count: int
+    speaker_names: dict[str, int] = Field(default_factory=dict)
+    tentative_annotation_count: int = 0
+    skipped: list[dict[str, str]] = Field(default_factory=list)
+
+
+class SpeakerBackfillStartRequest(SQLModel):
+    snapshot_hash: str
+
+
+class SpeakerBackfillRunRead(SQLModel):
+    id: UUID
+    snapshot_hash: str
+    status: str
+    total_recordings: int
+    processed_recordings: int
+    confirmed_samples: int
+    pending_samples: int
+    skipped_recordings: int
+    errors: list[dict[str, object]] = Field(default_factory=list)
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
 
 
 class SpeakerProfileRenameRequest(SQLModel):

@@ -20,7 +20,11 @@ from app.models.organizations import Organization
 from app.models.portfolio_rationales import PortfolioRationale
 from app.models.portfolio_roll_events import PortfolioRollEvent
 from app.models.skills import GatewayInstalledSkill, MarketplaceSkill, SkillPack
-from app.models.speaker_profiles import SpeakerProfile, SpeakerVoiceSample
+from app.models.speaker_profiles import (
+    SpeakerBackfillRun,
+    SpeakerProfile,
+    SpeakerVoiceSample,
+)
 from app.models.tag_assignments import TagAssignment
 from app.models.tags import Tag
 from app.models.task_custom_fields import (
@@ -49,6 +53,7 @@ __all__ = [
     "GatewayInstalledSkill",
     "MarketplaceSkill",
     "SkillPack",
+    "SpeakerBackfillRun",
     "SpeakerProfile",
     "SpeakerVoiceSample",
     "Organization",

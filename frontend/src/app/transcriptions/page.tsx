@@ -39,12 +39,14 @@ import {
   countDiarizedSpeakers,
   deleteSpeakerProfile,
   exportDiarizedTranscriptionDocx,
+  fetchSpeakerAnnotationImport,
   fetchSpeakerDirectory,
   fetchTranscriptionDetail,
   fetchTranscriptionSourceAudioBlob,
   fetchTranscriptions,
   getDiarizedTranscriptTurns,
   importLegacySpeakerRegistry,
+  previewSpeakerAnnotationImport,
   matchesTranscriptionSearch,
   mergeSpeakerProfiles,
   rejectSpeakerSample,
@@ -52,10 +54,14 @@ import {
   renameSpeakerProfile,
   renameTranscriptionSpeaker,
   sortTranscriptionsByRecordingDate,
+  startSpeakerAnnotationImport,
   syncTranscriptionsNow,
   type DiarizedTranscriptTurn,
+  type SpeakerBackfillPreview,
+  type SpeakerBackfillRun,
   type SpeakerDirectory,
   type SpeakerProfile,
+  type SpeakerVoiceSample,
   type TranscriptionDetail,
   type TranscriptionEntry,
   type TranscriptionFile,
@@ -234,10 +240,35 @@ type TranscriptTurnsProps = {
   onEditCancel: () => void;
   onEditSubmit: () => void;
   onPlayTurn: (turn: DiarizedTranscriptTurn) => void;
+  pendingSpeakerSamples: SpeakerVoiceSample[];
+  onConfirmSpeaker: (turn: DiarizedTranscriptTurn) => void;
 };
 
 function getTurnPlaybackKey(turn: DiarizedTranscriptTurn): string {
   return `${turn.rawSpeakerLabel ?? turn.speakerLabel}:${turn.start ?? "na"}:${turn.end ?? "na"}:${turn.text}`;
+}
+function turnMatchesSpeakerSample(
+  turn: DiarizedTranscriptTurn,
+  sample: SpeakerVoiceSample,
+): boolean {
+  if (turn.rawSpeakerLabel && sample.speaker_label === turn.rawSpeakerLabel) {
+    return true;
+  }
+
+  return sample.segment_evidence.some((segment) => {
+    const text = (segment.text ?? "").trim();
+    const start = segment.start ?? null;
+    const end = segment.end ?? null;
+    return (
+      text === turn.text &&
+      start !== null &&
+      end !== null &&
+      turn.start !== null &&
+      turn.end !== null &&
+      Math.abs(start - turn.start) < 0.01 &&
+      Math.abs(end - turn.end) < 0.01
+    );
+  });
 }
 
 function TranscriptTurns({
@@ -258,6 +289,8 @@ function TranscriptTurns({
   onEditCancel,
   onEditSubmit,
   onPlayTurn,
+  pendingSpeakerSamples,
+  onConfirmSpeaker,
 }: TranscriptTurnsProps) {
   return (
     <div className="space-y-3">
@@ -353,6 +386,18 @@ function TranscriptTurns({
                   {timeRange}
                 </span>
               ) : null}
+              {pendingSpeakerSamples.some((sample) =>
+                turnMatchesSpeakerSample(turn, sample),
+              ) ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => onConfirmSpeaker(turn)}
+                >
+                  <Check className="h-4 w-4" /> Confirm speaker
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 size="sm"
@@ -425,12 +470,53 @@ function SpeakerDirectoryPanel({
   const [directory, setDirectory] = useState<SpeakerDirectory | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [backfillPreview, setBackfillPreview] =
+    useState<SpeakerBackfillPreview | null>(null);
+  const [backfillRun, setBackfillRun] = useState<SpeakerBackfillRun | null>(
+    null,
+  );
   const [reviewProfiles, setReviewProfiles] = useState<Record<string, string>>(
     {},
   );
   const [reviewNames, setReviewNames] = useState<Record<string, string>>({});
   const [profileNames, setProfileNames] = useState<Record<string, string>>({});
   const [mergeTargets, setMergeTargets] = useState<Record<string, string>>({});
+  const [reviewAudioUrl, setReviewAudioUrl] = useState<string | null>(null);
+  const [reviewAudioEntryId, setReviewAudioEntryId] = useState<string | null>(
+    null,
+  );
+  const [reviewAudioLoading, setReviewAudioLoading] = useState(false);
+  const [playingReviewSampleId, setPlayingReviewSampleId] = useState<
+    string | null
+  >(null);
+  const [reviewStopAt, setReviewStopAt] = useState<number | null>(null);
+  const reviewAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (reviewAudioUrl) URL.revokeObjectURL(reviewAudioUrl);
+    };
+  }, [reviewAudioUrl]);
+
+  useEffect(() => {
+    const audio = reviewAudioRef.current;
+    if (!audio) return;
+    const stopPlayback = () => {
+      audio.pause();
+      setPlayingReviewSampleId(null);
+      setReviewStopAt(null);
+    };
+    const onTimeUpdate = () => {
+      if (reviewStopAt !== null && audio.currentTime >= reviewStopAt)
+        stopPlayback();
+    };
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("ended", stopPlayback);
+    return () => {
+      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("ended", stopPlayback);
+    };
+  }, [reviewStopAt]);
 
   const load = async () => {
     const next = await fetchSpeakerDirectory();
@@ -482,7 +568,9 @@ function SpeakerDirectoryPanel({
 
   const confirmSample = (sampleId: string) => {
     const newName = (reviewNames[sampleId] ?? "").trim();
-    const profileId = reviewProfiles[sampleId];
+    const profileId =
+      reviewProfiles[sampleId] ??
+      pending.find((sample) => sample.id === sampleId)?.candidate_profile_id;
     if (!newName && !profileId) {
       setError("Choose an existing profile or enter a new speaker name.");
       return;
@@ -495,11 +583,122 @@ function SpeakerDirectoryPanel({
     );
   };
 
+  const playReviewClip = async (sample: SpeakerVoiceSample) => {
+    const entryId = sample.transcription_entry_id;
+    const start = sample.clip_start_seconds;
+    const end = sample.clip_end_seconds;
+    const audio = reviewAudioRef.current;
+    if (
+      !entryId ||
+      typeof start !== "number" ||
+      typeof end !== "number" ||
+      end <= start ||
+      !audio
+    ) {
+      setError("This observation does not include a playable diarized clip.");
+      return;
+    }
+    if (playingReviewSampleId === sample.id) {
+      audio.pause();
+      setPlayingReviewSampleId(null);
+      setReviewStopAt(null);
+      return;
+    }
+    setReviewAudioLoading(true);
+    setError(null);
+    try {
+      let objectUrl = reviewAudioUrl;
+      if (!objectUrl || reviewAudioEntryId !== entryId) {
+        const nextObjectUrl = URL.createObjectURL(
+          await fetchTranscriptionSourceAudioBlob(entryId),
+        );
+        setReviewAudioUrl((current) => {
+          if (current) URL.revokeObjectURL(current);
+          return nextObjectUrl;
+        });
+        setReviewAudioEntryId(entryId);
+        objectUrl = nextObjectUrl;
+      }
+      if (audio.src !== objectUrl) audio.src = objectUrl;
+      if (audio.readyState < 1) {
+        await new Promise<void>((resolve, reject) => {
+          audio.addEventListener("loadedmetadata", () => resolve(), {
+            once: true,
+          });
+          audio.addEventListener(
+            "error",
+            () => reject(new Error("Unable to load review audio.")),
+            { once: true },
+          );
+          audio.load();
+        });
+      }
+      audio.currentTime = Math.max(start, 0);
+      await audio.play();
+      setPlayingReviewSampleId(sample.id);
+      setReviewStopAt(end);
+    } catch (cause: unknown) {
+      setError(
+        cause instanceof Error ? cause.message : "Unable to play review clip.",
+      );
+    } finally {
+      setReviewAudioLoading(false);
+    }
+  };
+
+  const previewBackfill = async () => {
+    setBusyKey("backfill-preview");
+    setError(null);
+    try {
+      setBackfillPreview(await previewSpeakerAnnotationImport());
+    } catch (cause: unknown) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to preview annotations.",
+      );
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const startBackfill = async () => {
+    if (!backfillPreview) return;
+    setBusyKey("backfill-start");
+    setError(null);
+    try {
+      setBackfillRun(
+        await startSpeakerAnnotationImport(backfillPreview.snapshot_hash),
+      );
+    } catch (cause: unknown) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to start annotation import.",
+      );
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!backfillRun || !["queued", "running"].includes(backfillRun.status))
+      return;
+    const timer = window.setInterval(() => {
+      void fetchSpeakerAnnotationImport(backfillRun.id).then((next) => {
+        setBackfillRun(next);
+        if (next.status === "completed") void load();
+      });
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [backfillRun]);
+
   const profiles = directory?.profiles ?? [];
   const pending = directory?.pending_samples ?? [];
 
   return (
     <section className="overflow-hidden rounded-2xl border border-amber-200 bg-[linear-gradient(135deg,#fff7ed_0%,#ffffff_55%,#f0fdfa_100%)] shadow-sm">
+      <audio ref={reviewAudioRef} className="hidden" preload="metadata" />
       <div className="flex flex-col gap-4 border-b border-amber-100 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-start gap-3">
           <div className="rounded-xl bg-slate-950 p-2.5 text-amber-300">
@@ -521,6 +720,15 @@ function SpeakerDirectoryPanel({
           <Badge variant={pending.length ? "warning" : "success"}>
             {pending.length} pending
           </Badge>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busyKey !== null}
+            onClick={() => void previewBackfill()}
+          >
+            Preview annotation import
+          </Button>
           {profiles.length === 0 ? (
             <Button
               type="button"
@@ -538,6 +746,49 @@ function SpeakerDirectoryPanel({
       {error ? (
         <div className="mx-5 mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
+        </div>
+      ) : null}
+
+      {backfillPreview ? (
+        <div className="mx-5 mt-4 rounded-xl border border-amber-200 bg-white p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">
+                Historical annotation preview
+              </p>
+              <p className="mt-1 text-xs text-slate-600">
+                {backfillPreview.annotated_recording_count} annotated
+                recordings, {Object.keys(backfillPreview.speaker_names).length}{" "}
+                named speakers, and{" "}
+                {backfillPreview.unannotated_recording_count} recordings to
+                queue for review. Existing transcripts will be backed up and
+                will not be rewritten.
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              disabled={busyKey !== null || backfillRun?.status === "running"}
+              onClick={() => void startBackfill()}
+            >
+              Import trusted annotations
+            </Button>
+          </div>
+          {backfillPreview.tentative_annotation_count > 0 ? (
+            <p className="mt-2 text-xs text-amber-700">
+              Includes {backfillPreview.tentative_annotation_count} existing
+              tentative segment labels, per the trusted-import policy.
+            </p>
+          ) : null}
+          {backfillRun ? (
+            <p className="mt-3 text-xs font-medium text-slate-700">
+              {backfillRun.status}: {backfillRun.processed_recordings}/
+              {backfillRun.total_recordings} recordings ·{" "}
+              {backfillRun.confirmed_samples} confirmed ·{" "}
+              {backfillRun.pending_samples} pending ·{" "}
+              {backfillRun.skipped_recordings} skipped
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -729,6 +980,14 @@ function SpeakerDirectoryPanel({
                       </Badge>
                     ) : null}
                   </div>
+                  <p className="mt-3 text-xs text-slate-500">
+                    {typeof sample.speech_duration_seconds === "number"
+                      ? `${sample.speech_duration_seconds.toFixed(1)}s clean speech`
+                      : "Speech duration unavailable"}
+                    {typeof sample.segment_count === "number"
+                      ? ` across ${sample.segment_count} segments`
+                      : ""}
+                  </p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     <select
                       aria-label="Existing speaker profile"
@@ -766,6 +1025,27 @@ function SpeakerDirectoryPanel({
                     />
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={
+                        reviewAudioLoading &&
+                        playingReviewSampleId !== sample.id
+                      }
+                      onClick={() => void playReviewClip(sample)}
+                    >
+                      {playingReviewSampleId === sample.id ? (
+                        <Pause className="h-4 w-4" />
+                      ) : (
+                        <Play className="h-4 w-4" />
+                      )}
+                      {playingReviewSampleId === sample.id
+                        ? "Stop clip"
+                        : reviewAudioLoading
+                          ? "Loading clip…"
+                          : "Play review clip"}
+                    </Button>
                     <Button
                       type="button"
                       size="sm"
@@ -838,6 +1118,15 @@ export default function TranscriptionsPage() {
   const [editingSpeakerValue, setEditingSpeakerValue] = useState("");
   const [renamePending, setRenamePending] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
+  const [speakerDirectory, setSpeakerDirectory] =
+    useState<SpeakerDirectory | null>(null);
+  const [confirmingSpeakerSample, setConfirmingSpeakerSample] =
+    useState<SpeakerVoiceSample | null>(null);
+  const [confirmProfileId, setConfirmProfileId] = useState("");
+  const [confirmNewName, setConfirmNewName] = useState("");
+  const [excludedSegmentIds, setExcludedSegmentIds] = useState<string[]>([]);
+  const [confirmPending, setConfirmPending] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
   const [audioObjectUrl, setAudioObjectUrl] = useState<string | null>(null);
   const [audioLoading, setAudioLoading] = useState(false);
   const [audioPendingTurnKey, setAudioPendingTurnKey] = useState<string | null>(
@@ -1013,6 +1302,16 @@ export default function TranscriptionsPage() {
     };
   }, [audioStopAt]);
 
+  useEffect(() => {
+    if (!isAdmin || !selectedId) {
+      setSpeakerDirectory(null);
+      return;
+    }
+    void fetchSpeakerDirectory()
+      .then(setSpeakerDirectory)
+      .catch(() => setSpeakerDirectory(null));
+  }, [isAdmin, selectedId]);
+
   const filteredEntries = useMemo(
     () =>
       sortTranscriptionsByRecordingDate(
@@ -1039,6 +1338,14 @@ export default function TranscriptionsPage() {
   const knownSpeakerNames = useMemo(
     () => collectKnownSpeakerNames(entries, diarizedTurns),
     [entries, diarizedTurns],
+  );
+
+  const pendingSamplesForSelectedTranscript = useMemo(
+    () =>
+      (speakerDirectory?.pending_samples ?? []).filter(
+        (sample) => sample.transcription_entry_id === selectedId,
+      ),
+    [selectedId, speakerDirectory],
   );
 
   const processedCount = entries.filter((entry) => entry.is_done).length;
@@ -1124,6 +1431,51 @@ export default function TranscriptionsPage() {
       setAudioLoading(false);
       setAudioPendingTurnKey(turnKey);
     }
+  };
+
+  const handleConfirmSpeaker = (turn: DiarizedTranscriptTurn) => {
+    const sample = pendingSamplesForSelectedTranscript.find((candidate) =>
+      turnMatchesSpeakerSample(turn, candidate),
+    );
+    if (!sample) return;
+    setConfirmingSpeakerSample(sample);
+    setConfirmProfileId(sample.candidate_profile_id ?? "");
+    setConfirmNewName("");
+    setExcludedSegmentIds([]);
+    setConfirmError(null);
+  };
+
+  const handleConfirmSpeakerSubmit = () => {
+    if (!confirmingSpeakerSample || confirmPending) return;
+    const newName = confirmNewName.trim();
+    if (!newName && !confirmProfileId) {
+      setConfirmError(
+        "Choose an existing profile or enter a new speaker name.",
+      );
+      return;
+    }
+    setConfirmPending(true);
+    setConfirmError(null);
+    void confirmSpeakerSample(
+      confirmingSpeakerSample.id,
+      newName
+        ? { new_name: newName, excluded_segment_ids: excludedSegmentIds }
+        : {
+            profile_id: confirmProfileId,
+            excluded_segment_ids: excludedSegmentIds,
+          },
+    )
+      .then(() => fetchSpeakerDirectory())
+      .then((directory) => {
+        setSpeakerDirectory(directory);
+        setConfirmingSpeakerSample(null);
+      })
+      .catch((cause: unknown) => {
+        setConfirmError(
+          cause instanceof Error ? cause.message : "Unable to confirm speaker.",
+        );
+      })
+      .finally(() => setConfirmPending(false));
   };
 
   const handleRenameSubmit = () => {
@@ -1325,6 +1677,119 @@ export default function TranscriptionsPage() {
             </div>
           ) : null}
         </section>
+
+        <Dialog
+          open={confirmingSpeakerSample !== null}
+          onOpenChange={(open) => {
+            if (!open && !confirmPending) setConfirmingSpeakerSample(null);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirm speaker example</DialogTitle>
+              <DialogDescription>
+                Confirming this diarized speaker adds its clean speech to the
+                selected profile. Automatic matches never train a profile on
+                their own.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-3">
+              <select
+                aria-label="Confirm speaker profile"
+                value={confirmProfileId}
+                onChange={(event) => setConfirmProfileId(event.target.value)}
+                disabled={confirmPending}
+                className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+              >
+                <option value="">Choose profile…</option>
+                {(speakerDirectory?.profiles ?? []).map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.display_name}
+                  </option>
+                ))}
+              </select>
+              <Input
+                aria-label="Confirm new speaker name"
+                value={confirmNewName}
+                onChange={(event) => setConfirmNewName(event.target.value)}
+                placeholder="Or create a new speaker"
+                disabled={confirmPending}
+              />
+              {confirmingSpeakerSample?.segment_evidence.length ? (
+                <div className="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-slate-200 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Included turns
+                  </p>
+                  {confirmingSpeakerSample.segment_evidence.map((segment) => {
+                    const excluded = excludedSegmentIds.includes(segment.id);
+                    return (
+                      <label
+                        key={segment.id}
+                        className="flex items-start gap-2 rounded-md bg-slate-50 p-2 text-xs text-slate-700"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!excluded}
+                          disabled={confirmPending}
+                          onChange={() =>
+                            setExcludedSegmentIds((current) =>
+                              excluded
+                                ? current.filter((id) => id !== segment.id)
+                                : [...current, segment.id],
+                            )
+                          }
+                        />
+                        <span className="min-w-0 flex-1">
+                          {segment.text || "Untitled speech segment"}
+                        </span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            handlePlayTurn({
+                              speakerLabel:
+                                confirmingSpeakerSample.speaker_label ||
+                                "Speaker",
+                              rawSpeakerLabel:
+                                confirmingSpeakerSample.speaker_label || null,
+                              text: segment.text || "",
+                              start: segment.start ?? null,
+                              end: segment.end ?? null,
+                            })
+                          }
+                        >
+                          <Play className="h-3 w-3" /> Play
+                        </Button>
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : null}
+              {confirmError ? (
+                <p className="text-sm text-red-600">{confirmError}</p>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setConfirmingSpeakerSample(null)}
+                disabled={confirmPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleConfirmSpeakerSubmit}
+                disabled={confirmPending}
+              >
+                <Check className="h-4 w-4" />
+                {confirmPending ? "Confirming…" : "Confirm example"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog
           open={reprocessDialogOpen}
@@ -1766,6 +2231,10 @@ export default function TranscriptionsPage() {
                             onEditCancel={handleRenameCancel}
                             onEditSubmit={handleRenameSubmit}
                             onPlayTurn={handlePlayTurn}
+                            pendingSpeakerSamples={
+                              pendingSamplesForSelectedTranscript
+                            }
+                            onConfirmSpeaker={handleConfirmSpeaker}
                           />
                         </div>
                       ) : detail?.transcript_text_content ? (

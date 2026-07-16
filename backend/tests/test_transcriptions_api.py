@@ -111,7 +111,7 @@ async def test_list_transcriptions_reads_processed_entries(
 
 
 @pytest.mark.asyncio
-async def test_list_transcriptions_includes_diarized_speaker_preview(
+async def test_list_transcriptions_skips_diarized_speaker_preview_for_fast_loading(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -144,13 +144,8 @@ async def test_list_transcriptions_includes_diarized_speaker_preview(
     payload = response.json()
     assert len(payload) == 1
     assert payload[0]["id"] == "meet"
-    assert payload[0]["diarized_speaker_count"] == 5
-    assert payload[0]["diarized_speaker_preview"] == [
-        "SPEAKER_00",
-        "SPEAKER_01",
-        "SPEAKER_02",
-        "SPEAKER_03",
-    ]
+    assert payload[0]["diarized_speaker_count"] is None
+    assert payload[0]["diarized_speaker_preview"] == []
 
 
 @pytest.mark.asyncio
@@ -297,7 +292,9 @@ async def test_get_transcription_includes_calendar_match_metadata(
 async def test_list_transcriptions_reports_missing_workspace_mount(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", "/tmp/definitely-missing-openclaw")
+    monkeypatch.setattr(
+        settings, "openclaw_shared_workspace_root", "/tmp/definitely-missing-openclaw"
+    )
     app = _build_test_app(SimpleNamespace())
 
     async with AsyncClient(
@@ -644,7 +641,9 @@ async def test_sync_transcriptions_requires_gateway(
     ctx = SimpleNamespace(organization=SimpleNamespace(id="org-123"))
     app = _build_test_app(ctx)
 
-    async def _fake_latest_gateway_for_org(session: object, organization_id: object) -> object | None:
+    async def _fake_latest_gateway_for_org(
+        session: object, organization_id: object
+    ) -> object | None:
         _ = (session, organization_id)
         return None
 
@@ -669,7 +668,9 @@ async def test_reprocess_transcriptions_metadata_requires_gateway(
     ctx = SimpleNamespace(organization=SimpleNamespace(id="org-123"))
     app = _build_test_app(ctx)
 
-    async def _fake_latest_gateway_for_org(session: object, organization_id: object) -> object | None:
+    async def _fake_latest_gateway_for_org(
+        session: object, organization_id: object
+    ) -> object | None:
         _ = (session, organization_id)
         return None
 
@@ -736,7 +737,9 @@ async def test_rename_transcription_speaker_enrolls_and_reannotates(
 
     monkeypatch.setattr("app.services.transcriptions.subprocess.run", _fake_run)
     monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
-    monkeypatch.setattr(settings, "openclaw_transcriptions_speaker_registry_root", str(registry_root))
+    monkeypatch.setattr(
+        settings, "openclaw_transcriptions_speaker_registry_root", str(registry_root)
+    )
     app = _build_test_app(SimpleNamespace())
 
     async with AsyncClient(
@@ -775,7 +778,7 @@ async def test_rename_transcription_speaker_applies_name_to_selected_label_when_
         '{"segments":['
         '{"speaker":"SPEAKER_00","start":0,"end":1,"text":"hello"},'
         '{"speaker":"SPEAKER_01","start":1,"end":2,"text":"back"}'
-        ']}',
+        "]}",
     )
     _write(processed / "transcript.json", (processed / "meeting-missed.json").read_text())
     _write(processed / "transcript.txt", "[SPEAKER_00] hello\n[SPEAKER_01] back")
@@ -789,12 +792,10 @@ async def test_rename_transcription_speaker_applies_name_to_selected_label_when_
                 '{"segments":['
                 '{"speaker":"SPEAKER_00","start":0,"end":1,"text":"hello"},'
                 '{"speaker":"SPEAKER_01","start":1,"end":2,"text":"back"}'
-                ']}',
+                "]}",
                 encoding="utf-8",
             )
-            output_text.write_text(
-                "[SPEAKER_00] hello\n[SPEAKER_01] back", encoding="utf-8"
-            )
+            output_text.write_text("[SPEAKER_00] hello\n[SPEAKER_01] back", encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
 
     monkeypatch.setattr("app.services.transcriptions.subprocess.run", _fake_run)
@@ -885,7 +886,9 @@ async def test_rename_transcription_speaker_prefers_workspace_venv_python(
     _write(root / "speaker_identity.py", "#!/usr/bin/env python3\n")
     _write(root / "meeting-venv.m4a", "audio")
     _write(venv_python, "#!/usr/bin/env python3\n")
-    _write(processed / "meeting-venv.json", '{"segments":[{"speaker":"SPEAKER_00","text":"hello"}]}')
+    _write(
+        processed / "meeting-venv.json", '{"segments":[{"speaker":"SPEAKER_00","text":"hello"}]}'
+    )
     _write(processed / "transcript.json", '{"segments":[{"speaker":"SPEAKER_00","text":"hello"}]}')
     _write(processed / "transcript.txt", "[SPEAKER_00] hello")
 

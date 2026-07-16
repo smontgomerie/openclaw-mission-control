@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import importlib.util
 import json
 import math
 import shutil
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -47,6 +50,42 @@ def normalize_embedding(values: list[float]) -> list[float]:
 def embedding_fingerprint(entry_id: str, speaker_label: str, encoder: str) -> str:
     material = f"{entry_id}\0{speaker_label}\0{encoder}".encode()
     return hashlib.sha256(material).hexdigest()
+
+
+def _evidence_offset(item: dict[str, object], key: str) -> float:
+    value = item.get(key)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    if isinstance(value, str):
+        return float(value)
+    return 0.0
+
+
+def _encode_segment_evidence(
+    registry_base: Path,
+    audio_path: str,
+    encoder_name: str,
+    evidence: list[dict[str, object]],
+) -> list[float]:
+    helper_path = registry_base / "speaker_identity.py"
+    spec = importlib.util.spec_from_file_location("openclaw_speaker_identity_runtime", helper_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load speaker helper: {helper_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    registry = module.SpeakerRegistry(registry_base)
+    encoder = module.SpeakerEncoder(registry, encoder=encoder_name)
+    segments = [
+        {
+            "start": item.get("start"),
+            "end": item.get("end"),
+            "text": item.get("text", ""),
+        }
+        for item in evidence
+    ]
+    embedding = encoder.encode_segments(Path(audio_path), segments)
+    return [float(value) for value in embedding.tolist()]
 
 
 class SpeakerLearningService:
@@ -143,6 +182,8 @@ class SpeakerLearningService:
         encoder: str = "ecapa",
         speech_duration_seconds: float | None = None,
         segment_count: int | None = None,
+        segment_evidence: list[dict[str, object]] | None = None,
+        source_type: str = "manual_confirmation",
         reviewed_by_user_id: UUID | None = None,
     ) -> SpeakerProfile:
         if (
@@ -181,8 +222,9 @@ class SpeakerLearningService:
                 encoder=encoder,
                 speech_duration_seconds=speech_duration_seconds,
                 segment_count=segment_count,
+                segment_evidence=segment_evidence or [],
                 status="confirmed",
-                source_type="manual_confirmation",
+                source_type=source_type,
                 reviewed_by_user_id=reviewed_by_user_id,
                 reviewed_at=now,
             )
@@ -191,6 +233,8 @@ class SpeakerLearningService:
             sample.candidate_profile_id = None
             sample.status = "confirmed"
             sample.embedding = normalize_embedding(embedding)
+            sample.segment_evidence = segment_evidence or sample.segment_evidence
+            sample.source_type = source_type
             sample.reviewed_by_user_id = reviewed_by_user_id
             sample.reviewed_at = now
             sample.updated_at = now
@@ -214,6 +258,9 @@ class SpeakerLearningService:
         encoder: str,
         speech_duration_seconds: float | None,
         segment_count: int | None,
+        clip_start_seconds: float | None = None,
+        clip_end_seconds: float | None = None,
+        segment_evidence: list[dict[str, object]] | None = None,
     ) -> SpeakerVoiceSample:
         fingerprint = embedding_fingerprint(entry_id, speaker_label, encoder)
         existing = await SpeakerVoiceSample.objects.filter_by(
@@ -246,6 +293,9 @@ class SpeakerLearningService:
             encoder=encoder,
             speech_duration_seconds=speech_duration_seconds,
             segment_count=segment_count,
+            clip_start_seconds=clip_start_seconds,
+            clip_end_seconds=clip_end_seconds,
+            segment_evidence=segment_evidence or [],
             similarity=similarity,
             second_similarity=second_similarity,
         )
@@ -260,6 +310,7 @@ class SpeakerLearningService:
         profile_id: UUID | None,
         new_name: str | None,
         reviewed_by_user_id: UUID | None,
+        excluded_segment_ids: list[str] | None = None,
     ) -> SpeakerProfile:
         sample = await self.require_sample(sample_id)
         previous_profile_id = sample.profile_id
@@ -273,6 +324,44 @@ class SpeakerLearningService:
             if profile_id
             else await self.find_or_create_profile(new_name or "", encoder=sample.encoder)
         )
+        excluded = set(excluded_segment_ids or [])
+        if excluded:
+            selected = [
+                item
+                for item in sample.segment_evidence
+                if str(item.get("id") or "") not in excluded
+            ]
+            duration = sum(
+                max(0.0, _evidence_offset(item, "end") - _evidence_offset(item, "start"))
+                for item in selected
+            )
+            if duration < MIN_CONFIRMED_SPEECH_SECONDS:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="At least three seconds of included speech are required.",
+                )
+            sample.embedding = normalize_embedding(
+                await asyncio.to_thread(
+                    _encode_segment_evidence,
+                    self.registry_base,
+                    sample.source_audio_path or "",
+                    sample.encoder,
+                    selected,
+                )
+            )
+            sample.segment_evidence = selected
+            sample.segment_count = len(selected)
+            sample.speech_duration_seconds = duration
+            starts = [
+                _evidence_offset(item, "start")
+                for item in selected
+                if item.get("start") is not None
+            ]
+            ends = [
+                _evidence_offset(item, "end") for item in selected if item.get("end") is not None
+            ]
+            sample.clip_start_seconds = min(starts) if starts else None
+            sample.clip_end_seconds = max(ends) if ends else None
         if (
             sample.speech_duration_seconds is not None
             and sample.speech_duration_seconds < MIN_CONFIRMED_SPEECH_SECONDS
@@ -541,6 +630,9 @@ class SpeakerLearningService:
                     encoder=encoder,
                     speech_duration_seconds=observation.get("speech_duration_seconds"),
                     segment_count=observation.get("segment_count"),
+                    clip_start_seconds=observation.get("clip_start_seconds"),
+                    clip_end_seconds=observation.get("clip_end_seconds"),
+                    segment_evidence=observation.get("segment_evidence"),
                 )
                 if before is None:
                     imported += 1

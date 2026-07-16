@@ -189,6 +189,10 @@ transcriptions-speaker-tools-sync: ## Install the speaker observation extractor 
 	install -d "$(OPENCLAW_SHARED_WORKSPACE_PATH)/transcriptions"
 	install -m 0755 scripts/openclaw-transcriptions/speaker_observations.py \
 		"$(OPENCLAW_SHARED_WORKSPACE_PATH)/transcriptions/speaker_observations.py"
+	install -m 0755 scripts/openclaw-transcriptions/apply_speaker_annotations.py \
+		"$(OPENCLAW_SHARED_WORKSPACE_PATH)/transcriptions/apply_speaker_annotations.py"
+	install -m 0755 scripts/openclaw-transcriptions/install_speaker_hooks.py "$(OPENCLAW_SHARED_WORKSPACE_PATH)/transcriptions/install_speaker_hooks.py"
+	python3 "$(OPENCLAW_SHARED_WORKSPACE_PATH)/transcriptions/install_speaker_hooks.py" --transcriptions-root "$(OPENCLAW_SHARED_WORKSPACE_PATH)/transcriptions"
 
 .PHONY: docker-backend-base
 docker-backend-base: ## Ensure the shared OpenClaw backend base image exists locally

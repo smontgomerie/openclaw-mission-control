@@ -72,13 +72,44 @@ export type SpeakerVoiceSample = {
   encoder: string;
   speech_duration_seconds?: number | null;
   segment_count?: number | null;
+  segment_evidence: Array<{
+    id: string;
+    start?: number | null;
+    end?: number | null;
+    text?: string;
+  }>;
   similarity?: number | null;
+  clip_start_seconds?: number | null;
+  clip_end_seconds?: number | null;
   second_similarity?: number | null;
   status: string;
   source_type: string;
   represented_sample_count: number;
   created_at: string;
   updated_at: string;
+};
+
+export type SpeakerBackfillPreview = {
+  snapshot_hash: string;
+  recording_count: number;
+  transcript_count: number;
+  annotated_recording_count: number;
+  unannotated_recording_count: number;
+  speaker_names: Record<string, number>;
+  tentative_annotation_count: number;
+  skipped: Array<{ entry_id: string; reason: string }>;
+};
+
+export type SpeakerBackfillRun = {
+  id: string;
+  snapshot_hash: string;
+  status: string;
+  total_recordings: number;
+  processed_recordings: number;
+  confirmed_samples: number;
+  pending_samples: number;
+  skipped_recordings: number;
+  errors: Array<Record<string, unknown>>;
 };
 
 export type SpeakerDirectory = {
@@ -157,6 +188,34 @@ export async function fetchSpeakerDirectory(): Promise<SpeakerDirectory> {
   return response.data;
 }
 
+export async function previewSpeakerAnnotationImport(): Promise<SpeakerBackfillPreview> {
+  const response = await customFetch<{ data: SpeakerBackfillPreview }>(
+    "/api/v1/transcriptions/speakers/annotation-import/preview",
+    { method: "GET" },
+  );
+  return response.data;
+}
+
+export async function startSpeakerAnnotationImport(
+  snapshotHash: string,
+): Promise<SpeakerBackfillRun> {
+  const response = await customFetch<{ data: SpeakerBackfillRun }>(
+    "/api/v1/transcriptions/speakers/annotation-imports",
+    { method: "POST", body: JSON.stringify({ snapshot_hash: snapshotHash }) },
+  );
+  return response.data;
+}
+
+export async function fetchSpeakerAnnotationImport(
+  runId: string,
+): Promise<SpeakerBackfillRun> {
+  const response = await customFetch<{ data: SpeakerBackfillRun }>(
+    `/api/v1/transcriptions/speakers/annotation-imports/${encodeURIComponent(runId)}`,
+    { method: "GET" },
+  );
+  return response.data;
+}
+
 export async function importLegacySpeakerRegistry(): Promise<SpeakerDirectory> {
   const response = await customFetch<{ data: SpeakerDirectory }>(
     "/api/v1/transcriptions/speakers/import-legacy",
@@ -167,7 +226,11 @@ export async function importLegacySpeakerRegistry(): Promise<SpeakerDirectory> {
 
 export async function confirmSpeakerSample(
   sampleId: string,
-  payload: { profile_id?: string; new_name?: string },
+  payload: {
+    profile_id?: string;
+    new_name?: string;
+    excluded_segment_ids?: string[];
+  },
 ): Promise<SpeakerProfile> {
   const response = await customFetch<{ data: SpeakerProfile }>(
     `/api/v1/transcriptions/speakers/samples/${encodeURIComponent(sampleId)}/confirm`,

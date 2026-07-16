@@ -4,12 +4,23 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
+
+
+def segment_offset_seconds(segment: dict[str, Any], key: str) -> float | None:
+    """Read a valid diarization offset without making malformed turns fatal."""
+    value = segment.get(key)
+    try:
+        offset = float(value)
+    except (TypeError, ValueError):
+        return None
+    return offset if offset >= 0 else None
 
 
 def load_identity_helper(path: Path) -> ModuleType:
@@ -30,6 +41,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", required=True)
     parser.add_argument("--registry-dir", required=True)
     parser.add_argument("--encoder", default="ecapa")
+    parser.add_argument("--trust-speaker-names", action="store_true")
     return parser.parse_args()
 
 
@@ -44,35 +56,73 @@ def main() -> int:
     if not isinstance(segments, list):
         raise ValueError("Transcript does not contain diarized segments")
 
-    grouped: dict[str, list[dict[str, Any]]] = {}
+    grouped: dict[tuple[str, str | None], list[dict[str, Any]]] = {}
     for segment in segments:
         if not isinstance(segment, dict):
             continue
         label = str(segment.get("speaker") or "").strip()
-        if label:
-            grouped.setdefault(label, []).append(segment)
+        confirmed_name = (
+            str(segment.get("speaker_name") or "").strip()
+            if args.trust_speaker_names
+            else ""
+        )
+        key = (
+            (f"name:{confirmed_name.casefold()}", confirmed_name)
+            if confirmed_name
+            else (label, None)
+        )
+        if key[0]:
+            grouped.setdefault(key, []).append(segment)
 
     registry = helper.SpeakerRegistry(Path(args.registry_dir).expanduser().resolve())
     encoder = helper.SpeakerEncoder(registry, encoder=args.encoder)
     observations: list[dict[str, object]] = []
-    for label, speaker_segments in grouped.items():
+    for (label, confirmed_name), speaker_segments in grouped.items():
         duration = helper.total_segment_duration(speaker_segments)
+        starts = [
+            offset
+            for segment in speaker_segments
+            if (offset := segment_offset_seconds(segment, "start")) is not None
+        ]
+        ends = [
+            offset
+            for segment in speaker_segments
+            if (offset := segment_offset_seconds(segment, "end")) is not None
+        ]
         try:
             embedding = encoder.encode_segments(audio_path, speaker_segments)
         except Exception as exc:
             print(f"[skip] {label}: {exc}", file=sys.stderr)
             continue
+        evidence = []
+        for segment in speaker_segments:
+            start = segment_offset_seconds(segment, "start")
+            end = segment_offset_seconds(segment, "end")
+            text = str(segment.get("text") or "").strip()
+            material = f"{start}\0{end}\0{text}".encode()
+            evidence.append(
+                {
+                    "id": hashlib.sha256(material).hexdigest(),
+                    "start": start,
+                    "end": end,
+                    "text": text,
+                }
+            )
         observations.append(
             {
                 "speaker_label": label,
                 "embedding": [round(float(value), 8) for value in embedding.tolist()],
                 "speech_duration_seconds": round(float(duration), 3),
                 "segment_count": len(speaker_segments),
+                "clip_start_seconds": round(min(starts), 3) if starts else None,
+                "clip_end_seconds": round(max(ends), 3) if ends else None,
+                "segment_evidence": evidence,
+                "confirmed_name": confirmed_name,
             }
         )
 
     payload = {
-        "version": 1,
+        "version": 2,
         "entry_id": transcript_path.parent.name,
         "audio_path": str(audio_path),
         "encoder": args.encoder,

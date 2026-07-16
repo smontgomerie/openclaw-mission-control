@@ -66,7 +66,9 @@ async def test_confirmed_embeddings_accumulate_and_export(speaker_service) -> No
 
 
 @pytest.mark.asyncio
-async def test_duplicate_transcript_label_does_not_add_evidence(speaker_service) -> None:
+async def test_duplicate_transcript_label_does_not_add_evidence(
+    speaker_service,
+) -> None:
     service, _session = speaker_service
     for _ in range(2):
         profile = await service.add_confirmed_embedding(
@@ -82,7 +84,9 @@ async def test_duplicate_transcript_label_does_not_add_evidence(speaker_service)
 
 
 @pytest.mark.asyncio
-async def test_pending_observation_only_trains_after_confirmation(speaker_service) -> None:
+async def test_pending_observation_only_trains_after_confirmation(
+    speaker_service,
+) -> None:
     service, _session = speaker_service
     sample = await service.add_pending_observation(
         entry_id="meeting-1",
@@ -92,7 +96,11 @@ async def test_pending_observation_only_trains_after_confirmation(speaker_servic
         encoder="ecapa",
         speech_duration_seconds=6.0,
         segment_count=2,
+        clip_start_seconds=1.25,
+        clip_end_seconds=8.5,
     )
+    assert sample.clip_start_seconds == 1.25
+    assert sample.clip_end_seconds == 8.5
     assert await service.profiles() == []
 
     profile = await service.confirm_sample(
@@ -103,6 +111,44 @@ async def test_pending_observation_only_trains_after_confirmation(speaker_servic
     )
     assert profile.confirmed_sample_count == 1
     assert (await service.require_sample(sample.id)).status == "confirmed"
+
+
+@pytest.mark.asyncio
+async def test_confirmation_recomputes_after_segment_exclusion(
+    speaker_service, monkeypatch
+) -> None:
+    service, _session = speaker_service
+    sample = await service.add_pending_observation(
+        entry_id="meeting-exclusions",
+        speaker_label="SPEAKER_00",
+        source_audio_path="meeting.m4a",
+        embedding=[1.0, 0.0],
+        encoder="ecapa",
+        speech_duration_seconds=8.0,
+        segment_count=2,
+        segment_evidence=[
+            {"id": "keep", "start": 0.0, "end": 4.0, "text": "Keep"},
+            {"id": "drop", "start": 4.0, "end": 8.0, "text": "Drop"},
+        ],
+    )
+    monkeypatch.setattr(
+        "app.services.speaker_learning._encode_segment_evidence",
+        lambda *_args: [0.0, 1.0],
+    )
+
+    profile = await service.confirm_sample(
+        sample.id,
+        profile_id=None,
+        new_name="Scott",
+        reviewed_by_user_id=None,
+        excluded_segment_ids=["drop"],
+    )
+
+    stored = await service.require_sample(sample.id)
+    assert profile.confirmed_sample_count == 1
+    assert stored.embedding == [0.0, 1.0]
+    assert stored.segment_count == 1
+    assert [item["id"] for item in stored.segment_evidence] == ["keep"]
 
 
 @pytest.mark.asyncio
