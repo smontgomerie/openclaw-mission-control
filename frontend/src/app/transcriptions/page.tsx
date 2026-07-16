@@ -309,6 +309,9 @@ function TranscriptTurns({
           startLabel && endLabel && endLabel !== startLabel
             ? `${startLabel} - ${endLabel}`
             : (startLabel ?? endLabel);
+        const pendingSpeakerSample = pendingSpeakerSamples.find((sample) =>
+          turnMatchesSpeakerSample(turn, sample),
+        );
 
         return (
           <div
@@ -386,16 +389,21 @@ function TranscriptTurns({
                   {timeRange}
                 </span>
               ) : null}
-              {pendingSpeakerSamples.some((sample) =>
-                turnMatchesSpeakerSample(turn, sample),
-              ) ? (
+              {pendingSpeakerSample ? (
                 <Button
                   type="button"
                   size="sm"
                   variant="secondary"
                   onClick={() => onConfirmSpeaker(turn)}
                 >
-                  <Check className="h-4 w-4" /> Confirm speaker
+                  <Check className="h-4 w-4" />
+                  {pendingSpeakerSample.candidate_name
+                    ? `Review: ${pendingSpeakerSample.candidate_name}${
+                        typeof pendingSpeakerSample.similarity === "number"
+                          ? ` (${Math.round(pendingSpeakerSample.similarity * 100)}%)`
+                          : ""
+                      }`
+                    : "Review speaker"}
                 </Button>
               ) : null}
               <Button
