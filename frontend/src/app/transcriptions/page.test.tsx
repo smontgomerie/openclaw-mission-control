@@ -429,6 +429,9 @@ describe("TranscriptionsPage", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Scott" })).toBeTruthy();
     });
+    await waitFor(() => {
+      expect(fetchSpeakerDirectoryMock.mock.calls.length).toBeGreaterThan(1);
+    });
     expect(screen.queryByRole("button", { name: "SPEAKER_00" })).toBeNull();
   });
 

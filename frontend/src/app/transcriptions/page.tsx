@@ -70,6 +70,8 @@ import { useOrganizationMembership } from "@/lib/use-organization-membership";
 import { cn } from "@/lib/utils";
 
 const TRANSCRIPTION_PAGE_SIZE = 100;
+const TRANSCRIPT_TURN_PAGE_SIZE = 250;
+const REVIEW_QUEUE_PAGE_SIZE = 50;
 
 function formatTimestamp(value: string | null | undefined): string {
   if (!value) return "Unknown";
@@ -292,6 +294,11 @@ function TranscriptTurns({
   pendingSpeakerSamples,
   onConfirmSpeaker,
 }: TranscriptTurnsProps) {
+  const [visibleTurnCount, setVisibleTurnCount] = useState(
+    TRANSCRIPT_TURN_PAGE_SIZE,
+  );
+
+  const visibleTurns = turns.slice(0, visibleTurnCount);
   return (
     <div className="space-y-3">
       {speakerNameSuggestions.length > 0 ? (
@@ -301,7 +308,7 @@ function TranscriptTurns({
           ))}
         </datalist>
       ) : null}
-      {turns.map((turn, index) => {
+      {visibleTurns.map((turn, index) => {
         const startLabel = formatTranscriptOffset(turn.start);
         const endLabel = formatTranscriptOffset(turn.end);
         const turnKey = getTurnPlaybackKey(turn);
@@ -324,6 +331,7 @@ function TranscriptTurns({
               turn.rawSpeakerLabel ? (
                 <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-2 py-1 shadow-sm">
                   <Input
+                    aria-label={`Rename speaker ${turn.speakerLabel}`}
                     value={editingValue}
                     onChange={(event) => onEditChange(event.target.value)}
                     onKeyDown={(event) => {
@@ -437,6 +445,22 @@ function TranscriptTurns({
           </div>
         );
       })}
+      {visibleTurnCount < turns.length ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={() =>
+            setVisibleTurnCount((current) =>
+              Math.min(current + TRANSCRIPT_TURN_PAGE_SIZE, turns.length),
+            )
+          }
+        >
+          Show{" "}
+          {Math.min(TRANSCRIPT_TURN_PAGE_SIZE, turns.length - visibleTurnCount)}{" "}
+          more turns ({turns.length - visibleTurnCount} remaining)
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -498,6 +522,7 @@ function SpeakerDirectoryPanel({
     string | null
   >(null);
   const [reviewStopAt, setReviewStopAt] = useState<number | null>(null);
+  const [reviewLimit, setReviewLimit] = useState(REVIEW_QUEUE_PAGE_SIZE);
   const reviewAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -703,6 +728,7 @@ function SpeakerDirectoryPanel({
 
   const profiles = directory?.profiles ?? [];
   const pending = directory?.pending_samples ?? [];
+  const visiblePending = pending.slice(0, reviewLimit);
 
   return (
     <section className="overflow-hidden rounded-2xl border border-amber-200 bg-[linear-gradient(135deg,#fff7ed_0%,#ffffff_55%,#f0fdfa_100%)] shadow-sm">
@@ -967,7 +993,7 @@ function SpeakerDirectoryPanel({
             </div>
           ) : (
             <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
-              {pending.map((sample) => (
+              {visiblePending.map((sample) => (
                 <article
                   key={sample.id}
                   className="rounded-xl border border-amber-200 bg-white p-4"
@@ -1090,6 +1116,28 @@ function SpeakerDirectoryPanel({
                   </div>
                 </article>
               ))}
+              {visiblePending.length < pending.length ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() =>
+                    setReviewLimit((current) =>
+                      Math.min(
+                        current + REVIEW_QUEUE_PAGE_SIZE,
+                        pending.length,
+                      ),
+                    )
+                  }
+                >
+                  Show next{" "}
+                  {Math.min(
+                    REVIEW_QUEUE_PAGE_SIZE,
+                    pending.length - visiblePending.length,
+                  )}{" "}
+                  reviews ({pending.length - visiblePending.length} remaining)
+                </Button>
+              ) : null}
             </div>
           )}
         </div>
@@ -1508,6 +1556,9 @@ export default function TranscriptionsPage() {
             entry.id === updated.id ? { ...entry, ...updated } : entry,
           ),
         );
+        void fetchSpeakerDirectory()
+          .then(setSpeakerDirectory)
+          .catch(() => undefined);
         setEditingSpeakerLabel(null);
         setEditingTurnKey(null);
         setEditingSpeakerValue("");
@@ -2222,6 +2273,7 @@ export default function TranscriptionsPage() {
                             ) : null}
                           </div>
                           <TranscriptTurns
+                            key={selectedId}
                             turns={diarizedTurns}
                             editingTurnKey={editingTurnKey}
                             editingSpeakerLabel={editingSpeakerLabel}
