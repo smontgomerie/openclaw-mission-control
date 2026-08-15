@@ -22,6 +22,9 @@ export const listReviewsInputSchema = {
     position_key: z.string().trim().min(1).optional(),
     limit: z.number().int().positive().max(100).optional(),
 };
+export const undoRollInputSchema = {
+    event_id: z.string().uuid(),
+};
 export async function portfolioListPositions(config, input) {
     const authFetch = createAuthenticatedFetch(config);
     const response = await authFetch(`${config.baseUrl}/api/v1/portfolio/positions`, {
@@ -82,4 +85,9 @@ export async function portfolioSyncNow(config) {
         method: "POST",
     });
     return readApiResponse(response);
+}
+export async function portfolioUndoRoll(config, input) {
+    const authFetch = createAuthenticatedFetch(config);
+    const response = await authFetch(`${config.baseUrl}/api/v1/portfolio/roll-events/${encodeURIComponent(input.event_id)}/undo`, { method: "POST" });
+    await readApiResponse(response);
 }

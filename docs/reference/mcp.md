@@ -11,6 +11,7 @@ V1 focuses on portfolio workflows:
 - `portfolio_save_rationale`
 - `portfolio_list_reviews`
 - `portfolio_sync_now`
+- `portfolio_undo_roll` — dismiss an auto-detected option roll and remove the carried rationale on the new `position_key` (`POST /api/v1/portfolio/roll-events/{event_id}/undo`).
 
 These tools call the existing Mission Control HTTP API. They do not post to Discord, Telegram, or other channel targets.
 

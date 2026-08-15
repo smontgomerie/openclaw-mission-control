@@ -1,39 +1,89 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
-- `backend/`: FastAPI service. Main app code lives in `backend/app/` with API routes in `backend/app/api/`, data models in `backend/app/models/`, schemas in `backend/app/schemas/`, and service logic in `backend/app/services/`.
-- `backend/migrations/`: Alembic migrations (`backend/migrations/versions/` for generated revisions).
-- `backend/tests/`: pytest suite (`test_*.py` naming).
+## Project Structure and Module Organization
+
+- `backend/`: FastAPI service with routes in `backend/app/api/`, models in `backend/app/models/`, schemas in `backend/app/schemas/`, and service logic in `backend/app/services/`.
+- `backend/migrations/`: Alembic migrations, with generated revisions in `backend/migrations/versions/`.
+- `backend/tests/`: pytest suite using `test_*.py` naming.
 - `backend/templates/`: backend-shipped templates used by gateway flows.
-- `frontend/`: Next.js app. Routes under `frontend/src/app/`, shared components under `frontend/src/components/`, utilities under `frontend/src/lib/`.
-- `frontend/src/api/generated/`: generated API client; regenerate instead of editing by hand.
-- `docs/`: contributor and operations docs (start at `docs/README.md`).
+- `frontend/`: Next.js app with routes under `frontend/src/app/`, shared components in `frontend/src/components/`, and utilities in `frontend/src/lib/`.
+- `frontend/src/api/generated/`: generated API client that must be regenerated instead of edited by hand.
+- `frontend/cypress/`: Cypress end-to-end tests and shared support code.
+- `docs/`: contributor and operations documentation, starting at `docs/README.md`.
 
 ## Build, Test, and Development Commands
-- `make setup`: install/sync backend and frontend dependencies.
-- `make check`: closest CI parity run (lint, typecheck, tests/coverage, frontend build).
-- `docker compose -f compose.yml --env-file .env up -d --build`: run full stack.
-- Fast local loop:
-  - `docker compose -f compose.yml --env-file .env up -d db`
-  - `cd backend && uv run uvicorn app.main:app --reload --port 8000`
-  - `cd frontend && npm run dev`
-- `make api-gen`: regenerate frontend API client (backend must be on `127.0.0.1:8000`).
 
-## Coding Style & Naming Conventions
-- Python: Black + isort + flake8 + strict mypy. Max line length is 100. Use `snake_case`.
-- TypeScript/React: ESLint + Prettier. Components use `PascalCase`; variables/functions use `camelCase`.
-- For intentionally unused destructured TS variables, prefix with `_` to satisfy lint config.
+- `make setup`: install and synchronize backend and frontend dependencies.
+- `make check`: closest CI-parity run for linting, type checking, tests and coverage, and the frontend build.
+- `./scripts/ensure_openclaw_backend_base.sh`: ensure the shared OpenClaw WhisperX/PyTorch base image exists before Docker builds.
+- `docker compose -f compose.yml --env-file .env up -d --build`: build and run the full stack.
+- `make api-gen`: regenerate the frontend API client after starting the backend on `127.0.0.1:8000`.
 
-## Testing Guidelines
-- Backend: pytest via `make backend-test`; coverage policy via `make backend-coverage` (writes `backend/coverage.xml` and `backend/coverage.json`).
-- Frontend: vitest + Testing Library via `make frontend-test` (coverage in `frontend/coverage/`).
+For GPU backend runtime, use `env OPENCLAW_TORCH_BACKEND=cu128 docker compose -f compose.yml -f compose.gpu.yml --env-file .env up -d --build backend webhook-worker` on a host with NVIDIA Container Toolkit.
+
+When restarting, recreating, or rebuilding GPU-capable Mission Control or adjacent OpenClaw containers on a CUDA host, never use plain `docker compose up` alone.
+
+Keep `OPENCLAW_TORCH_BACKEND=cu128` set for builds that touch the backend image, and include `-f compose.gpu.yml` for Mission Control GPU services.
+
+For GPU container recreation without a rebuild, prefer `docker compose -f compose.yml -f compose.gpu.yml --env-file .env up -d --force-recreate backend webhook-worker`.
+
+After a GPU-targeted recreate or rebuild, verify that CUDA is available in the live container and that `/dev/nvidia0` can be opened before treating the service as GPU-enabled.
+
+Keep the backend image runtime identity aligned with the live containers, currently `OPENCLAW_APP_UID=1000` and `OPENCLAW_APP_GID=1000`.
+
+Docker Compose writes build metadata under `/tmp`.
+
+If a build fails with `no space left on device`, clear unused Docker build cache before retrying.
+
+For a fast local loop, start the database with Docker, then run `uv run uvicorn app.main:app --reload --port 8000` from `backend/` and `npm run dev` from `frontend/`.
+
+## End-to-End Testing
+
+Read `docs/testing/README.md` before running or changing end-to-end tests.
+
+The Cypress suite lives in `frontend/cypress/` and runs with `cd frontend && npm run e2e`.
+
+The deployed Docker stack is available at `http://100.89.189.52:3100/`.
+
+After rebuilding or recreating Docker services, run the relevant Cypress checks against that deployed URL before considering frontend or user-facing work complete:
+
+```bash
+cd frontend
+CYPRESS_baseUrl=http://100.89.189.52:3100 npm run e2e
+```
+
+For a bug fix, begin by reproducing the reported behavior through an E2E path that closely matches the end-user experience.
+
+When testing the product E2E, inspect the interface closely and treat visible visual defects as work worth fixing, even when they are adjacent to the original change.
+
+## Engineering Standards
+
+- Never use the em dash character. Use a plain hyphen instead.
+- Never add an agent name as a commit-message co-author.
+- Never manually modify `CHANGELOG.md` files or files marked as auto-generated.
+- When writing or substantially editing a long Markdown file, put each complete sentence on its own physical line while preserving normal Markdown structure.
+- Prefer quality, simplicity, robustness, scalability, and long-term maintainability over minimizing development cost.
+- Resolve lint failures, test failures, and test flakiness you encounter, even when they are outside the immediate change.
 - Add or update tests whenever behavior changes.
 
-## Commit & Pull Request Guidelines
-- Follow Conventional Commits (seen in history), e.g. `feat: ...`, `fix: ...`, `docs: ...`, `test(core): ...`.
-- Keep PRs focused and based on latest `master`.
-- Include: what changed, why, test evidence (`make check` or targeted commands), linked issue, and screenshots/logs when UI or operator workflow changes.
+## Coding Style and Naming
 
-## Security & Configuration Tips
-- Never commit secrets. Copy from `.env.example` and keep real values in local `.env`.
-- Report vulnerabilities privately via GitHub security advisories, not public issues.
+- Python uses Black, isort, flake8, and strict mypy with a 100-character maximum line length and `snake_case` names.
+- TypeScript and React use ESLint and Prettier, with `PascalCase` components and `camelCase` variables and functions.
+- Prefix intentionally unused destructured TypeScript variables with `_`.
+
+## Commit, Pull Request, and Security Guidance
+
+- Use Conventional Commits such as `feat: ...`, `fix: ...`, `docs: ...`, or `test(core): ...`.
+- Keep pull requests focused and based on the latest `master`.
+- Include the change summary, rationale, test evidence, linked issue, and screenshots or logs when the user or operator workflow changes.
+- Never commit secrets. Copy `.env.example` to `.env` and keep real values only in the local `.env`.
+- Report vulnerabilities privately through GitHub security advisories, not public issues.
+
+## Kun's Opinions
+
+When a task would benefit from Kun's viewpoints, read `~/OPINIONS.md` if it is available before making the relevant decisions.
+
+## Voice Profile
+
+When talking or posting on Kun's behalf, read `~/VOICE.md` if it is available and follow that voice.

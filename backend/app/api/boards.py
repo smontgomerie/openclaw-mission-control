@@ -40,10 +40,10 @@ from app.services.activity_log import record_activity
 from app.services.board_group_snapshot import build_board_group_snapshot
 from app.services.board_lifecycle import delete_board as delete_board_service
 from app.services.board_snapshot import build_board_snapshot
+from app.services.openclaw.filesystem_memory import BoardFilesystemMemoryService
 from app.services.openclaw.gateway_dispatch import GatewayDispatchService
 from app.services.openclaw.gateway_rpc import GatewayConfig as GatewayClientConfig
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError
-from app.services.openclaw.filesystem_memory import BoardFilesystemMemoryService
 from app.services.organizations import OrganizationContext, board_access_filter
 
 if TYPE_CHECKING:

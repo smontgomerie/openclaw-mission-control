@@ -36,6 +36,10 @@ export const listReviewsInputSchema = {
   limit: z.number().int().positive().max(100).optional(),
 };
 
+export const undoRollInputSchema = {
+  event_id: z.string().uuid(),
+};
+
 export async function portfolioListPositions(
   config: MissionControlConfig,
   input: {
@@ -135,4 +139,16 @@ export async function portfolioSyncNow(config: MissionControlConfig): Promise<Po
     method: "POST",
   });
   return readApiResponse<PortfolioSyncResult>(response);
+}
+
+export async function portfolioUndoRoll(
+  config: MissionControlConfig,
+  input: { event_id: string },
+): Promise<void> {
+  const authFetch = createAuthenticatedFetch(config);
+  const response = await authFetch(
+    `${config.baseUrl}/api/v1/portfolio/roll-events/${encodeURIComponent(input.event_id)}/undo`,
+    { method: "POST" },
+  );
+  await readApiResponse<void>(response);
 }

@@ -94,6 +94,10 @@ Before startup:
 - Ensure `BASE_URL` matches the public backend origin if you are not using `http://localhost:8000`.
 - `NEXT_PUBLIC_API_URL=auto` (default) resolves to `http(s)://<current-host>:8000`.
   - Set an explicit URL when your API is behind a reverse proxy or non-default port.
+- Mission Control now reuses the shared OpenClaw WhisperX/PyTorch base image for backend builds.
+  - Local default: `./scripts/ensure_openclaw_backend_base.sh`
+  - GPU variant: `OPENCLAW_TORCH_BACKEND=cu128 ./scripts/ensure_openclaw_backend_base.sh`
+  - Published base image: set `OPENCLAW_BACKEND_BASE_REPOSITORY` in `.env` before building.
 
 ### 2. Start Mission Control
 
@@ -127,6 +131,7 @@ docker compose -f compose.yml --env-file .env up -d --build --force-recreate
 For a fully clean rebuild (no cached build layers):
 
 ```bash
+./scripts/ensure_openclaw_backend_base.sh
 docker compose -f compose.yml --env-file .env build --no-cache --pull
 docker compose -f compose.yml --env-file .env up -d --force-recreate
 ```

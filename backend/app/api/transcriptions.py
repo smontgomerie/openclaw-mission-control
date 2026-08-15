@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import FileResponse, Response
 from sqlmodel import col
 
 from app.api.deps import require_org_admin
@@ -15,12 +15,13 @@ from app.models.gateways import Gateway
 from app.schemas.transcriptions import (
     TranscriptionDetailRead,
     TranscriptionEntryRead,
-    TranscriptionSyncRead,
     TranscriptionSpeakerRenameRequest,
+    TranscriptionSyncRead,
 )
 from app.services.openclaw.error_messages import normalize_gateway_error_message
 from app.services.openclaw.gateway_resolver import gateway_client_config
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError, openclaw_call
+from app.services.speaker_learning import SpeakerLearningService
 from app.services.transcriptions import SharedTranscriptionsService
 
 if TYPE_CHECKING:
@@ -34,6 +35,7 @@ router = APIRouter(prefix="/transcriptions", tags=["transcriptions"])
 SESSION_DEP = Depends(get_session)
 ORG_ADMIN_DEP = Depends(require_org_admin)
 MANUAL_TRANSCRIPTION_SYNC_NAME = "manual-transcriptions-catchup"
+MANUAL_TRANSCRIPTION_REPROCESS_NAME = "manual-transcriptions-reprocess-metadata"
 MANUAL_TRANSCRIPTION_SYNC_TIMEOUT_SECONDS = 7200
 MANUAL_TRANSCRIPTION_MAX_FILES_PER_RUN = 1
 MANUAL_TRANSCRIPTION_MAX_CHUNKS_PER_RUN = 999
@@ -90,7 +92,17 @@ def _job_identifier(job: dict[str, Any]) -> str:
 
 def _job_score(job: dict[str, Any]) -> int:
     haystack_parts: list[str] = []
-    for key in ("id", "jobId", "job_id", "name", "label", "title", "description", "command", "schedule"):
+    for key in (
+        "id",
+        "jobId",
+        "job_id",
+        "name",
+        "label",
+        "title",
+        "description",
+        "command",
+        "schedule",
+    ):
         value = job.get(key)
         if isinstance(value, str):
             haystack_parts.append(value)
@@ -135,9 +147,47 @@ def _find_transcriptions_job_id(payload: object) -> str | None:
     return _job_identifier(best_job) or None
 
 
+def _manual_transcription_agent_message(*, command: str, success_hint: str) -> str:
+    return (
+        "Run exec with workdir /home/node/.openclaw/workspace and command "
+        f"{command} "
+        f"If the script outputs [NO_WORK], respond exactly NO_REPLY. {success_hint}"
+    )
+
+
 def _manual_transcription_sync_payload() -> dict[str, Any]:
+    command = (
+        "./process_transcriptions.sh. "
+        f"Set MAX_FILES_PER_RUN={MANUAL_TRANSCRIPTION_MAX_FILES_PER_RUN}, "
+        f"MAX_CHUNKS_PER_RUN={MANUAL_TRANSCRIPTION_MAX_CHUNKS_PER_RUN}, and "
+        f"CHUNK_THRESHOLD_SECONDS={MANUAL_TRANSCRIPTION_CHUNK_THRESHOLD_SECONDS} "
+        "in the command environment."
+    )
+    success = (
+        "Otherwise send a concise summary of what file was advanced and whether "
+        "more backlog remains."
+    )
+    return _build_manual_cron_payload(
+        job_name_prefix=MANUAL_TRANSCRIPTION_SYNC_NAME,
+        agent_message=_manual_transcription_agent_message(command=command, success_hint=success),
+    )
+
+
+def _manual_transcription_reprocess_payload() -> dict[str, Any]:
+    command = "bash ./transcriptions/reprocess_metadata_all.sh."
+    success = (
+        "Otherwise send a concise summary: calendar backfill status, how many title.txt "
+        "files were written if reported, and whether speaker re-annotation finished."
+    )
+    return _build_manual_cron_payload(
+        job_name_prefix=MANUAL_TRANSCRIPTION_REPROCESS_NAME,
+        agent_message=_manual_transcription_agent_message(command=command, success_hint=success),
+    )
+
+
+def _build_manual_cron_payload(*, job_name_prefix: str, agent_message: str) -> dict[str, Any]:
     return {
-        "name": f"{MANUAL_TRANSCRIPTION_SYNC_NAME}-{int(datetime.now(tz=UTC).timestamp())}",
+        "name": f"{job_name_prefix}-{int(datetime.now(tz=UTC).timestamp())}",
         "enabled": True,
         "schedule": {
             "kind": "at",
@@ -152,21 +202,16 @@ def _manual_transcription_sync_payload() -> dict[str, Any]:
             "kind": "agentTurn",
             "thinking": "low",
             "timeoutSeconds": MANUAL_TRANSCRIPTION_SYNC_TIMEOUT_SECONDS,
-            "message": (
-                "Run exec with workdir /home/node/.openclaw/workspace and command "
-                "./process_transcriptions.sh. "
-                f"Set MAX_FILES_PER_RUN={MANUAL_TRANSCRIPTION_MAX_FILES_PER_RUN}, "
-                f"MAX_CHUNKS_PER_RUN={MANUAL_TRANSCRIPTION_MAX_CHUNKS_PER_RUN}, and "
-                f"CHUNK_THRESHOLD_SECONDS={MANUAL_TRANSCRIPTION_CHUNK_THRESHOLD_SECONDS} "
-                "in the command environment. If the script outputs [NO_WORK], respond exactly "
-                "NO_REPLY. Otherwise send a concise summary of what file was advanced and whether "
-                "more backlog remains."
-            ),
+            "message": agent_message,
         },
     }
 
 
-async def _enqueue_transcription_sync(gateway: Gateway) -> TranscriptionSyncRead:
+async def _enqueue_transcription_agent_job(
+    gateway: Gateway,
+    *,
+    cron_body: dict[str, Any],
+) -> TranscriptionSyncRead:
     config = gateway_client_config(gateway)
 
     try:
@@ -185,9 +230,9 @@ async def _enqueue_transcription_sync(gateway: Gateway) -> TranscriptionSyncRead
         )
 
     try:
-        manual_job_payload = await openclaw_call(
+        added_payload = await openclaw_call(
             "cron.add",
-            _manual_transcription_sync_payload(),
+            cron_body,
             config=config,
         )
     except OpenClawGatewayError as exc:
@@ -197,13 +242,13 @@ async def _enqueue_transcription_sync(gateway: Gateway) -> TranscriptionSyncRead
             detail=f"Transcriptions could not create a catch-up run: {detail}",
         ) from exc
 
-    if not isinstance(manual_job_payload, dict):
+    if not isinstance(added_payload, dict):
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Transcriptions returned an invalid gateway response.",
         )
 
-    manual_job_id = _job_identifier(manual_job_payload)
+    manual_job_id = _job_identifier(added_payload)
     if not manual_job_id:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -243,18 +288,20 @@ async def _enqueue_transcription_sync(gateway: Gateway) -> TranscriptionSyncRead
 
 @router.get("", response_model=list[TranscriptionEntryRead])
 async def list_transcriptions(
-    _ctx=ORG_ADMIN_DEP,
-    _session=SESSION_DEP,
+    offset: int = Query(default=0, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=100),
+    _ctx: OrganizationContext = ORG_ADMIN_DEP,
+    _session: AsyncSession = SESSION_DEP,
 ) -> list[TranscriptionEntryRead]:
     """List processed transcript entries from the shared workspace."""
-    return SharedTranscriptionsService().list_entries()
+    return SharedTranscriptionsService().list_entries(offset=offset, limit=limit)
 
 
 @router.get("/{entry_id}", response_model=TranscriptionDetailRead)
 async def get_transcription(
     entry_id: str,
-    _ctx=ORG_ADMIN_DEP,
-    _session=SESSION_DEP,
+    _ctx: OrganizationContext = ORG_ADMIN_DEP,
+    _session: AsyncSession = SESSION_DEP,
 ) -> TranscriptionDetailRead:
     """Get one processed transcript entry and its key artifact contents."""
     return SharedTranscriptionsService().get_entry(entry_id)
@@ -263,11 +310,21 @@ async def get_transcription(
 @router.get("/{entry_id}/audio", response_class=FileResponse)
 async def get_transcription_audio(
     entry_id: str,
-    _ctx=ORG_ADMIN_DEP,
-    _session=SESSION_DEP,
+    _ctx: OrganizationContext = ORG_ADMIN_DEP,
+    _session: AsyncSession = SESSION_DEP,
 ) -> FileResponse:
     """Get the source audio file for one transcription entry."""
     return SharedTranscriptionsService().get_source_audio_response(entry_id)
+
+
+@router.get("/{entry_id}/export.docx")
+async def export_transcription_docx(
+    entry_id: str,
+    _ctx: OrganizationContext = ORG_ADMIN_DEP,
+    _session: AsyncSession = SESSION_DEP,
+) -> Response:
+    """Export one diarized transcription entry as a DOCX document."""
+    return SharedTranscriptionsService().export_diarized_transcript_docx_response(entry_id)
 
 
 @router.post("/sync", response_model=TranscriptionSyncRead)
@@ -282,15 +339,52 @@ async def sync_transcriptions_now(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="An OpenClaw gateway is required before transcriptions can start.",
         )
-    return await _enqueue_transcription_sync(gateway)
+    return await _enqueue_transcription_agent_job(
+        gateway,
+        cron_body=_manual_transcription_sync_payload(),
+    )
+
+
+@router.post("/reprocess-metadata", response_model=TranscriptionSyncRead)
+async def reprocess_transcriptions_metadata(
+    ctx: OrganizationContext = ORG_ADMIN_DEP,
+    session: AsyncSession = SESSION_DEP,
+) -> TranscriptionSyncRead:
+    """Enqueue a gateway job to re-run calendar match, titles, and speaker annotation for all processed entries."""
+    gateway = await _latest_gateway_for_org(session, ctx.organization.id)
+    if gateway is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="An OpenClaw gateway is required before transcriptions can start.",
+        )
+    return await _enqueue_transcription_agent_job(
+        gateway,
+        cron_body=_manual_transcription_reprocess_payload(),
+    )
 
 
 @router.post("/{entry_id}/speakers/rename", response_model=TranscriptionDetailRead)
 async def rename_transcription_speaker(
     entry_id: str,
     payload: TranscriptionSpeakerRenameRequest,
-    _ctx=ORG_ADMIN_DEP,
-    _session=SESSION_DEP,
+    ctx: OrganizationContext = ORG_ADMIN_DEP,
+    session: AsyncSession = SESSION_DEP,
 ) -> TranscriptionDetailRead:
     """Enroll a diarized speaker label under a new name and refresh transcript artifacts."""
-    return SharedTranscriptionsService().rename_speaker(entry_id, payload)
+    transcription_service = SharedTranscriptionsService()
+    organization = getattr(ctx, "organization", None)
+    organization_id = getattr(organization, "id", None)
+    learning_service = (
+        SpeakerLearningService(
+            session,
+            organization_id,
+            transcription_service._speaker_registry_root(),
+        )
+        if organization_id is not None and hasattr(session, "exec")
+        else None
+    )
+    return await transcription_service.rename_speaker(
+        entry_id,
+        payload,
+        learning_service=learning_service,
+    )

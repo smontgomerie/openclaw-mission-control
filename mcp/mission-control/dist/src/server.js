@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { defaultConfig } from "./config.js";
 import { MissionControlApiError } from "./http.js";
-import { getPositionInputSchema, listPositionsInputSchema, listReviewsInputSchema, portfolioGetPosition, portfolioListPositions, portfolioListReviews, portfolioSaveRationale, portfolioSyncNow, saveRationaleInputSchema, } from "./tools/portfolio.js";
+import { getPositionInputSchema, listPositionsInputSchema, listReviewsInputSchema, portfolioGetPosition, portfolioListPositions, portfolioListReviews, portfolioSaveRationale, portfolioSyncNow, portfolioUndoRoll, saveRationaleInputSchema, undoRollInputSchema, } from "./tools/portfolio.js";
 function formatResult(payload) {
     return {
         content: [
@@ -62,6 +62,15 @@ server.tool("portfolio_list_reviews", "List portfolio reviews, optionally narrow
 server.tool("portfolio_sync_now", "Trigger the Mission Control portfolio sync job immediately.", async () => {
     try {
         return formatResult(await portfolioSyncNow(config));
+    }
+    catch (error) {
+        formatError(error);
+    }
+});
+server.tool("portfolio_undo_roll", "Dismiss an auto-detected option roll and remove the carried rationale on the new position key.", undoRollInputSchema, async (input) => {
+    try {
+        await portfolioUndoRoll(config, input);
+        return formatResult({ ok: true });
     }
     catch (error) {
         formatError(error);

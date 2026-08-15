@@ -17,6 +17,7 @@ import {
   fetchPortfolioPositionDetail,
   fetchPortfolioPositions,
   fetchPortfolioReviews,
+  fetchPortfolioRollEvents,
   formatPortfolioTags,
   matchesPortfolioPositionSearch,
   parsePortfolioTags,
@@ -25,6 +26,8 @@ import {
   type PortfolioPositionDetail,
   type PortfolioRationaleUpdate,
   type PortfolioReview,
+  type PortfolioRollEvent,
+  undoPortfolioRollEvent,
   updatePortfolioRationale,
 } from "@/lib/portfolio";
 import { useOrganizationMembership } from "@/lib/use-organization-membership";
@@ -123,6 +126,9 @@ export default function PortfolioPage() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [formState, setFormState] = useState<RationaleFormState>(buildFormState(null));
   const [reloadToken, setReloadToken] = useState(0);
+  const [rollEvents, setRollEvents] = useState<PortfolioRollEvent[]>([]);
+  const [rollEventsError, setRollEventsError] = useState<string | null>(null);
+  const [rollUndoPendingId, setRollUndoPendingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,11 +137,17 @@ export default function PortfolioPage() {
       setIsPositionsLoading(true);
       setPositionsError(null);
 
-      void Promise.all([fetchPortfolioPositions(), fetchPortfolioReviews()])
-        .then(([nextPositions, nextReviews]) => {
+      void Promise.all([
+        fetchPortfolioPositions(),
+        fetchPortfolioReviews(),
+        fetchPortfolioRollEvents(7).catch(() => [] as PortfolioRollEvent[]),
+      ])
+        .then(([nextPositions, nextReviews, nextRolls]) => {
           if (cancelled) return;
           setPositions(nextPositions);
           setReviews(nextReviews);
+          setRollEvents(Array.isArray(nextRolls) ? nextRolls : []);
+          setRollEventsError(null);
           setSelectedKey((current) => {
             if (current && nextPositions.some((position) => position.position_key === current)) {
               return current;
@@ -254,6 +266,25 @@ export default function PortfolioPage() {
       });
   };
 
+  const handleUndoRoll = (eventId: string) => {
+    setRollUndoPendingId(eventId);
+    setRollEventsError(null);
+    void undoPortfolioRollEvent(eventId)
+      .then(() => {
+        setReloadToken((current) => current + 1);
+      })
+      .catch((error: unknown) => {
+        const message =
+          error instanceof ApiError || error instanceof Error
+            ? error.message
+            : "Unable to undo roll.";
+        setRollEventsError(message);
+      })
+      .finally(() => {
+        setRollUndoPendingId(null);
+      });
+  };
+
   const handleSyncNow = () => {
     setIsSyncPending(true);
     setSyncError(null);
@@ -364,6 +395,57 @@ export default function PortfolioPage() {
               {syncMessage}
             </div>
           ) : null}
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Option rolls
+          </p>
+          <h3 className="mt-2 text-lg font-semibold text-slate-900">Rolls detected (last 7 days)</h3>
+          <p className="mt-1 max-w-3xl text-sm text-slate-600">
+            Auto-detected rolls from your Trades sheet with rationale carry-over. Undo removes the
+            copied rationale on the new leg and dismisses the match.
+          </p>
+          {rollEventsError ? (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              {rollEventsError}
+            </div>
+          ) : null}
+          <div className="mt-4 space-y-3">
+            {rollEvents.length === 0 ? (
+              <p className="text-sm text-slate-500">No roll events in the last week.</p>
+            ) : (
+              rollEvents.map((ev) => (
+                <div
+                  key={ev.id}
+                  className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0 text-sm text-slate-700">
+                    <p className="font-medium text-slate-900">
+                      {ev.rolled_from_position_key} → {ev.rolled_to_position_key}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {formatTimestamp(ev.rolled_at)} · net credit {(ev.net_credit_cents / 100).toFixed(2)}{" "}
+                      · {ev.status}
+                    </p>
+                  </div>
+                  {ev.status !== "dismissed" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={rollUndoPendingId === ev.id}
+                      onClick={() => handleUndoRoll(ev.id)}
+                    >
+                      {rollUndoPendingId === ev.id ? "Undoing…" : "Undo"}
+                    </Button>
+                  ) : (
+                    <Badge variant="outline">Dismissed</Badge>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
         </section>
 
         <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -566,6 +648,19 @@ export default function PortfolioPage() {
                     </div>
 
                     <div className="mt-4 grid gap-4">
+                      {detail.rationale?.rolled_from_position_key ? (
+                        <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+                          <span className="font-medium">Rationale inherited from </span>
+                          <button
+                            type="button"
+                            className="font-mono text-sky-800 underline"
+                            onClick={() => setSelectedKey(detail.rationale!.rolled_from_position_key!)}
+                          >
+                            {detail.rationale.rolled_from_position_key}
+                          </button>
+                          <span className="text-sky-800"> (open prior leg)</span>
+                        </div>
+                      ) : null}
                       <div className="grid gap-4 md:grid-cols-2">
                         <div>
                           <label

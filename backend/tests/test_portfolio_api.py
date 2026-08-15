@@ -15,13 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.api.deps import require_org_admin
 from app.api import portfolio as portfolio_api
+from app.api.deps import require_org_admin
 from app.api.portfolio import router as portfolio_router
 from app.core.config import settings
 from app.db.session import get_session
 from app.models.organizations import Organization
 from app.models.portfolio_rationales import PortfolioRationale
+from app.services.portfolio.price_enrichment import EnrichmentBundle
 
 
 async def _make_engine() -> AsyncEngine:
@@ -98,7 +99,7 @@ def _seed_portfolio(workspace: Path) -> None:
                                 "headline": "50% premium captured",
                                 "summary": "Consider closing and reopening.",
                                 "recommendation": "Close and scan for a replacement CSP.",
-                            }
+                            },
                         ],
                     }
                 ],
@@ -239,12 +240,10 @@ async def test_update_rationale_writes_json_and_returns_detail(
     assert {flag["code"] for flag in payload["latest_flags"]} == {"profit_target_hit"}
 
     async with session_maker() as session:
-        stored = (
-            await session.exec(
-                select(PortfolioRationale).where(
-                    PortfolioRationale.organization_id == organization_id,
-                    PortfolioRationale.position_key == "AAPL-put-180-2026-04-17",
-                )
+        stored = await session.exec(
+            select(PortfolioRationale).where(
+                PortfolioRationale.organization_id == organization_id,
+                PortfolioRationale.position_key == "AAPL-put-180-2026-04-17",
             )
         )
         rationale_row = stored.one()
@@ -335,7 +334,9 @@ async def test_portfolio_reports_missing_workspace_mount(
 ) -> None:
     engine = await _make_engine()
     session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", "/tmp/definitely-missing-openclaw")
+    monkeypatch.setattr(
+        settings, "openclaw_shared_workspace_root", "/tmp/definitely-missing-openclaw"
+    )
     app = _build_test_app(
         SimpleNamespace(organization=SimpleNamespace(id=uuid4())),
         session_maker,
@@ -463,7 +464,9 @@ async def test_sync_portfolio_requires_gateway(
     ctx = SimpleNamespace(organization=SimpleNamespace(id="org-123"))
     app = _build_test_app(ctx)
 
-    async def _fake_latest_gateway_for_org(session: object, organization_id: object) -> object | None:
+    async def _fake_latest_gateway_for_org(
+        session: object, organization_id: object
+    ) -> object | None:
         _ = (session, organization_id)
         return None
 
@@ -479,3 +482,94 @@ async def test_sync_portfolio_requires_gateway(
     assert response.json()["detail"] == (
         "An OpenClaw gateway is required before the portfolio can sync."
     )
+
+
+@pytest.mark.asyncio
+async def test_sync_portfolio_surfaces_structured_gateway_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = SimpleNamespace(organization=SimpleNamespace(id="org-123"))
+    app = _build_test_app(ctx)
+
+    async def _fake_latest_gateway_for_org(session: object, organization_id: object) -> object:
+        _ = session
+        assert organization_id == "org-123"
+        return SimpleNamespace(
+            id="gateway-1",
+            url="ws://gateway.example/ws",
+            token="secret",
+            allow_insecure_tls=False,
+            disable_device_pairing=False,
+        )
+
+    async def _fake_openclaw_call(method: str, params: object = None, *, config: object) -> object:
+        _ = config
+        assert method == "cron.run"
+        assert params == {"id": "morning-portfolio-review"}
+        return {
+            "ok": False,
+            "enqueued": False,
+            "error": "Google Sheets command failed due to missing keyring password.",
+        }
+
+    monkeypatch.setattr(portfolio_api, "_latest_gateway_for_org", _fake_latest_gateway_for_org)
+    monkeypatch.setattr(portfolio_api, "openclaw_call", _fake_openclaw_call)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post("/api/v1/portfolio/sync")
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == (
+        "Portfolio sync could not be started: "
+        "Google Sheets command failed due to missing keyring password."
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_portfolio_review_returns_payload_and_workspace_relative_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    engine = await _make_engine()
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    organization_id = uuid4()
+    async with session_maker() as session:
+        session.add(Organization(id=organization_id, name="Review API Org"))
+        await session.commit()
+
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(tmp_path))
+    monkeypatch.setattr(
+        "app.services.portfolio.review_engine.enrich_positions",
+        lambda positions, workspace_portfolio_root: EnrichmentBundle(),
+    )
+    app = _build_test_app(
+        SimpleNamespace(organization=SimpleNamespace(id=organization_id)),
+        session_maker,
+    )
+
+    positions_rows = [
+        ["Ticker", "Qty", "Strike", "Expiration", "DTE", "Instrument Type", "Strategy"],
+        ["XYZ", "1", "100", "2026-05-01", "10", "put", "csp"],
+    ]
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            "/api/v1/portfolio/review/run",
+            json={"positions_rows": positions_rows, "trades_rows": []},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["review"]["id"] == body["review_id"]
+    assert "Rolls detected" in (body["review"].get("summary_markdown") or "")
+    assert not str(body["snapshot_path"]).startswith("/")
+    assert body["snapshot_path"].startswith("portfolio/")
+    assert body["review_json_path"].startswith("portfolio/reviews/")
+    await engine.dispose()

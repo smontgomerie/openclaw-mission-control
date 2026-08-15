@@ -185,9 +185,7 @@ class BoardFilesystemMemoryService(OpenClawDBService):
             files = await self._list_agent_files(lead, board)
             long_term_content = await self._read_file(lead, board, MEMORY_FILE_NAME)
             daily_files = [
-                daily
-                for daily in (_daily_file_read(path) for path in files)
-                if daily is not None
+                daily for daily in (_daily_file_read(path) for path in files) if daily is not None
             ]
             daily_files.sort(key=lambda item: item.date or "", reverse=True)
             latest_daily_path = daily_files[0].path if daily_files else None
@@ -201,6 +199,40 @@ class BoardFilesystemMemoryService(OpenClawDBService):
                 ),
                 daily_files=daily_files,
                 latest_daily_path=latest_daily_path,
+            )
+        except OpenClawGatewayError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Gateway filesystem memory read failed: {exc}",
+            ) from exc
+
+    async def get_file(
+        self,
+        *,
+        board: Board,
+        path: str,
+    ) -> BoardFilesystemMemoryContentRead:
+        normalized = path.strip()
+        daily_file = _daily_file_read(normalized)
+        if normalized != MEMORY_FILE_NAME and daily_file is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Memory file not found",
+            )
+        try:
+            lead = await self._require_board_lead(board)
+            content = await self._read_file(lead, board, normalized)
+            if content is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Memory file not found",
+                )
+            if normalized == MEMORY_FILE_NAME:
+                return _long_term_file_read(content)
+            assert daily_file is not None
+            return BoardFilesystemMemoryContentRead(
+                **daily_file.model_dump(),
+                content=content,
             )
         except OpenClawGatewayError as exc:
             raise HTTPException(
@@ -281,9 +313,7 @@ class GatewayFilesystemMemoryService(OpenClawDBService):
             files = await self._list_gateway_files(gateway)
             long_term_content = await self._read_gateway_file(gateway, MEMORY_FILE_NAME)
             daily_files = [
-                daily
-                for daily in (_daily_file_read(path) for path in files)
-                if daily is not None
+                daily for daily in (_daily_file_read(path) for path in files) if daily is not None
             ]
             daily_files.sort(key=lambda item: item.date or "", reverse=True)
             latest_daily_path = daily_files[0].path if daily_files else None
@@ -347,40 +377,6 @@ class GatewayFilesystemMemoryService(OpenClawDBService):
                 return _gateway_long_term_file_read(content)
             assert daily_file is not None
             return GatewayFilesystemMemoryContentRead(
-                **daily_file.model_dump(),
-                content=content,
-            )
-        except OpenClawGatewayError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Gateway filesystem memory read failed: {exc}",
-            ) from exc
-
-    async def get_file(
-        self,
-        *,
-        board: Board,
-        path: str,
-    ) -> BoardFilesystemMemoryContentRead:
-        normalized = path.strip()
-        daily_file = _daily_file_read(normalized)
-        if normalized != MEMORY_FILE_NAME and daily_file is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Memory file not found",
-            )
-        try:
-            lead = await self._require_board_lead(board)
-            content = await self._read_file(lead, board, normalized)
-            if content is None:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Memory file not found",
-                )
-            if normalized == MEMORY_FILE_NAME:
-                return _long_term_file_read(content)
-            assert daily_file is not None
-            return BoardFilesystemMemoryContentRead(
                 **daily_file.model_dump(),
                 content=content,
             )

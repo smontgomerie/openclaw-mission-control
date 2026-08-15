@@ -2,11 +2,14 @@ import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiError } from "@/api/mutator";
+
 import PortfolioPage from "./page";
 
 const fetchPortfolioPositionsMock = vi.hoisted(() => vi.fn());
 const fetchPortfolioPositionDetailMock = vi.hoisted(() => vi.fn());
 const fetchPortfolioReviewsMock = vi.hoisted(() => vi.fn());
+const fetchPortfolioRollEventsMock = vi.hoisted(() => vi.fn());
 const syncPortfolioNowMock = vi.hoisted(() => vi.fn());
 const updatePortfolioRationaleMock = vi.hoisted(() => vi.fn());
 
@@ -86,6 +89,7 @@ vi.mock("@/lib/portfolio", async () => {
     fetchPortfolioPositions: fetchPortfolioPositionsMock,
     fetchPortfolioPositionDetail: fetchPortfolioPositionDetailMock,
     fetchPortfolioReviews: fetchPortfolioReviewsMock,
+    fetchPortfolioRollEvents: fetchPortfolioRollEventsMock,
     syncPortfolioNow: syncPortfolioNowMock,
     updatePortfolioRationale: updatePortfolioRationaleMock,
   };
@@ -96,6 +100,8 @@ describe("PortfolioPage", () => {
     fetchPortfolioPositionsMock.mockReset();
     fetchPortfolioPositionDetailMock.mockReset();
     fetchPortfolioReviewsMock.mockReset();
+    fetchPortfolioRollEventsMock.mockReset();
+    fetchPortfolioRollEventsMock.mockResolvedValue([]);
     syncPortfolioNowMock.mockReset();
     updatePortfolioRationaleMock.mockReset();
   });
@@ -289,5 +295,55 @@ describe("PortfolioPage", () => {
     });
 
     expect(screen.getByText("Sync queued. Latest data may take a few seconds to appear.")).toBeTruthy();
+  });
+
+  it("shows the gateway error when sync fails", async () => {
+    fetchPortfolioPositionsMock.mockResolvedValue([
+      {
+        position_key: "AAPL-put-180-2026-04-17",
+        ticker: "AAPL",
+        strategy: "csp",
+        expiration: "2026-04-17",
+        needs_rationale: false,
+        latest_flags: [],
+      },
+    ]);
+    fetchPortfolioReviewsMock.mockResolvedValue([]);
+    fetchPortfolioPositionDetailMock.mockResolvedValue({
+      position_key: "AAPL-put-180-2026-04-17",
+      ticker: "AAPL",
+      strategy: "csp",
+      expiration: "2026-04-17",
+      needs_rationale: false,
+      latest_flags: [],
+      rationale_history: [],
+      latest_review_summary_markdown: null,
+      rationale: null,
+    });
+    syncPortfolioNowMock.mockRejectedValue(
+      new ApiError(
+        502,
+        "Portfolio sync could not be started: Google Sheets command failed due to missing keyring password.",
+        null,
+      ),
+    );
+
+    render(<PortfolioPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sync now")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText("Sync now"));
+
+    await waitFor(() => {
+      expect(syncPortfolioNowMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(
+      screen.getByText(
+        "Portfolio sync could not be started: Google Sheets command failed due to missing keyring password.",
+      ),
+    ).toBeTruthy();
   });
 });

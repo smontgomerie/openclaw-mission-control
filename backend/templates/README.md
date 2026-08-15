@@ -111,6 +111,8 @@ This avoids relying on startup hooks to populate `api/openapi.json`.
 `BOARD_BOOTSTRAP.md.j2` now instructs agents to create `./.mission-control/heartbeat.sh`
 and use that fixed script for heartbeat check-ins. This keeps OpenClaw exec approvals
 narrow: operators can allowlist one workspace-local script path instead of generic `curl`.
+The wrapper reads current values from `TOOLS.md` at runtime, so token rotation does not
+leave a stale auth token behind.
 
 ## Template variables reference
 
@@ -189,6 +191,10 @@ make docs-check
 - Push branch
 - Confirm PR checks are green
 - Optionally run template sync on a dev gateway and inspect generated workspace files
+
+## Related docs
+
+- Portfolio review / cron / roll events: [`docs/portfolio-review.md`](../../docs/portfolio-review.md) (repo root).
 
 ## FAQ
 

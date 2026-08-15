@@ -12,7 +12,9 @@ import {
   portfolioListReviews,
   portfolioSaveRationale,
   portfolioSyncNow,
+  portfolioUndoRoll,
   saveRationaleInputSchema,
+  undoRollInputSchema,
 } from "./tools/portfolio.js";
 
 function formatResult(payload: unknown) {
@@ -100,6 +102,20 @@ server.tool(
   async () => {
     try {
       return formatResult(await portfolioSyncNow(config));
+    } catch (error) {
+      formatError(error);
+    }
+  },
+);
+
+server.tool(
+  "portfolio_undo_roll",
+  "Dismiss an auto-detected option roll and remove the carried rationale on the new position key.",
+  undoRollInputSchema,
+  async (input) => {
+    try {
+      await portfolioUndoRoll(config, input);
+      return formatResult({ ok: true });
     } catch (error) {
       formatError(error);
     }

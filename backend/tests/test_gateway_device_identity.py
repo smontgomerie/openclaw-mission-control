@@ -7,6 +7,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from app.services.openclaw.device_identity import (
+    _identity_path_candidates,
     build_device_auth_payload,
     load_or_create_device_identity,
     sign_device_payload,
@@ -65,3 +66,65 @@ def test_sign_device_payload_produces_valid_ed25519_signature(
     loaded = serialization.load_pem_public_key(identity.public_key_pem.encode("utf-8"))
     assert isinstance(loaded, Ed25519PublicKey)
     loaded.verify(_base64url_decode(signature), payload.encode("utf-8"))
+
+
+def test_load_or_create_device_identity_falls_back_when_primary_path_is_unwritable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    primary_path = tmp_path / "primary" / "device.json"
+    fallback_path = tmp_path / "fallback" / "device.json"
+
+    monkeypatch.setenv("OPENCLAW_GATEWAY_DEVICE_IDENTITY_PATH", str(primary_path))
+    monkeypatch.setattr(
+        "app.services.openclaw.device_identity.DEFAULT_DEVICE_IDENTITY_FALLBACK_PATH",
+        fallback_path,
+    )
+
+    original_write_identity = __import__(
+        "app.services.openclaw.device_identity",
+        fromlist=["_write_identity"],
+    )._write_identity
+
+    def failing_primary_write(path, identity):
+        if path == primary_path:
+            raise PermissionError(f"permission denied: {path}")
+        original_write_identity(path, identity)
+
+    monkeypatch.setattr(
+        "app.services.openclaw.device_identity._write_identity",
+        failing_primary_write,
+    )
+
+    first = load_or_create_device_identity()
+    second = load_or_create_device_identity()
+
+    assert not primary_path.exists()
+    assert fallback_path.exists()
+    assert first.device_id == second.device_id
+    assert first.public_key_pem.strip() == second.public_key_pem.strip()
+    assert first.private_key_pem.strip() == second.private_key_pem.strip()
+
+
+def test_load_or_create_device_identity_does_not_use_shared_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    identity_path = tmp_path / "identity" / "device.json"
+    workspace = tmp_path / "shared-workspace"
+    monkeypatch.setenv("OPENCLAW_GATEWAY_DEVICE_IDENTITY_PATH", str(identity_path))
+    monkeypatch.setenv("OPENCLAW_SHARED_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setattr(
+        "app.services.openclaw.device_identity.DEFAULT_DEVICE_IDENTITY_FALLBACK_PATH",
+        tmp_path / "unused-fallback" / "device.json",
+    )
+
+    identity = load_or_create_device_identity()
+
+    workspace_identity = (
+        workspace.expanduser().resolve() / ".system" / "gateway-device-identity" / "device.json"
+    )
+    assert workspace_identity not in _identity_path_candidates()
+    assert identity_path.exists()
+    assert not workspace_identity.exists()
+    assert identity.private_key_pem

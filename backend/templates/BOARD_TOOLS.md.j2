@@ -51,7 +51,8 @@ jq -r '
 If no confident match exists for current intent, ask one clarifying question.
 
 ## Exec approval-safe wrappers
-- Prefer `./.mission-control/heartbeat.sh` for Mission Control check-ins.
+- Prefer `./.mission-control/heartbeat.sh` for bootstrap/manual Mission Control check-ins.
 - Prefer `./.mission-control/preflight.sh` for recurring gateway health checks.
 - Avoid inline `bash -c '...'`, heredocs, and shell-generated heartbeat payloads for routine checks.
 - Do not reconstruct wrapper logic with variable assignments or command chains; run the wrapper file directly.
+- The heartbeat wrapper should read current values from `TOOLS.md` rather than freezing the token into the script.

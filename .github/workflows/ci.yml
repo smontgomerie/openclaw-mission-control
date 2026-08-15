@@ -203,7 +203,18 @@ jobs:
 
       - name: Installer smoke test (docker mode)
         if: ${{ matrix.run_linux_smoke_tests }}
+        env:
+          OPENCLAW_TORCH_BACKEND: cpu
         run: |
+          # CI does not check out the sibling OpenClaw repo, so seed the shared
+          # base tag locally before exercising the installer's Docker path.
+          docker build -t openclaw-whisperx-base:cpu - <<'EOF'
+          FROM python:3.12-slim
+          RUN apt-get update \
+            && apt-get install -y --no-install-recommends ffmpeg libsndfile1 \
+            && rm -rf /var/lib/apt/lists/*
+          EOF
+
           ./install.sh \
             --mode docker \
             --backend-port 18000 \

@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import mimetypes
 import re
 import subprocess
+import sys
+import zipfile
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from typing import TYPE_CHECKING
+from xml.sax.saxutils import escape
+from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from app.core.config import settings
 from app.schemas.transcriptions import (
@@ -20,6 +28,11 @@ from app.schemas.transcriptions import (
     TranscriptionSpeakerRenameRequest,
 )
 
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    from app.services.speaker_learning import SpeakerLearningService
+
 TRANSCRIPTIONS_DIRNAME = "transcriptions"
 PROCESSED_DIRNAME = "processed"
 TEXT_CANDIDATES = ("transcript.txt",)
@@ -28,10 +41,385 @@ ANALYSIS_CANDIDATES = ("analysis.md",)
 STRUCTURED_TEXT_SUFFIXES = (".txt", ".md", ".json", ".srt", ".tsv", ".vtt", ".log")
 SOURCE_AUDIO_SUFFIXES = (".m4a", ".wav", ".mp3")
 IGNORED_ROOT_NAMES = {"transcribe.sh", "process_wav_files.sh", ".test"}
-SPEAKER_HELPER_NAME = "speaker_identity.py"
-TRANSCRIPT_VENV_DIRNAME = ".venv-whisperx"
+SPEAKER_REGISTRY_DIRNAME = ".speaker_registry"
+CALENDAR_MATCH_FILENAME = "calendar-match.json"
+TITLE_CACHE_FILENAME = "title.txt"
+TITLE_TIMEZONE = ZoneInfo("America/Los_Angeles")
 PROCESS_LOG_DURATION_PATTERN = re.compile(r"duration=(?P<duration>\d+)s")
 WHISPERX_LOG_DURATION_PATTERN = re.compile(r"\[DURATION\]\s+(?P<duration>\d+)s")
+PYTHON_WARNING_LINE_PATTERN = re.compile(r"^(?:.+:\d+:\s+)?(?:\w+Warning|warnings\.\w+Warning):")
+DOCX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+# Shared-workspace metadata can be expensive to stat over network mounts.
+_WORKSPACE_LIST_INDEX: (
+    tuple[
+        Path,
+        int,
+        int,
+        dict[str, list[TranscriptionFileRead]],
+        dict[str, Path],
+    ]
+    | None
+) = None
+
+
+def _normalize_speaker_label(segment: dict[str, object]) -> tuple[str, str | None]:
+    speaker_name = segment.get("speaker_name")
+    speaker = segment.get("speaker")
+    normalized_name = speaker_name.strip() if isinstance(speaker_name, str) else ""
+    normalized_speaker = speaker.strip() if isinstance(speaker, str) else ""
+    return (
+        normalized_name or normalized_speaker or "Unknown speaker",
+        normalized_speaker or None,
+    )
+
+
+def _transcript_has_speaker_label(transcript: object, speaker_label: str) -> bool:
+    if not isinstance(transcript, dict):
+        return False
+
+    segments = transcript.get("segments")
+    if not isinstance(segments, list):
+        return False
+
+    normalized_label = speaker_label.strip()
+    return any(
+        isinstance(segment, dict) and str(segment.get("speaker") or "").strip() == normalized_label
+        for segment in segments
+    )
+
+
+def _segment_fingerprint(
+    segment: dict[str, object],
+) -> tuple[float | None, float | None, str]:
+    text = segment.get("text")
+    return (
+        _parse_offset_seconds(segment.get("start")),
+        _parse_offset_seconds(segment.get("end")),
+        text.strip() if isinstance(text, str) else "",
+    )
+
+
+def _speaker_labels_for_display_label(transcript: object, speaker_label: str) -> set[str]:
+    if not isinstance(transcript, dict):
+        return set()
+
+    segments = transcript.get("segments")
+    if not isinstance(segments, list):
+        return set()
+
+    labels: set[str] = set()
+    normalized_label = speaker_label.strip()
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        if str(segment.get("speaker") or "").strip() != normalized_label:
+            continue
+        for key in ("speaker", "speaker_chunk_local"):
+            value = segment.get(key)
+            if isinstance(value, str) and value.strip():
+                labels.add(value.strip())
+    return labels
+
+
+def _segment_fingerprints_for_speaker_label(
+    transcript: object,
+    speaker_label: str,
+) -> set[tuple[float | None, float | None, str]]:
+    if not isinstance(transcript, dict):
+        return set()
+
+    segments = transcript.get("segments")
+    if not isinstance(segments, list):
+        return set()
+
+    fingerprints: set[tuple[float | None, float | None, str]] = set()
+    normalized_label = speaker_label.strip()
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        if str(segment.get("speaker") or "").strip() == normalized_label:
+            fingerprints.add(_segment_fingerprint(segment))
+    return fingerprints
+
+
+def _write_diarized_transcript_text(transcript: object, output_path: Path) -> None:
+    if not isinstance(transcript, dict):
+        return
+
+    segments = transcript.get("segments")
+    if not isinstance(segments, list):
+        return
+
+    lines: list[str] = []
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        text = segment.get("text")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        display_label, _raw_label = _normalize_speaker_label(segment)
+        lines.append(f"[{display_label}] {text.strip()}")
+
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _apply_manual_speaker_name(
+    transcript_path: Path,
+    text_path: Path,
+    *,
+    speaker_label: str,
+    new_name: str,
+    source_transcripts: list[object],
+) -> None:
+    transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
+    if not isinstance(transcript, dict):
+        return
+
+    segments = transcript.get("segments")
+    if not isinstance(segments, list):
+        return
+
+    matching_labels = {speaker_label.strip()}
+    matching_fingerprints: set[tuple[float | None, float | None, str]] = set()
+    for source_transcript in source_transcripts:
+        matching_labels.update(_speaker_labels_for_display_label(source_transcript, speaker_label))
+        matching_fingerprints.update(
+            _segment_fingerprints_for_speaker_label(source_transcript, speaker_label)
+        )
+
+    changed = False
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+
+        segment_labels = {
+            str(segment.get("speaker") or "").strip(),
+            str(segment.get("speaker_chunk_local") or "").strip(),
+        }
+        if (
+            segment_labels & matching_labels
+            or _segment_fingerprint(segment) in matching_fingerprints
+        ):
+            segment["speaker_name"] = new_name
+            segment.pop("speaker_name_tentative", None)
+            changed = True
+
+    if changed:
+        transcript_path.write_text(
+            json.dumps(transcript, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        _write_diarized_transcript_text(transcript, text_path)
+        _write_speaker_list_preview(transcript_path.parent, transcript)
+
+
+def _write_speaker_annotation_overlay(transcript_path: Path) -> None:
+    transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
+    segments = transcript.get("segments") if isinstance(transcript, dict) else None
+    assignments = []
+    if isinstance(segments, list):
+        for segment in segments:
+            if not isinstance(segment, dict):
+                continue
+            name = str(segment.get("speaker_name") or "").strip()
+            if not name:
+                continue
+            start, end, text = _segment_fingerprint(segment)
+            segment_id = hashlib.sha256(f"{start}\0{end}\0{text}".encode()).hexdigest()
+            assignments.append(
+                {
+                    "segment_id": segment_id,
+                    "speaker_name": name,
+                    "speaker": segment.get("speaker"),
+                    "speaker_chunk_local": segment.get("speaker_chunk_local"),
+                    "start": start,
+                    "end": end,
+                    "text": text,
+                    "source": "manual_confirmation",
+                }
+            )
+    output = transcript_path.parent / "speaker-annotations.json"
+    temporary = output.with_suffix(".json.tmp")
+    temporary.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "entry_id": transcript_path.parent.name,
+                "assignments": assignments,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(output)
+    _write_speaker_list_preview(
+        transcript_path.parent, transcript if isinstance(transcript, dict) else {}
+    )
+
+
+def _write_speaker_list_preview(entry_dir: Path, transcript: dict[str, object]) -> None:
+    count, names = _diarized_speaker_list_metadata_from_payload(transcript)
+    payload = {"count": count or 0, "names": names}
+    output = entry_dir / "speaker-preview.json"
+    temporary = output.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
+    temporary.replace(output)
+
+
+def _read_speaker_list_preview(entry_dir: Path) -> tuple[int | None, list[str]]:
+    path = entry_dir / "speaker-preview.json"
+    raw = _safe_read_text(path)
+    if not raw:
+        return None, []
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return None, []
+    if not isinstance(payload, dict):
+        return None, []
+    names = payload.get("names")
+    count = payload.get("count")
+    preview = [str(name) for name in names if str(name).strip()] if isinstance(names, list) else []
+    if isinstance(count, int) and count > 0:
+        return count, preview[:4]
+    if preview:
+        return len(preview), preview[:4]
+    return None, []
+
+
+def _parse_offset_seconds(value: object) -> float | None:
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _format_docx_offset(value: float | None) -> str | None:
+    if value is None or value < 0:
+        return None
+    total_seconds = int(value)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    if hours > 0:
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes}:{seconds:02d}"
+
+
+def _docx_paragraph_xml(text: str, *, style: str | None = None) -> str:
+    style_xml = f'<w:pPr><w:pStyle w:val="{escape(style)}"/></w:pPr>' if style else ""
+    return (
+        "<w:p>"
+        f"{style_xml}"
+        '<w:r><w:t xml:space="preserve">'
+        f"{escape(text)}"
+        "</w:t></w:r>"
+        "</w:p>"
+    )
+
+
+def _build_docx_bytes(*, title: str, turns: list[dict[str, str]]) -> bytes:
+    document_paragraphs = [_docx_paragraph_xml(title, style="Title")]
+    for turn in turns:
+        document_paragraphs.append(_docx_paragraph_xml(turn["heading"], style="Heading2"))
+        document_paragraphs.append(_docx_paragraph_xml(turn["text"]))
+
+    document_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        "<w:document "
+        'xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" '
+        'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
+        'xmlns:o="urn:schemas-microsoft-com:office:office" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+        'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" '
+        'xmlns:v="urn:schemas-microsoft-com:vml" '
+        'xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" '
+        'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
+        'xmlns:w10="urn:schemas-microsoft-com:office:word" '
+        'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+        'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" '
+        'xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" '
+        'xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" '
+        'xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" '
+        'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" '
+        'mc:Ignorable="w14 wp14">'
+        "<w:body>"
+        f"{''.join(document_paragraphs)}"
+        "<w:sectPr>"
+        '<w:pgSz w:w="12240" w:h="15840"/>'
+        '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" '
+        'w:header="720" w:footer="720" w:gutter="0"/>'
+        "</w:sectPr>"
+        "</w:body>"
+        "</w:document>"
+    )
+
+    styles_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:style w:type="paragraph" w:default="1" w:styleId="Normal">'
+        '<w:name w:val="Normal"/>'
+        "</w:style>"
+        '<w:style w:type="paragraph" w:styleId="Title">'
+        '<w:name w:val="Title"/>'
+        '<w:basedOn w:val="Normal"/>'
+        "<w:qFormat/>"
+        '<w:rPr><w:b/><w:sz w:val="32"/></w:rPr>'
+        "</w:style>"
+        '<w:style w:type="paragraph" w:styleId="Heading2">'
+        '<w:name w:val="heading 2"/>'
+        '<w:basedOn w:val="Normal"/>'
+        "<w:qFormat/>"
+        '<w:rPr><w:b/><w:sz w:val="24"/></w:rPr>'
+        "</w:style>"
+        "</w:styles>"
+    )
+
+    content_types_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/word/document.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+        '<Override PartName="/word/styles.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
+        "</Types>"
+    )
+
+    package_rels_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+        'Target="word/document.xml"/>'
+        "</Relationships>"
+    )
+
+    document_rels_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" '
+        'Target="styles.xml"/>'
+        "</Relationships>"
+    )
+
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", content_types_xml)
+        archive.writestr("_rels/.rels", package_rels_xml)
+        archive.writestr("word/document.xml", document_xml)
+        archive.writestr("word/_rels/document.xml.rels", document_rels_xml)
+        archive.writestr("word/styles.xml", styles_xml)
+    return buffer.getvalue()
 
 
 def _utc_datetime(value: float) -> datetime:
@@ -146,6 +534,86 @@ def _find_best_transcript_json(entry_dir: Path) -> Path | None:
     return None
 
 
+def _diarized_speaker_list_metadata_from_payload(
+    data: object,
+) -> tuple[int | None, list[str]]:
+    if not isinstance(data, dict):
+        return None, []
+
+    segments = data.get("segments")
+    if not isinstance(segments, list):
+        return None, []
+
+    has_speaker_data = False
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        if isinstance(segment.get("speaker_name"), str) or isinstance(segment.get("speaker"), str):
+            has_speaker_data = True
+            break
+
+    if not has_speaker_data:
+        return None, []
+
+    ordered_unique: list[str] = []
+    seen: set[str] = set()
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        text = segment.get("text")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        display_label, _raw = _normalize_speaker_label(segment)
+        if display_label not in seen:
+            seen.add(display_label)
+            ordered_unique.append(display_label)
+
+    if not seen:
+        return None, []
+
+    return len(seen), ordered_unique[:4]
+
+
+def _diarized_speaker_list_metadata(json_path: Path) -> tuple[int | None, list[str]]:
+    """Speaker count and label preview for list views (matches UI diarized transcript parsing)."""
+    raw = _safe_read_text(json_path)
+    if raw is None:
+        return None, []
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None, []
+
+    return _diarized_speaker_list_metadata_from_payload(data)
+
+
+def _extract_subprocess_error_detail(stderr: str | None, stdout: str | None) -> str:
+    def _candidate_lines(*streams: str | None) -> list[str]:
+        lines: list[str] = []
+        for stream in streams:
+            if not stream:
+                continue
+            lines.extend(line.strip() for line in stream.splitlines() if line.strip())
+        return lines
+
+    lines = _candidate_lines(stderr, stdout)
+    if not lines:
+        return "Speaker rename processing failed."
+
+    for line in reversed(lines):
+        lowered = line.lower()
+        if lowered == "traceback (most recent call last):":
+            continue
+        if PYTHON_WARNING_LINE_PATTERN.match(line):
+            continue
+        if line.startswith(("File ", "^")):
+            continue
+        return line[:300]
+
+    return "Speaker rename processing failed."
+
+
 def _parse_captured_at(entry_id: str, source_files: list[TranscriptionFileRead]) -> datetime | None:
     if entry_id.isdigit():
         try:
@@ -161,6 +629,127 @@ def _parse_captured_at(entry_id: str, source_files: list[TranscriptionFileRead])
             default=None,
         )
     return None
+
+
+def _entry_id_sort_time(
+    entry_id: str,
+    source_files: list[TranscriptionFileRead],
+    entry_dir: Path | None,
+) -> datetime:
+    captured_at = _parse_captured_at(entry_id, source_files)
+    if captured_at is not None:
+        return captured_at
+    epoch = _epoch_seconds_from_entry_id(entry_id)
+    if epoch is not None:
+        return datetime.fromtimestamp(epoch, tz=UTC)
+    if entry_dir is not None:
+        try:
+            return datetime.fromtimestamp(entry_dir.stat().st_mtime, tz=UTC)
+        except OSError:
+            pass
+    return datetime.min.replace(tzinfo=UTC)
+
+
+def _epoch_seconds_from_entry_id(entry_id: str) -> int | None:
+    if not entry_id.isdigit():
+        return None
+    try:
+        timestamp = int(entry_id)
+    except ValueError:
+        return None
+    if len(entry_id) >= 13:
+        timestamp = timestamp // 1000
+    if timestamp < 0:
+        return None
+    return timestamp
+
+
+def _parse_calendar_match_file(entry_dir: Path) -> dict[str, object] | None:
+    path = entry_dir / CALENDAR_MATCH_FILENAME
+    raw = _safe_read_text(path)
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
+def _title_from_calendar_match(entry_dir: Path) -> str | None:
+    data = _parse_calendar_match_file(entry_dir)
+    if data is None:
+        return None
+    confidence = str(data.get("confidence") or "").lower()
+    if confidence not in ("high", "medium"):
+        return None
+    title = data.get("title")
+    if isinstance(title, str) and title.strip():
+        return title.strip()
+    return None
+
+
+def _calendar_match_detail_fields(
+    entry_dir: Path | None,
+) -> tuple[bool, str | None, str | None, bool]:
+    """Whether calendar-match.json exists, confidence, event title, and if that file drives the UI title."""
+    if entry_dir is None or not entry_dir.is_dir():
+        return False, None, None, False
+    data = _parse_calendar_match_file(entry_dir)
+    if data is None:
+        return False, None, None, False
+    confidence_raw = data.get("confidence")
+    confidence_value = str(confidence_raw).strip().lower() if confidence_raw is not None else ""
+    confidence = confidence_value or None
+    title_val = data.get("title")
+    event_title = title_val.strip() if isinstance(title_val, str) and title_val.strip() else None
+    used = confidence in ("high", "medium") and event_title is not None
+    return True, confidence, event_title, used
+
+
+def _title_from_cache_file(entry_dir: Path) -> str | None:
+    path = entry_dir / TITLE_CACHE_FILENAME
+    raw = _safe_read_text(path)
+    if not raw:
+        return None
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    first_line = stripped.splitlines()[0].strip()
+    return first_line or None
+
+
+def _title_from_epoch_formatted(entry_id: str) -> str | None:
+    timestamp = _epoch_seconds_from_entry_id(entry_id)
+    if timestamp is None:
+        return None
+    try:
+        dt = datetime.fromtimestamp(timestamp, tz=TITLE_TIMEZONE)
+    except (OverflowError, OSError, ValueError):
+        return None
+    hour12 = dt.hour % 12 or 12
+    ampm = "AM" if dt.hour < 12 else "PM"
+    tz_label = dt.tzname() or "PT"
+    return (
+        f"{dt.strftime('%a')}, {dt.strftime('%b')} {dt.day}, {dt.year} · "
+        f"{hour12}:{dt.minute:02d} {ampm} {tz_label}"
+    )
+
+
+def _resolve_entry_title(entry_id: str, entry_dir: Path | None) -> str:
+    if entry_dir is not None and entry_dir.is_dir():
+        calendar_title = _title_from_calendar_match(entry_dir)
+        if calendar_title:
+            return calendar_title
+        cached_title = _title_from_cache_file(entry_dir)
+        if cached_title:
+            return cached_title
+    epoch_title = _title_from_epoch_formatted(entry_id)
+    if epoch_title:
+        return epoch_title
+    return entry_id
 
 
 class SharedTranscriptionsService:
@@ -234,15 +823,21 @@ class SharedTranscriptionsService:
                 detail="Transcription entry not found.",
             )
 
-    def _source_file_map(self, *, transcriptions_root: Path) -> dict[str, list[TranscriptionFileRead]]:
+    def _source_file_map(
+        self, *, transcriptions_root: Path
+    ) -> dict[str, list[TranscriptionFileRead]]:
         files_by_id: dict[str, list[TranscriptionFileRead]] = {}
         for path in sorted(transcriptions_root.iterdir(), key=lambda item: item.name.lower()):
             if not _is_transcription_source_file(path):
                 continue
-            files_by_id.setdefault(path.stem, []).append(_file_read(path, relative_to=transcriptions_root))
+            files_by_id.setdefault(path.stem, []).append(
+                _file_read(path, relative_to=transcriptions_root)
+            )
         return files_by_id
 
-    def _source_files(self, entry_id: str, *, transcriptions_root: Path) -> list[TranscriptionFileRead]:
+    def _source_files(
+        self, entry_id: str, *, transcriptions_root: Path
+    ) -> list[TranscriptionFileRead]:
         matches: list[TranscriptionFileRead] = []
         for path in sorted(transcriptions_root.iterdir(), key=lambda item: item.name.lower()):
             if not _is_transcription_source_file(path):
@@ -252,7 +847,9 @@ class SharedTranscriptionsService:
             matches.append(_file_read(path, relative_to=transcriptions_root))
         return matches
 
-    def _artifact_files(self, entry_dir: Path, *, transcriptions_root: Path) -> list[TranscriptionFileRead]:
+    def _artifact_files(
+        self, entry_dir: Path, *, transcriptions_root: Path
+    ) -> list[TranscriptionFileRead]:
         artifact_files: list[TranscriptionFileRead] = []
         for path in sorted(entry_dir.iterdir(), key=lambda item: item.name.lower()):
             if not path.is_file():
@@ -271,18 +868,19 @@ class SharedTranscriptionsService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Source audio file is required to rename speakers for this transcript.",
             )
-        return candidates[0]
-
-    def _require_processed_entry_dir(self, entry_id: str) -> Path:
-        self._validate_entry_id(entry_id)
-        processed_root = self._processed_root()
-        entry_dir = processed_root / entry_id
-        if not entry_dir.exists() or not entry_dir.is_dir():
+        transcriptions_root = transcriptions_root.resolve()
+        audio_path = candidates[0].resolve()
+        try:
+            audio_path.relative_to(transcriptions_root)
+        except ValueError as exc:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Processed transcription entry not found.",
-            )
-        return entry_dir
+                detail="Source audio file is required to rename speakers for this transcript.",
+            ) from exc
+        return audio_path
+
+    def _require_processed_entry_dir(self, entry_id: str) -> Path:
+        return self._entry_dir(entry_id)
 
     def _raw_transcript_json_path(self, entry_dir: Path) -> Path:
         raw_path = entry_dir / f"{entry_dir.name}.json"
@@ -293,26 +891,31 @@ class SharedTranscriptionsService:
             )
         return raw_path
 
-    def _speaker_helper_path(self, *, transcriptions_root: Path) -> Path:
-        helper_path = transcriptions_root / SPEAKER_HELPER_NAME
-        if not helper_path.is_file():
+    def _speaker_registry_root(self) -> Path:
+        configured = settings.openclaw_transcriptions_speaker_registry_root.strip()
+        if configured:
+            root = Path(configured).expanduser()
+        else:
+            # The annotator and API must share one registry. Keeping the
+            # default inside the mounted transcription workspace avoids a
+            # container-private cache that the annotator cannot see.
+            root = self._transcriptions_root()
+        if root.name == SPEAKER_REGISTRY_DIRNAME:
+            root = root.parent
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Speaker rename helper is unavailable in the shared transcriptions workspace.",
-            )
-        return helper_path
+                detail="Speaker registry cache directory is not writable.",
+            ) from exc
+        return root
 
     def _speaker_python_bin(self, *, transcriptions_root: Path) -> str:
         configured = settings.openclaw_transcriptions_python_bin.strip()
         if configured:
             return configured
-
-        for candidate_name in ("python", "python3"):
-            candidate = transcriptions_root / TRANSCRIPT_VENV_DIRNAME / "bin" / candidate_name
-            if candidate.is_file():
-                return str(candidate)
-
-        return "python3"
+        return sys.executable
 
     def _run_speaker_helper(self, command: list[str], *, transcriptions_root: Path) -> None:
         try:
@@ -335,12 +938,9 @@ class SharedTranscriptionsService:
                 detail="Speaker rename processing timed out.",
             ) from exc
         except subprocess.CalledProcessError as exc:
-            stderr = (exc.stderr or "").strip()
-            stdout = (exc.stdout or "").strip()
-            detail = stderr or stdout or "Speaker rename processing failed."
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=detail.splitlines()[0][:300],
+                detail=_extract_subprocess_error_detail(exc.stderr, exc.stdout),
             ) from exc
 
     def _build_entry(
@@ -350,37 +950,71 @@ class SharedTranscriptionsService:
         transcriptions_root: Path,
         source_files: list[TranscriptionFileRead] | None = None,
         entry_dir: Path | None = None,
+        include_diarized_metadata: bool = True,
+        include_artifact_metadata: bool = True,
     ) -> TranscriptionEntryRead:
         resolved_source_files = source_files or self._source_files(
             entry_id, transcriptions_root=transcriptions_root
         )
-        artifact_files = (
-            self._artifact_files(entry_dir, transcriptions_root=transcriptions_root)
-            if entry_dir is not None
-            else []
+        if entry_dir is not None and include_artifact_metadata:
+            artifact_files = self._artifact_files(
+                entry_dir, transcriptions_root=transcriptions_root
+            )
+            analysis_path = _find_first_existing(entry_dir, ANALYSIS_CANDIDATES)
+            text_path = _find_best_transcript_text(entry_dir)
+            json_path = _find_best_transcript_json(entry_dir)
+            done_path = entry_dir / ".done"
+            is_done = done_path.is_file()
+            progress_seconds = None if is_done else _read_processing_progress(entry_dir)
+            total_duration_seconds = _read_processing_total_duration(entry_dir)
+            processed_at = max(
+                (item.modified_at for item in artifact_files if item.modified_at is not None),
+                default=None,
+            )
+        elif entry_dir is not None:
+            # List views avoid traversing each artifact directory and reading logs.
+            artifact_files = []
+            analysis_path = entry_dir / "analysis.md"
+            analysis_path = analysis_path if analysis_path.is_file() else None
+            text_path = entry_dir / "transcript.txt"
+            text_path = text_path if text_path.is_file() else None
+            json_path = entry_dir / "transcript.json"
+            json_path = json_path if json_path.is_file() else None
+            done_path = entry_dir / ".done"
+            is_done = done_path.is_file()
+            progress_seconds = None if is_done else _read_processing_progress(entry_dir)
+            total_duration_seconds = None if is_done else _read_processing_total_duration(entry_dir)
+            processed_at = None
+        else:
+            artifact_files = []
+            analysis_path = None
+            text_path = None
+            json_path = None
+            is_done = False
+            progress_seconds = None
+            total_duration_seconds = None
+            processed_at = None
+        has_artifacts = bool(artifact_files) or any(
+            (analysis_path, text_path, json_path, entry_dir and is_done)
         )
-        analysis_path = (
-            _find_first_existing(entry_dir, ANALYSIS_CANDIDATES) if entry_dir is not None else None
-        )
-        text_path = _find_best_transcript_text(entry_dir) if entry_dir is not None else None
-        json_path = _find_best_transcript_json(entry_dir) if entry_dir is not None else None
-        done_path = entry_dir / ".done" if entry_dir is not None else None
-        is_done = done_path.is_file() if done_path is not None else False
-        progress_seconds = (
-            None if entry_dir is None or is_done else _read_processing_progress(entry_dir)
-        )
-        total_duration_seconds = (
-            None if entry_dir is None else _read_processing_total_duration(entry_dir)
-        )
-        processed_at = (
-            max((item.modified_at for item in artifact_files if item.modified_at is not None), default=None)
-            if artifact_files
-            else None
-        )
+        diarized_speaker_count: int | None = None
+        diarized_speaker_preview: list[str] = []
+        if entry_dir is not None:
+            diarized_speaker_count, diarized_speaker_preview = _read_speaker_list_preview(entry_dir)
+        if (
+            include_diarized_metadata
+            and json_path is not None
+            and json_path.is_file()
+            and diarized_speaker_count is None
+        ):
+            diarized_speaker_count, diarized_speaker_preview = _diarized_speaker_list_metadata(
+                json_path
+            )
+
         return TranscriptionEntryRead(
             id=entry_id,
-            title=entry_id,
-            status=_entry_status(done=is_done, has_artifacts=bool(artifact_files)),
+            title=_resolve_entry_title(entry_id, entry_dir),
+            status=_entry_status(done=is_done, has_artifacts=has_artifacts),
             is_done=is_done,
             captured_at=_parse_captured_at(entry_id, resolved_source_files),
             processed_at=processed_at,
@@ -391,56 +1025,95 @@ class SharedTranscriptionsService:
             has_transcript_json=json_path is not None,
             progress_seconds=progress_seconds,
             total_duration_seconds=total_duration_seconds,
+            diarized_speaker_count=diarized_speaker_count,
+            diarized_speaker_preview=diarized_speaker_preview,
         )
 
-    def list_entries(self) -> list[TranscriptionEntryRead]:
-        transcriptions_root = self._transcriptions_root()
-        processed_root = self._processed_root_if_present()
+    def _workspace_list_index(
+        self,
+        *,
+        transcriptions_root: Path,
+        processed_root: Path | None,
+    ) -> tuple[dict[str, list[TranscriptionFileRead]], dict[str, Path]]:
+        global _WORKSPACE_LIST_INDEX
+
+        root_mtime = transcriptions_root.stat().st_mtime_ns
+        processed_mtime = processed_root.stat().st_mtime_ns if processed_root else -1
+        cached = _WORKSPACE_LIST_INDEX
+        if (
+            cached is not None
+            and cached[0] == transcriptions_root
+            and cached[1] == root_mtime
+            and cached[2] == processed_mtime
+        ):
+            return cached[3], cached[4]
+
         source_files_by_id = self._source_file_map(transcriptions_root=transcriptions_root)
-        entries: list[TranscriptionEntryRead] = []
         processed_dirs = (
-            {
-                path.name: path
-                for path in sorted(
-                    processed_root.iterdir(), key=lambda item: item.name.lower(), reverse=True
-                )
-                if path.is_dir()
-            }
+            {path.name: path for path in processed_root.iterdir() if path.is_dir()}
             if processed_root is not None
             else {}
         )
-        for entry_id in sorted(
+        _WORKSPACE_LIST_INDEX = (
+            transcriptions_root,
+            root_mtime,
+            processed_mtime,
+            source_files_by_id,
+            processed_dirs,
+        )
+        return source_files_by_id, processed_dirs
+
+    def list_entries(
+        self,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> list[TranscriptionEntryRead]:
+        transcriptions_root = self._transcriptions_root()
+        processed_root = self._processed_root_if_present()
+        source_files_by_id, processed_dirs = self._workspace_list_index(
+            transcriptions_root=transcriptions_root,
+            processed_root=processed_root,
+        )
+        entry_ids = sorted(
             set(source_files_by_id.keys()) | set(processed_dirs.keys()),
-            key=str.lower,
-            reverse=True,
-        ):
-            entries.append(
-                self._build_entry(
+            key=lambda entry_id: (
+                _entry_id_sort_time(
                     entry_id,
-                    transcriptions_root=transcriptions_root,
-                    source_files=source_files_by_id.get(entry_id, []),
-                    entry_dir=processed_dirs.get(entry_id),
-                )
-            )
-        entries.sort(
-            key=lambda item: (
-                item.processed_at or item.captured_at or datetime.min.replace(tzinfo=UTC),
-                item.id.lower(),
+                    source_files_by_id.get(entry_id, []),
+                    processed_dirs.get(entry_id),
+                ),
+                entry_id.lower(),
             ),
             reverse=True,
         )
+        if offset:
+            entry_ids = entry_ids[offset:]
+        if limit is not None:
+            entry_ids = entry_ids[:limit]
+        entries = [
+            self._build_entry(
+                entry_id,
+                transcriptions_root=transcriptions_root,
+                source_files=source_files_by_id.get(entry_id, []),
+                entry_dir=processed_dirs.get(entry_id),
+                include_diarized_metadata=False,
+                include_artifact_metadata=False,
+            )
+            for entry_id in entry_ids
+        ]
         return entries
 
     def get_entry(self, entry_id: str) -> TranscriptionDetailRead:
         transcriptions_root = self._transcriptions_root()
         self._validate_entry_id(entry_id)
         processed_root = self._processed_root_if_present()
-        entry_dir = processed_root / entry_id if processed_root is not None else None
-        if entry_dir is not None and entry_dir.exists() and not entry_dir.is_dir():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Transcription entry not found.",
-            )
+        entry_dir: Path | None = None
+        if processed_root is not None:
+            try:
+                entry_dir = self._entry_dir(entry_id)
+            except HTTPException:
+                entry_dir = None
         source_files = self._source_files(entry_id, transcriptions_root=transcriptions_root)
         if not source_files and (entry_dir is None or not entry_dir.is_dir()):
             raise HTTPException(
@@ -453,6 +1126,9 @@ class SharedTranscriptionsService:
             source_files=source_files,
             entry_dir=entry_dir if entry_dir is not None and entry_dir.is_dir() else None,
         )
+        cal_present, cal_conf, cal_evt, cal_used = _calendar_match_detail_fields(
+            entry_dir if entry_dir is not None and entry_dir.is_dir() else None,
+        )
 
         analysis_path = (
             _find_first_existing(entry_dir, ANALYSIS_CANDIDATES)
@@ -460,13 +1136,21 @@ class SharedTranscriptionsService:
             else None
         )
         text_path = (
-            _find_best_transcript_text(entry_dir) if entry_dir is not None and entry_dir.is_dir() else None
+            _find_best_transcript_text(entry_dir)
+            if entry_dir is not None and entry_dir.is_dir()
+            else None
         )
         json_path = (
-            _find_best_transcript_json(entry_dir) if entry_dir is not None and entry_dir.is_dir() else None
+            _find_best_transcript_json(entry_dir)
+            if entry_dir is not None and entry_dir.is_dir()
+            else None
         )
-        process_log_path = entry_dir / "process.log" if entry_dir is not None and entry_dir.is_dir() else None
-        whisperx_log_path = entry_dir / "whisperx.log" if entry_dir is not None and entry_dir.is_dir() else None
+        process_log_path = (
+            entry_dir / "process.log" if entry_dir is not None and entry_dir.is_dir() else None
+        )
+        whisperx_log_path = (
+            entry_dir / "whisperx.log" if entry_dir is not None and entry_dir.is_dir() else None
+        )
 
         transcript_json_content: str | None = None
         if json_path is not None:
@@ -488,30 +1172,47 @@ class SharedTranscriptionsService:
             transcript_json_content=transcript_json_content,
             process_log_content=_safe_read_text(process_log_path) if process_log_path else None,
             whisperx_log_content=_safe_read_text(whisperx_log_path) if whisperx_log_path else None,
+            calendar_match_present=cal_present,
+            calendar_match_confidence=cal_conf,
+            calendar_match_event_title=cal_evt,
+            calendar_match_used_for_title=cal_used,
         )
 
-    def rename_speaker(
+    async def rename_speaker(
         self,
         entry_id: str,
         payload: TranscriptionSpeakerRenameRequest,
+        *,
+        learning_service: SpeakerLearningService | None = None,
+        reviewed_by_user_id: UUID | None = None,
     ) -> TranscriptionDetailRead:
         transcriptions_root = self._transcriptions_root()
         entry_dir = self._require_processed_entry_dir(entry_id)
         audio_path = self._source_audio_path(entry_id, transcriptions_root=transcriptions_root)
         raw_json_path = self._raw_transcript_json_path(entry_dir)
         transcript = json.loads(raw_json_path.read_text(encoding="utf-8"))
-        segments = transcript.get("segments")
-        if not isinstance(segments, list) or not any(
-            isinstance(segment, dict)
-            and str(segment.get("speaker") or "").strip() == payload.speaker_label.strip()
-            for segment in segments
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Speaker label was not found in the transcript diarization data.",
-            )
+        speaker_label = payload.speaker_label.strip()
+        source_transcripts: list[object] = [transcript]
+        enroll_transcript_path = raw_json_path
+        if not _transcript_has_speaker_label(transcript, speaker_label):
+            display_json_path = _find_best_transcript_json(entry_dir)
+            if display_json_path is None or display_json_path == raw_json_path:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Speaker label was not found in the transcript diarization data.",
+                )
+            display_transcript = json.loads(display_json_path.read_text(encoding="utf-8"))
+            source_transcripts.append(display_transcript)
+            if not _transcript_has_speaker_label(display_transcript, speaker_label):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Speaker label was not found in the transcript diarization data.",
+                )
+            enroll_transcript_path = display_json_path
 
-        helper_path = self._speaker_helper_path(transcriptions_root=transcriptions_root)
+        from app.services.speaker_learning import _pinned_speaker_helper
+
+        helper_path = _pinned_speaker_helper()
         normalized_name = " ".join(payload.new_name.strip().split())
         if not normalized_name:
             raise HTTPException(
@@ -522,10 +1223,10 @@ class SharedTranscriptionsService:
         transcript_json_path = entry_dir / "transcript.json"
         transcript_text_path = entry_dir / "transcript.txt"
         python_bin = self._speaker_python_bin(transcriptions_root=transcriptions_root)
-        registry_dir = str(transcriptions_root)
+        registry_dir = str(self._speaker_registry_root())
 
-        self._run_speaker_helper(
-            [
+        if helper_path.is_file():
+            enroll_command = [
                 python_bin,
                 str(helper_path),
                 "--registry-dir",
@@ -536,14 +1237,81 @@ class SharedTranscriptionsService:
                 "--audio",
                 str(audio_path),
                 "--transcript",
-                str(raw_json_path),
+                str(enroll_transcript_path),
                 "--speaker",
-                payload.speaker_label.strip(),
-            ],
-            transcriptions_root=transcriptions_root,
-        )
-        self._run_speaker_helper(
-            [
+                speaker_label,
+            ]
+            if learning_service is None:
+                self._run_speaker_helper(
+                    enroll_command,
+                    transcriptions_root=transcriptions_root,
+                )
+            else:
+                with TemporaryDirectory(prefix="speaker-sample-") as temporary:
+                    temporary_root = Path(temporary)
+                    temporary_registry = temporary_root / SPEAKER_REGISTRY_DIRNAME
+                    temporary_registry.mkdir()
+                    shared_models = Path(registry_dir) / SPEAKER_REGISTRY_DIRNAME / "models"
+                    if shared_models.exists():
+                        (temporary_registry / "models").symlink_to(
+                            shared_models,
+                            target_is_directory=True,
+                        )
+                    isolated_command = list(enroll_command)
+                    isolated_command[isolated_command.index("--registry-dir") + 1] = temporary
+                    self._run_speaker_helper(
+                        isolated_command,
+                        transcriptions_root=transcriptions_root,
+                    )
+                    sample_registry = json.loads(
+                        (temporary_registry / "registry.json").read_text(encoding="utf-8")
+                    )
+                    speakers = sample_registry.get("speakers")
+                    embedding = (
+                        speakers[0].get("embedding")
+                        if (
+                            isinstance(speakers, list)
+                            and speakers
+                            and isinstance(speakers[0], dict)
+                        )
+                        else None
+                    )
+                    if not isinstance(embedding, list):
+                        raise HTTPException(
+                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Speaker embedding could not be extracted.",
+                        )
+                enroll_payload = json.loads(enroll_transcript_path.read_text(encoding="utf-8"))
+                segments = enroll_payload.get("segments")
+                matching_segments = (
+                    [
+                        segment
+                        for segment in segments
+                        if isinstance(segment, dict)
+                        and str(segment.get("speaker") or "").strip() == speaker_label
+                    ]
+                    if isinstance(segments, list)
+                    else []
+                )
+                speech_duration = sum(
+                    max(
+                        0.0,
+                        (_parse_offset_seconds(segment.get("end")) or 0.0)
+                        - (_parse_offset_seconds(segment.get("start")) or 0.0),
+                    )
+                    for segment in matching_segments
+                )
+                await learning_service.add_confirmed_embedding(
+                    name=normalized_name,
+                    entry_id=entry_id,
+                    speaker_label=speaker_label,
+                    source_audio_path=str(audio_path),
+                    embedding=[float(value) for value in embedding],
+                    speech_duration_seconds=speech_duration,
+                    segment_count=len(matching_segments),
+                    reviewed_by_user_id=reviewed_by_user_id,
+                )
+            annotate_cmd = [
                 python_bin,
                 str(helper_path),
                 "--registry-dir",
@@ -557,11 +1325,60 @@ class SharedTranscriptionsService:
                 str(transcript_json_path),
                 "--output-text",
                 str(transcript_text_path),
-            ],
-            transcriptions_root=transcriptions_root,
+            ]
+            calendar_match_path = entry_dir / CALENDAR_MATCH_FILENAME
+            if calendar_match_path.is_file():
+                annotate_cmd.extend(["--calendar-match", str(calendar_match_path)])
+            self._run_speaker_helper(annotate_cmd, transcriptions_root=transcriptions_root)
+        _apply_manual_speaker_name(
+            transcript_json_path,
+            transcript_text_path,
+            speaker_label=speaker_label,
+            new_name=normalized_name,
+            source_transcripts=source_transcripts,
         )
 
+        _write_speaker_annotation_overlay(transcript_json_path)
         return self.get_entry(entry_id)
+
+    def apply_confirmed_speaker_name(
+        self,
+        entry_id: str,
+        *,
+        speaker_label: str,
+        display_name: str,
+        segment_evidence: list[dict[str, object]],
+    ) -> None:
+        entry_dir = self._require_processed_entry_dir(entry_id)
+        transcript_path = entry_dir / "transcript.json"
+        text_path = entry_dir / "transcript.txt"
+        transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
+        evidence_ids = {str(item.get("id") or "") for item in segment_evidence}
+        segments = transcript.get("segments") if isinstance(transcript, dict) else None
+        if not isinstance(segments, list):
+            return
+        for segment in segments:
+            if not isinstance(segment, dict):
+                continue
+            start, end, text = _segment_fingerprint(segment)
+            segment_id = hashlib.sha256(f"{start}\0{end}\0{text}".encode()).hexdigest()
+            labels = {
+                str(segment.get("speaker") or "").strip(),
+                str(segment.get("speaker_chunk_local") or "").strip(),
+            }
+            if (evidence_ids and segment_id in evidence_ids) or (
+                not evidence_ids and speaker_label in labels
+            ):
+                segment["speaker_name"] = display_name
+                segment.pop("speaker_name_tentative", None)
+        temporary = transcript_path.with_suffix(".json.tmp")
+        temporary.write_text(
+            json.dumps(transcript, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        temporary.replace(transcript_path)
+        _write_diarized_transcript_text(transcript, text_path)
+        _write_speaker_annotation_overlay(transcript_path)
 
     def get_source_audio_response(self, entry_id: str) -> FileResponse:
         transcriptions_root = self._transcriptions_root()
@@ -571,4 +1388,69 @@ class SharedTranscriptionsService:
             path=audio_path,
             media_type=media_type or "application/octet-stream",
             filename=audio_path.name,
+        )
+
+    def export_diarized_transcript_docx_response(self, entry_id: str) -> Response:
+        entry_dir = self._require_processed_entry_dir(entry_id)
+        transcript_json_path = _find_best_transcript_json(entry_dir)
+        if transcript_json_path is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Transcript JSON is required to export a diarized DOCX.",
+            )
+
+        try:
+            transcript = json.loads(transcript_json_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Transcript JSON could not be parsed for DOCX export.",
+            ) from exc
+
+        segments = transcript.get("segments")
+        if not isinstance(segments, list):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Transcript JSON does not contain segment data for DOCX export.",
+            )
+
+        turns: list[dict[str, str]] = []
+        for segment in segments:
+            if not isinstance(segment, dict):
+                continue
+            text = segment.get("text")
+            normalized_text = text.strip() if isinstance(text, str) else ""
+            if not normalized_text:
+                continue
+            speaker_label, raw_speaker = _normalize_speaker_label(segment)
+            speaker_name = segment.get("speaker_name")
+            has_named_speaker = isinstance(speaker_name, str) and bool(speaker_name.strip())
+            if raw_speaker is None and not has_named_speaker:
+                continue
+            start_label = _format_docx_offset(_parse_offset_seconds(segment.get("start")))
+            end_label = _format_docx_offset(_parse_offset_seconds(segment.get("end")))
+            time_range = (
+                f" ({start_label} - {end_label})"
+                if start_label and end_label and start_label != end_label
+                else f" ({start_label or end_label})" if start_label or end_label else ""
+            )
+            turns.append(
+                {
+                    "heading": f"{speaker_label}{time_range}",
+                    "text": normalized_text,
+                }
+            )
+
+        if not turns:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Only diarized transcripts can be exported to DOCX.",
+            )
+
+        docx_bytes = _build_docx_bytes(title=f"{entry_id} diarized transcript", turns=turns)
+        filename = f"{entry_id}-diarized-transcript.docx"
+        return Response(
+            content=docx_bytes,
+            media_type=DOCX_MEDIA_TYPE,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )

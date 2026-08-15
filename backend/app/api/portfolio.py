@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import col
 
 from app.api.deps import require_org_admin
@@ -15,19 +17,24 @@ from app.schemas.portfolio import (
     PortfolioPositionRead,
     PortfolioRationaleUpdate,
     PortfolioReviewRead,
+    PortfolioReviewRunRequest,
+    PortfolioReviewRunResult,
+    PortfolioRollEventRead,
     PortfolioSyncRead,
 )
 from app.services.openclaw.error_messages import normalize_gateway_error_message
 from app.services.openclaw.gateway_resolver import gateway_client_config
 from app.services.openclaw.gateway_rpc import OpenClawGatewayError, openclaw_call
+from app.services.organizations import OrganizationContext
 from app.services.portfolio import SharedPortfolioService
+from app.services.portfolio.review_engine import (
+    list_roll_events_read,
+    run_portfolio_review,
+    undo_roll_event,
+)
 
 if TYPE_CHECKING:
-    from uuid import UUID
-
     from sqlmodel.ext.asyncio.session import AsyncSession
-
-    from app.services.organizations import OrganizationContext
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 SESSION_DEP = Depends(get_session)
@@ -72,10 +79,32 @@ async def _enqueue_portfolio_sync(gateway: Gateway) -> PortfolioSyncRead:
             detail="Portfolio sync returned an invalid gateway response.",
         )
 
+    ok = bool(payload.get("ok", True))
+    enqueued = bool(payload.get("enqueued", payload.get("ok", True)))
+    if not ok or not enqueued:
+        detail_candidates = (
+            payload.get("error"),
+            payload.get("message"),
+            payload.get("detail"),
+        )
+        raw_detail = next(
+            (
+                str(candidate).strip()
+                for candidate in detail_candidates
+                if isinstance(candidate, str) and str(candidate).strip()
+            ),
+            "",
+        )
+        detail = normalize_gateway_error_message(raw_detail)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Portfolio sync could not be started: {detail}",
+        )
+
     run_id = payload.get("runId")
     return PortfolioSyncRead(
-        ok=bool(payload.get("ok", True)),
-        enqueued=bool(payload.get("enqueued", payload.get("ok", True))),
+        ok=ok,
+        enqueued=enqueued,
         job_id=PORTFOLIO_SYNC_JOB_ID,
         run_id=str(run_id).strip() if isinstance(run_id, str) and str(run_id).strip() else None,
     )
@@ -131,6 +160,72 @@ async def get_portfolio_review(
 ) -> PortfolioReviewRead:
     """Get one daily portfolio review artifact."""
     return await SharedPortfolioService(session, ctx.organization.id).get_review(review_id)
+
+
+@router.post("/review/run", response_model=PortfolioReviewRunResult)
+async def run_portfolio_review_endpoint(
+    body: PortfolioReviewRunRequest,
+    ctx: OrganizationContext = ORG_ADMIN_DEP,
+    session: AsyncSession = SESSION_DEP,
+) -> PortfolioReviewRunResult:
+    """Run the portfolio review engine (sheet rows → snapshot + review artifacts)."""
+    from app.core.time import utcnow
+
+    gen = None
+    if body.generated_at and str(body.generated_at).strip():
+        raw = str(body.generated_at).strip()
+        try:
+            gen = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            gen = None
+    if gen is None:
+        gen = utcnow()
+    try:
+        return await run_portfolio_review(
+            session,
+            ctx.organization.id,
+            positions_rows=body.positions_rows,
+            trades_rows=body.trades_rows,
+            generated_at=gen,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+
+@router.get("/roll-events", response_model=list[PortfolioRollEventRead])
+async def list_portfolio_roll_events(
+    ctx: OrganizationContext = ORG_ADMIN_DEP,
+    session: AsyncSession = SESSION_DEP,
+    days: int = Query(default=7, ge=1, le=90),
+) -> list[PortfolioRollEventRead]:
+    """List recent portfolio roll events (auto-carry / manual)."""
+    raw = await list_roll_events_read(session, ctx.organization.id, days=days)
+    return [
+        PortfolioRollEventRead(
+            id=item["id"],
+            rolled_from_position_key=item["rolled_from_position_key"],
+            rolled_to_position_key=item["rolled_to_position_key"],
+            rolled_at=item["rolled_at"],
+            net_credit_cents=int(item["net_credit_cents"]),
+            source_trade_ids=list(item.get("source_trade_ids") or []),
+            status=str(item.get("status") or "auto_carried"),
+            confidence=item.get("confidence"),
+        )
+        for item in raw
+    ]
+
+
+@router.post("/roll-events/{event_id}/undo", status_code=status.HTTP_204_NO_CONTENT)
+async def undo_portfolio_roll_event(
+    event_id: UUID,
+    ctx: OrganizationContext = ORG_ADMIN_DEP,
+    session: AsyncSession = SESSION_DEP,
+) -> None:
+    """Dismiss a roll detection and remove auto-carried rationale on the target key."""
+    await undo_roll_event(session, ctx.organization.id, event_id)
 
 
 @router.post("/sync", response_model=PortfolioSyncRead)

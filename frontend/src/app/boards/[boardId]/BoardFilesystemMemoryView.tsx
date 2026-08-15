@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { useEffect, useMemo, useState } from "react";
 
@@ -129,9 +130,12 @@ export function BoardFilesystemMemoryView({
     };
   }, [active, boardId, fileCache, selectedPath]);
 
-  const dailyFiles = overview?.daily_files ?? [];
+  const dailyFiles = useMemo(
+    () => overview?.daily_files ?? [],
+    [overview?.daily_files],
+  );
   const longTermMemory = overview?.long_term_memory ?? null;
-  const selectedFile = selectedPath ? fileCache[selectedPath] ?? null : null;
+  const selectedFile = selectedPath ? (fileCache[selectedPath] ?? null) : null;
 
   const filteredDailyFiles = useMemo(() => {
     return dailyFiles.filter((file) =>
@@ -178,8 +182,8 @@ export function BoardFilesystemMemoryView({
               Lead workspace memory explorer
             </h2>
             <p className="mt-2 max-w-2xl text-sm text-slate-600">
-              Reading `MEMORY.md` and `memory/YYYY-MM-DD.md` from the board
-              lead workspace. This is separate from board chat and persisted
+              Reading `MEMORY.md` and `memory/YYYY-MM-DD.md` from the board lead
+              workspace. This is separate from board chat and persisted
               `board_memory`.
             </p>
           </div>
@@ -263,7 +267,10 @@ export function BoardFilesystemMemoryView({
                   </p>
                 ) : (
                   <div className="select-text cursor-text break-words text-sm leading-relaxed text-slate-900">
-                    <Markdown content={longTermMemory.content} variant="basic" />
+                    <Markdown
+                      content={longTermMemory.content}
+                      variant="basic"
+                    />
                   </div>
                 )}
               </div>
@@ -278,7 +285,9 @@ export function BoardFilesystemMemoryView({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => quickPaths.today && setSelectedPath(quickPaths.today)}
+                  onClick={() =>
+                    quickPaths.today && setSelectedPath(quickPaths.today)
+                  }
                   disabled={!quickPaths.today}
                 >
                   Today
@@ -287,7 +296,8 @@ export function BoardFilesystemMemoryView({
                   variant="outline"
                   size="sm"
                   onClick={() =>
-                    quickPaths.yesterday && setSelectedPath(quickPaths.yesterday)
+                    quickPaths.yesterday &&
+                    setSelectedPath(quickPaths.yesterday)
                   }
                   disabled={!quickPaths.yesterday}
                 >
@@ -296,7 +306,9 @@ export function BoardFilesystemMemoryView({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => quickPaths.latest && setSelectedPath(quickPaths.latest)}
+                  onClick={() =>
+                    quickPaths.latest && setSelectedPath(quickPaths.latest)
+                  }
                   disabled={!quickPaths.latest}
                 >
                   Latest
@@ -314,9 +326,12 @@ export function BoardFilesystemMemoryView({
           <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
             <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 px-5 py-4">
-                <p className="text-sm font-semibold text-slate-900">Daily memory</p>
+                <p className="text-sm font-semibold text-slate-900">
+                  Daily memory
+                </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  {filteredDailyFiles.length} of {dailyFiles.length} files visible
+                  {filteredDailyFiles.length} of {dailyFiles.length} files
+                  visible
                 </p>
               </div>
               <div className="max-h-[720px] overflow-y-auto p-3">

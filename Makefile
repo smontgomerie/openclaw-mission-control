@@ -5,6 +5,7 @@ SHELL := /usr/bin/env bash
 
 BACKEND_DIR := backend
 FRONTEND_DIR := frontend
+OPENCLAW_SHARED_WORKSPACE_PATH ?= $(HOME)/.openclaw-docker/workspace
 
 NODE_WRAP := bash scripts/with_node.sh
 
@@ -163,11 +164,42 @@ mcp-test: frontend-tooling ## Run the Mission Control MCP package tests
 	$(NODE_WRAP) --cwd mcp/mission-control npm test
 
 .PHONY: docker-up
-docker-up: ## Start full Docker stack with image rebuild
+docker-up: docker-backend-base ## Start full Docker stack with image rebuild
 	docker compose -f compose.yml --env-file .env up -d --build
 
+.PHONY: docker-gpu-up
+docker-gpu-up: ## Start full Docker stack with CUDA backend and GPU reservations
+	OPENCLAW_TORCH_BACKEND=cu128 ./scripts/ensure_openclaw_backend_base.sh
+	OPENCLAW_TORCH_BACKEND=cu128 docker compose -f compose.yml -f compose.gpu.yml --env-file .env up -d --build
+
+.PHONY: docker-gpu-recreate
+docker-gpu-recreate: ## Recreate GPU services without rebuilding images
+	OPENCLAW_TORCH_BACKEND=cu128 docker compose -f compose.yml -f compose.gpu.yml --env-file .env up -d --force-recreate backend webhook-worker
+
+.PHONY: docker-gpu-check
+docker-gpu-check: ## Verify CUDA inside the backend container
+	docker --context default exec openclaw-mission-control-backend-1 sh -lc 'nvidia-smi && python3 -c "import torch; print(torch.__version__); print(torch.cuda.is_available(), torch.cuda.device_count())"'
+
+.PHONY: docker-gpu-repair
+docker-gpu-repair: ## Recreate GPU services only when in-container CUDA/NVML is unhealthy
+	./scripts/repair_cuda_containers.sh
+
+.PHONY: transcriptions-speaker-tools-sync
+transcriptions-speaker-tools-sync: ## Install the speaker observation extractor in the shared workspace
+	install -d "$(OPENCLAW_SHARED_WORKSPACE_PATH)/transcriptions"
+	install -m 0755 scripts/openclaw-transcriptions/speaker_observations.py \
+		"$(OPENCLAW_SHARED_WORKSPACE_PATH)/transcriptions/speaker_observations.py"
+	install -m 0755 scripts/openclaw-transcriptions/apply_speaker_annotations.py \
+		"$(OPENCLAW_SHARED_WORKSPACE_PATH)/transcriptions/apply_speaker_annotations.py"
+	install -m 0755 scripts/openclaw-transcriptions/install_speaker_hooks.py "$(OPENCLAW_SHARED_WORKSPACE_PATH)/transcriptions/install_speaker_hooks.py"
+	python3 "$(OPENCLAW_SHARED_WORKSPACE_PATH)/transcriptions/install_speaker_hooks.py" --transcriptions-root "$(OPENCLAW_SHARED_WORKSPACE_PATH)/transcriptions"
+
+.PHONY: docker-backend-base
+docker-backend-base: ## Ensure the shared OpenClaw backend base image exists locally
+	./scripts/ensure_openclaw_backend_base.sh
+
 .PHONY: docker-watch
-docker-watch: ## Start stack in watch mode (auto rebuild frontend on UI changes)
+docker-watch: docker-backend-base ## Start stack in watch mode (auto rebuild frontend on UI changes)
 	docker compose -f compose.yml --env-file .env up --build --watch
 
 .PHONY: docker-watch-only

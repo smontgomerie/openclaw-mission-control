@@ -21,8 +21,11 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  GatewayBrandRead,
   GatewayCommandsResponse,
   GatewayCreate,
+  GatewayFilesystemMemoryContentRead,
+  GatewayFilesystemMemoryOverviewRead,
   GatewayRead,
   GatewaySessionHistoryResponse,
   GatewaySessionMessageRequest,
@@ -32,6 +35,7 @@ import type {
   GatewayUpdate,
   GatewaysStatusApiV1GatewaysStatusGetParams,
   GatewaysStatusResponse,
+  GetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetParams,
   GetGatewaySessionApiV1GatewaysSessionsSessionIdGetParams,
   GetSessionHistoryApiV1GatewaysSessionsSessionIdHistoryGetParams,
   HTTPValidationError,
@@ -376,6 +380,180 @@ export const useCreateGatewayApiV1GatewaysPost = <
     queryClient,
   );
 };
+/**
+ * Resolve the current organization's primary gateway brand from IDENTITY.md.
+ * @summary Get Gateway Brand
+ */
+export type getGatewayBrandApiV1GatewaysBrandGetResponse200 = {
+  data: GatewayBrandRead;
+  status: 200;
+};
+
+export type getGatewayBrandApiV1GatewaysBrandGetResponseSuccess =
+  getGatewayBrandApiV1GatewaysBrandGetResponse200 & {
+    headers: Headers;
+  };
+export type getGatewayBrandApiV1GatewaysBrandGetResponse =
+  getGatewayBrandApiV1GatewaysBrandGetResponseSuccess;
+
+export const getGetGatewayBrandApiV1GatewaysBrandGetUrl = () => {
+  return `/api/v1/gateways/brand`;
+};
+
+export const getGatewayBrandApiV1GatewaysBrandGet = async (
+  options?: RequestInit,
+): Promise<getGatewayBrandApiV1GatewaysBrandGetResponse> => {
+  return customFetch<getGatewayBrandApiV1GatewaysBrandGetResponse>(
+    getGetGatewayBrandApiV1GatewaysBrandGetUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetGatewayBrandApiV1GatewaysBrandGetQueryKey = () => {
+  return [`/api/v1/gateways/brand`] as const;
+};
+
+export const getGetGatewayBrandApiV1GatewaysBrandGetQueryOptions = <
+  TData = Awaited<ReturnType<typeof getGatewayBrandApiV1GatewaysBrandGet>>,
+  TError = unknown,
+>(options?: {
+  query?: Partial<
+    UseQueryOptions<
+      Awaited<ReturnType<typeof getGatewayBrandApiV1GatewaysBrandGet>>,
+      TError,
+      TData
+    >
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetGatewayBrandApiV1GatewaysBrandGetQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getGatewayBrandApiV1GatewaysBrandGet>>
+  > = ({ signal }) =>
+    getGatewayBrandApiV1GatewaysBrandGet({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getGatewayBrandApiV1GatewaysBrandGet>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetGatewayBrandApiV1GatewaysBrandGetQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getGatewayBrandApiV1GatewaysBrandGet>>
+>;
+export type GetGatewayBrandApiV1GatewaysBrandGetQueryError = unknown;
+
+export function useGetGatewayBrandApiV1GatewaysBrandGet<
+  TData = Awaited<ReturnType<typeof getGatewayBrandApiV1GatewaysBrandGet>>,
+  TError = unknown,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getGatewayBrandApiV1GatewaysBrandGet>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getGatewayBrandApiV1GatewaysBrandGet>>,
+          TError,
+          Awaited<ReturnType<typeof getGatewayBrandApiV1GatewaysBrandGet>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetGatewayBrandApiV1GatewaysBrandGet<
+  TData = Awaited<ReturnType<typeof getGatewayBrandApiV1GatewaysBrandGet>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getGatewayBrandApiV1GatewaysBrandGet>>,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getGatewayBrandApiV1GatewaysBrandGet>>,
+          TError,
+          Awaited<ReturnType<typeof getGatewayBrandApiV1GatewaysBrandGet>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetGatewayBrandApiV1GatewaysBrandGet<
+  TData = Awaited<ReturnType<typeof getGatewayBrandApiV1GatewaysBrandGet>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getGatewayBrandApiV1GatewaysBrandGet>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+/**
+ * @summary Get Gateway Brand
+ */
+
+export function useGetGatewayBrandApiV1GatewaysBrandGet<
+  TData = Awaited<ReturnType<typeof getGatewayBrandApiV1GatewaysBrandGet>>,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getGatewayBrandApiV1GatewaysBrandGet>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions =
+    getGetGatewayBrandApiV1GatewaysBrandGetQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
 /**
  * Return supported gateway protocol methods and events.
  * @summary Gateway Commands
@@ -2242,6 +2420,612 @@ export const useUpdateGatewayApiV1GatewaysGatewayIdPatch = <
     queryClient,
   );
 };
+/**
+ * Get the gateway-main agent's filesystem-backed memory overview.
+ * @summary Get Gateway Filesystem Memory
+ */
+export type getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetResponse200 =
+  {
+    data: GatewayFilesystemMemoryOverviewRead;
+    status: 200;
+  };
+
+export type getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetResponseSuccess =
+  getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetResponse200 & {
+    headers: Headers;
+  };
+export type getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetResponseError =
+  getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetResponse422 & {
+    headers: Headers;
+  };
+
+export type getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetResponse =
+
+    | getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetResponseSuccess
+    | getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetResponseError;
+
+export const getGetGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetUrl =
+  (gatewayId: string) => {
+    return `/api/v1/gateways/${gatewayId}/filesystem-memory`;
+  };
+
+export const getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet =
+  async (
+    gatewayId: string,
+    options?: RequestInit,
+  ): Promise<getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetResponse> => {
+    return customFetch<getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetResponse>(
+      getGetGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetUrl(
+        gatewayId,
+      ),
+      {
+        ...options,
+        method: "GET",
+      },
+    );
+  };
+
+export const getGetGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetQueryKey =
+  (gatewayId: string) => {
+    return [`/api/v1/gateways/${gatewayId}/filesystem-memory`] as const;
+  };
+
+export const getGetGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetQueryOptions =
+  <
+    TData = Awaited<
+      ReturnType<
+        typeof getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet
+      >
+    >,
+    TError = HTTPValidationError,
+  >(
+    gatewayId: string,
+    options?: {
+      query?: Partial<
+        UseQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+      request?: SecondParameter<typeof customFetch>;
+    },
+  ) => {
+    const { query: queryOptions, request: requestOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetQueryKey(
+        gatewayId,
+      );
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet
+        >
+      >
+    > = ({ signal }) =>
+      getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet(
+        gatewayId,
+        { signal, ...requestOptions },
+      );
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!gatewayId,
+      ...queryOptions,
+    } as UseQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet
+        >
+      >,
+      TError,
+      TData
+    > & { queryKey: DataTag<QueryKey, TData, TError> };
+  };
+
+export type GetGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet
+      >
+    >
+  >;
+export type GetGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetQueryError =
+  HTTPValidationError;
+
+export function useGetGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  gatewayId: string,
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet
+          >
+        >,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<
+            ReturnType<
+              typeof getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet
+            >
+          >,
+          TError,
+          Awaited<
+            ReturnType<
+              typeof getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet
+            >
+          >
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  gatewayId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet
+          >
+        >,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<
+            ReturnType<
+              typeof getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet
+            >
+          >,
+          TError,
+          Awaited<
+            ReturnType<
+              typeof getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet
+            >
+          >
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  gatewayId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+/**
+ * @summary Get Gateway Filesystem Memory
+ */
+
+export function useGetGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  gatewayId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions =
+    getGetGatewayFilesystemMemoryApiV1GatewaysGatewayIdFilesystemMemoryGetQueryOptions(
+      gatewayId,
+      options,
+    );
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Read a specific gateway-main memory file such as MEMORY.md or memory/YYYY-MM-DD.md.
+ * @summary Get Gateway Filesystem Memory File
+ */
+export type getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetResponse200 =
+  {
+    data: GatewayFilesystemMemoryContentRead;
+    status: 200;
+  };
+
+export type getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetResponseSuccess =
+  getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetResponse200 & {
+    headers: Headers;
+  };
+export type getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetResponseError =
+  getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetResponse422 & {
+    headers: Headers;
+  };
+
+export type getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetResponse =
+
+    | getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetResponseSuccess
+    | getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetResponseError;
+
+export const getGetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetUrl =
+  (
+    gatewayId: string,
+    params: GetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetParams,
+  ) => {
+    const normalizedParams = new URLSearchParams();
+
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value !== undefined) {
+        normalizedParams.append(
+          key,
+          value === null ? "null" : value.toString(),
+        );
+      }
+    });
+
+    const stringifiedParams = normalizedParams.toString();
+
+    return stringifiedParams.length > 0
+      ? `/api/v1/gateways/${gatewayId}/filesystem-memory/file?${stringifiedParams}`
+      : `/api/v1/gateways/${gatewayId}/filesystem-memory/file`;
+  };
+
+export const getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet =
+  async (
+    gatewayId: string,
+    params: GetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetParams,
+    options?: RequestInit,
+  ): Promise<getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetResponse> => {
+    return customFetch<getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetResponse>(
+      getGetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetUrl(
+        gatewayId,
+        params,
+      ),
+      {
+        ...options,
+        method: "GET",
+      },
+    );
+  };
+
+export const getGetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetQueryKey =
+  (
+    gatewayId: string,
+    params?: GetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetParams,
+  ) => {
+    return [
+      `/api/v1/gateways/${gatewayId}/filesystem-memory/file`,
+      ...(params ? [params] : []),
+    ] as const;
+  };
+
+export const getGetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetQueryOptions =
+  <
+    TData = Awaited<
+      ReturnType<
+        typeof getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet
+      >
+    >,
+    TError = HTTPValidationError,
+  >(
+    gatewayId: string,
+    params: GetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetParams,
+    options?: {
+      query?: Partial<
+        UseQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+      request?: SecondParameter<typeof customFetch>;
+    },
+  ) => {
+    const { query: queryOptions, request: requestOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetQueryKey(
+        gatewayId,
+        params,
+      );
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet
+        >
+      >
+    > = ({ signal }) =>
+      getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet(
+        gatewayId,
+        params,
+        { signal, ...requestOptions },
+      );
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!gatewayId,
+      ...queryOptions,
+    } as UseQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet
+        >
+      >,
+      TError,
+      TData
+    > & { queryKey: DataTag<QueryKey, TData, TError> };
+  };
+
+export type GetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet
+      >
+    >
+  >;
+export type GetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetQueryError =
+  HTTPValidationError;
+
+export function useGetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  gatewayId: string,
+  params: GetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetParams,
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet
+          >
+        >,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<
+            ReturnType<
+              typeof getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet
+            >
+          >,
+          TError,
+          Awaited<
+            ReturnType<
+              typeof getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet
+            >
+          >
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  gatewayId: string,
+  params: GetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet
+          >
+        >,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<
+            ReturnType<
+              typeof getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet
+            >
+          >,
+          TError,
+          Awaited<
+            ReturnType<
+              typeof getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet
+            >
+          >
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  gatewayId: string,
+  params: GetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+/**
+ * @summary Get Gateway Filesystem Memory File
+ */
+
+export function useGetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  gatewayId: string,
+  params: GetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions =
+    getGetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetQueryOptions(
+      gatewayId,
+      params,
+      options,
+    );
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
 /**
  * Sync templates for a gateway and optionally rotate runtime settings.
  * @summary Sync Gateway Templates

@@ -2570,6 +2570,24 @@ export const updatePortfolioRationaleApiV1PortfolioPositionsPositionKeyRationale
         headers: res.headers,
     };
 };
+export const getRunPortfolioReviewEndpointApiV1PortfolioReviewRunPostUrl = () => {
+    return `/api/v1/portfolio/review/run`;
+};
+export const runPortfolioReviewEndpointApiV1PortfolioReviewRunPost = async (portfolioReviewRunRequest, options) => {
+    const res = await fetch(getRunPortfolioReviewEndpointApiV1PortfolioReviewRunPostUrl(), {
+        ...options,
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...options?.headers },
+        body: JSON.stringify(portfolioReviewRunRequest),
+    });
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+    const data = body ? JSON.parse(body) : {};
+    return {
+        data,
+        status: res.status,
+        headers: res.headers,
+    };
+};
 export const getListPortfolioReviewsApiV1PortfolioReviewsGetUrl = () => {
     return `/api/v1/portfolio/reviews`;
 };
@@ -2593,6 +2611,47 @@ export const getPortfolioReviewApiV1PortfolioReviewsReviewIdGet = async (reviewI
     const res = await fetch(getGetPortfolioReviewApiV1PortfolioReviewsReviewIdGetUrl(reviewId), {
         ...options,
         method: "GET",
+    });
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+    const data = body ? JSON.parse(body) : {};
+    return {
+        data,
+        status: res.status,
+        headers: res.headers,
+    };
+};
+export const getListPortfolioRollEventsApiV1PortfolioRollEventsGetUrl = (params) => {
+    const normalizedParams = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+        if (value !== undefined) {
+            normalizedParams.append(key, value === null ? "null" : value.toString());
+        }
+    });
+    const stringifiedParams = normalizedParams.toString();
+    return stringifiedParams.length > 0
+        ? `/api/v1/portfolio/roll-events?${stringifiedParams}`
+        : `/api/v1/portfolio/roll-events`;
+};
+export const listPortfolioRollEventsApiV1PortfolioRollEventsGet = async (params, options) => {
+    const res = await fetch(getListPortfolioRollEventsApiV1PortfolioRollEventsGetUrl(params), {
+        ...options,
+        method: "GET",
+    });
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+    const data = body ? JSON.parse(body) : {};
+    return {
+        data,
+        status: res.status,
+        headers: res.headers,
+    };
+};
+export const getUndoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPostUrl = (eventId) => {
+    return `/api/v1/portfolio/roll-events/${eventId}/undo`;
+};
+export const undoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPost = async (eventId, options) => {
+    const res = await fetch(getUndoPortfolioRollEventApiV1PortfolioRollEventsEventIdUndoPostUrl(eventId), {
+        ...options,
+        method: "POST",
     });
     const body = [204, 205, 304].includes(res.status) ? null : await res.text();
     const data = body ? JSON.parse(body) : {};
@@ -3023,6 +3082,22 @@ export const listTranscriptionsApiV1TranscriptionsGet = async (options) => {
         headers: res.headers,
     };
 };
+export const getReprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostUrl = () => {
+    return `/api/v1/transcriptions/reprocess-metadata`;
+};
+export const reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPost = async (options) => {
+    const res = await fetch(getReprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostUrl(), {
+        ...options,
+        method: "POST",
+    });
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+    const data = body ? JSON.parse(body) : {};
+    return {
+        data,
+        status: res.status,
+        headers: res.headers,
+    };
+};
 export const getSyncTranscriptionsNowApiV1TranscriptionsSyncPostUrl = () => {
     return `/api/v1/transcriptions/sync`;
 };
@@ -3060,6 +3135,22 @@ export const getGetTranscriptionAudioApiV1TranscriptionsEntryIdAudioGetUrl = (en
 };
 export const getTranscriptionAudioApiV1TranscriptionsEntryIdAudioGet = async (entryId, options) => {
     const res = await fetch(getGetTranscriptionAudioApiV1TranscriptionsEntryIdAudioGetUrl(entryId), {
+        ...options,
+        method: "GET",
+    });
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+    const data = body ? JSON.parse(body) : {};
+    return {
+        data,
+        status: res.status,
+        headers: res.headers,
+    };
+};
+export const getExportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGetUrl = (entryId) => {
+    return `/api/v1/transcriptions/${entryId}/export.docx`;
+};
+export const exportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGet = async (entryId, options) => {
+    const res = await fetch(getExportTranscriptionDocxApiV1TranscriptionsEntryIdExportDocxGetUrl(entryId), {
         ...options,
         method: "GET",
     });

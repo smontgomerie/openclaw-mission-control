@@ -1,3 +1,16 @@
+import {
+  confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPost,
+  deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDelete,
+  getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet,
+  getSpeakerDirectoryApiV1TranscriptionsSpeakersGet,
+  importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPost,
+  mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePost,
+  previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet,
+  rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPost,
+  renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatch,
+  renameTranscriptionSpeakerApiV1TranscriptionsEntryIdSpeakersRenamePost,
+  startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPost,
+} from "@/api/generated/transcriptions/transcriptions";
 import { authenticatedFetch, customFetch } from "@/api/mutator";
 
 export type TranscriptionFile = {
@@ -21,6 +34,8 @@ export type TranscriptionEntry = {
   has_transcript_json?: boolean;
   progress_seconds?: number | null;
   total_duration_seconds?: number | null;
+  diarized_speaker_count?: number | null;
+  diarized_speaker_preview?: string[];
 };
 
 export type TranscriptionDetail = TranscriptionEntry & {
@@ -29,6 +44,10 @@ export type TranscriptionDetail = TranscriptionEntry & {
   transcript_json_content?: string | null;
   process_log_content?: string | null;
   whisperx_log_content?: string | null;
+  calendar_match_present?: boolean;
+  calendar_match_confidence?: string | null;
+  calendar_match_event_title?: string | null;
+  calendar_match_used_for_title?: boolean;
 };
 
 export type RenameTranscriptionSpeakerRequest = {
@@ -43,6 +62,74 @@ export type TranscriptionSyncResult = {
   run_id?: string | null;
 };
 
+export type SpeakerProfile = {
+  id: string;
+  display_name: string;
+  aliases: string[];
+  encoder: string;
+  confirmed_sample_count: number;
+  represented_sample_count: number;
+  pending_sample_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SpeakerVoiceSample = {
+  id: string;
+  profile_id?: string | null;
+  candidate_profile_id?: string | null;
+  candidate_name?: string | null;
+  transcription_entry_id?: string | null;
+  speaker_label?: string | null;
+  source_audio_path?: string | null;
+  encoder: string;
+  speech_duration_seconds?: number | null;
+  segment_count?: number | null;
+  segment_evidence: Array<{
+    id: string;
+    start?: number | null;
+    end?: number | null;
+    text?: string;
+  }>;
+  similarity?: number | null;
+  clip_start_seconds?: number | null;
+  clip_end_seconds?: number | null;
+  second_similarity?: number | null;
+  status: string;
+  source_type: string;
+  represented_sample_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SpeakerBackfillPreview = {
+  snapshot_hash: string;
+  recording_count: number;
+  transcript_count: number;
+  annotated_recording_count: number;
+  unannotated_recording_count: number;
+  speaker_names: Record<string, number>;
+  tentative_annotation_count: number;
+  skipped: Array<{ entry_id: string; reason: string }>;
+};
+
+export type SpeakerBackfillRun = {
+  id: string;
+  snapshot_hash: string;
+  status: string;
+  total_recordings: number;
+  processed_recordings: number;
+  confirmed_samples: number;
+  pending_samples: number;
+  skipped_recordings: number;
+  errors: Array<Record<string, unknown>>;
+};
+
+export type SpeakerDirectory = {
+  profiles: SpeakerProfile[];
+  pending_samples: SpeakerVoiceSample[];
+};
+
 export type DiarizedTranscriptTurn = {
   speakerLabel: string;
   rawSpeakerLabel: string | null;
@@ -51,12 +138,19 @@ export type DiarizedTranscriptTurn = {
   end: number | null;
 };
 
-export async function fetchTranscriptions(): Promise<TranscriptionEntry[]> {
+export async function fetchTranscriptions(options?: {
+  offset?: number;
+  limit?: number;
+}): Promise<TranscriptionEntry[]> {
+  const query = new URLSearchParams();
+  if (options?.offset) query.set("offset", String(options.offset));
+  if (options?.limit) query.set("limit", String(options.limit));
+  const suffix = query.size ? `?${query.toString()}` : "";
   const response = await customFetch<{ data: TranscriptionEntry[] }>(
-    "/api/v1/transcriptions",
+    `/api/v1/transcriptions${suffix}`,
     { method: "GET" },
   );
-  return sortTranscriptionsByNewest(response.data);
+  return sortTranscriptionsByRecordingDate(response.data);
 }
 
 export async function fetchTranscriptionDetail(
@@ -77,18 +171,113 @@ export async function syncTranscriptionsNow(): Promise<TranscriptionSyncResult> 
   return response.data;
 }
 
+export async function reprocessTranscriptionsMetadata(): Promise<TranscriptionSyncResult> {
+  const response = await customFetch<{ data: TranscriptionSyncResult }>(
+    "/api/v1/transcriptions/reprocess-metadata",
+    { method: "POST" },
+  );
+  return response.data;
+}
+
 export async function renameTranscriptionSpeaker(
   entryId: string,
   payload: RenameTranscriptionSpeakerRequest,
 ): Promise<TranscriptionDetail> {
-  const response = await customFetch<{ data: TranscriptionDetail }>(
-    `/api/v1/transcriptions/${encodeURIComponent(entryId)}/speakers/rename`,
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    },
+  const response =
+    await renameTranscriptionSpeakerApiV1TranscriptionsEntryIdSpeakersRenamePost(
+      entryId,
+      payload,
+    );
+  return response.data as TranscriptionDetail;
+}
+
+export async function fetchSpeakerDirectory(): Promise<SpeakerDirectory> {
+  const response = await getSpeakerDirectoryApiV1TranscriptionsSpeakersGet();
+  return response.data as SpeakerDirectory;
+}
+
+export async function previewSpeakerAnnotationImport(): Promise<SpeakerBackfillPreview> {
+  const response =
+    await previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet();
+  return response.data as SpeakerBackfillPreview;
+}
+
+export async function startSpeakerAnnotationImport(
+  snapshotHash: string,
+): Promise<SpeakerBackfillRun> {
+  const response =
+    await startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPost(
+      { snapshot_hash: snapshotHash },
+    );
+  return response.data as SpeakerBackfillRun;
+}
+
+export async function fetchSpeakerAnnotationImport(
+  runId: string,
+): Promise<SpeakerBackfillRun> {
+  const response =
+    await getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet(
+      runId,
+    );
+  return response.data as SpeakerBackfillRun;
+}
+
+export async function importLegacySpeakerRegistry(): Promise<SpeakerDirectory> {
+  const response =
+    await importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPost();
+  return response.data as SpeakerDirectory;
+}
+
+export async function confirmSpeakerSample(
+  sampleId: string,
+  payload: {
+    profile_id?: string;
+    new_name?: string;
+    excluded_segment_ids?: string[];
+  },
+): Promise<SpeakerProfile> {
+  const response =
+    await confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPost(
+      sampleId,
+      payload,
+    );
+  return response.data as SpeakerProfile;
+}
+
+export async function rejectSpeakerSample(sampleId: string): Promise<void> {
+  await rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPost(
+    sampleId,
   );
-  return response.data;
+}
+
+export async function renameSpeakerProfile(
+  profileId: string,
+  displayName: string,
+): Promise<SpeakerProfile> {
+  const response =
+    await renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatch(
+      profileId,
+      { display_name: displayName },
+    );
+  return response.data as SpeakerProfile;
+}
+
+export async function mergeSpeakerProfiles(
+  sourceProfileId: string,
+  targetProfileId: string,
+): Promise<SpeakerProfile> {
+  const response =
+    await mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePost(
+      sourceProfileId,
+      { target_profile_id: targetProfileId },
+    );
+  return response.data as SpeakerProfile;
+}
+
+export async function deleteSpeakerProfile(profileId: string): Promise<void> {
+  await deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDelete(
+    profileId,
+  );
 }
 
 export async function fetchTranscriptionSourceAudioBlob(
@@ -113,6 +302,42 @@ export async function fetchTranscriptionSourceAudioBlob(
   return response.blob();
 }
 
+export async function exportDiarizedTranscriptionDocx(
+  entryId: string,
+): Promise<void> {
+  const response = await authenticatedFetch(
+    `/api/v1/transcriptions/${encodeURIComponent(entryId)}/export.docx`,
+    { method: "GET" },
+  );
+  if (!response.ok) {
+    let message = "Unable to export diarized transcript.";
+    try {
+      const data = (await response.json()) as { detail?: unknown };
+      if (typeof data.detail === "string" && data.detail) {
+        message = data.detail;
+      }
+    } catch {
+      // Ignore JSON parse failures for binary/text error bodies.
+    }
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const contentDisposition = response.headers.get("content-disposition");
+    const filenameMatch = contentDisposition?.match(/filename="([^"]+)"/i);
+    const filename =
+      filenameMatch?.[1] ?? `${entryId}-diarized-transcript.docx`;
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = filename;
+    link.click();
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export function matchesTranscriptionSearch(
   entry: TranscriptionEntry,
   searchTerm: string,
@@ -124,6 +349,7 @@ export function matchesTranscriptionSearch(
     entry.title,
     ...entry.source_files.map((file) => file.name),
     ...entry.artifact_files.map((file) => file.name),
+    ...(entry.diarized_speaker_preview ?? []),
   ].some((value) => value.toLowerCase().includes(normalized));
 }
 
@@ -159,7 +385,8 @@ export function getDiarizedTranscriptTurns(
   const hasSpeakerData = parsed.segments.some(
     (segment) =>
       isObjectRecord(segment) &&
-      (typeof segment.speaker === "string" || typeof segment.speaker_name === "string"),
+      (typeof segment.speaker === "string" ||
+        typeof segment.speaker_name === "string"),
   );
   if (!hasSpeakerData) return [];
 
@@ -170,8 +397,11 @@ export function getDiarizedTranscriptTurns(
     if (!text) return [];
 
     const speakerName =
-      typeof segment.speaker_name === "string" ? segment.speaker_name.trim() : "";
-    const speaker = typeof segment.speaker === "string" ? segment.speaker.trim() : "";
+      typeof segment.speaker_name === "string"
+        ? segment.speaker_name.trim()
+        : "";
+    const speaker =
+      typeof segment.speaker === "string" ? segment.speaker.trim() : "";
 
     return [
       {
@@ -189,29 +419,91 @@ export function countDiarizedSpeakers(turns: DiarizedTranscriptTurn[]): number {
   return new Set(turns.map((turn) => turn.speakerLabel)).size;
 }
 
+const RAW_SPEAKER_LABEL_PATTERN = /^SPEAKER_\d+$/i;
+
+/**
+ * Collect unique human-assigned speaker names across saved profiles, known
+ * transcriptions, and the currently-inspected transcript. Raw diarization labels
+ * like `SPEAKER_00` and the fallback "Unknown speaker" placeholder are filtered
+ * out so the result is suitable for autocomplete suggestions when renaming a
+ * speaker.
+ */
+export function collectKnownSpeakerNames(
+  entries: ReadonlyArray<Pick<TranscriptionEntry, "diarized_speaker_preview">>,
+  turns: ReadonlyArray<DiarizedTranscriptTurn> = [],
+  profiles: ReadonlyArray<
+    Pick<SpeakerProfile, "display_name" | "aliases">
+  > = [],
+): string[] {
+  const seen = new Map<string, string>();
+
+  const consider = (candidate: unknown) => {
+    if (typeof candidate !== "string") return;
+    const trimmed = candidate.trim();
+    if (!trimmed) return;
+    if (RAW_SPEAKER_LABEL_PATTERN.test(trimmed)) return;
+    if (trimmed.toLowerCase() === "unknown speaker") return;
+    const key = trimmed.toLowerCase();
+    if (!seen.has(key)) {
+      seen.set(key, trimmed);
+    }
+  };
+
+  for (const profile of profiles) {
+    consider(profile.display_name);
+    for (const alias of profile.aliases ?? []) {
+      consider(alias);
+    }
+  }
+  for (const entry of entries) {
+    for (const name of entry.diarized_speaker_preview ?? []) {
+      consider(name);
+    }
+  }
+  for (const turn of turns) {
+    consider(turn.speakerLabel);
+  }
+
+  return Array.from(seen.values()).sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" }),
+  );
+}
+
 function parseTimestamp(value: string | null | undefined): number {
   if (!value) return Number.NEGATIVE_INFINITY;
   const timestamp = Date.parse(value);
   return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
 }
 
-export function sortTranscriptionsByNewest(
+/** Unix ms from numeric entry id (seconds or millis), else -Infinity. */
+function epochMsFromNumericEntryId(id: string): number {
+  if (!/^\d+$/.test(id)) return Number.NEGATIVE_INFINITY;
+  const n = Number(id);
+  if (!Number.isFinite(n)) return Number.NEGATIVE_INFINITY;
+  const sec = id.length >= 13 ? Math.floor(n / 1000) : n;
+  if (!Number.isFinite(sec) || sec < 0) return Number.NEGATIVE_INFINITY;
+  return sec * 1000;
+}
+
+function recordingSortTimestampMs(entry: TranscriptionEntry): number {
+  const captured = parseTimestamp(entry.captured_at);
+  if (captured !== Number.NEGATIVE_INFINITY) return captured;
+  const fromId = epochMsFromNumericEntryId(entry.id);
+  if (fromId !== Number.NEGATIVE_INFINITY) return fromId;
+  return parseTimestamp(entry.processed_at);
+}
+
+/** Newest recording first (capture time / id epoch); artifact `processed_at` is only a fallback. */
+export function sortTranscriptionsByRecordingDate(
   entries: TranscriptionEntry[],
 ): TranscriptionEntry[] {
   return [...entries].sort((left, right) => {
-    const rightTimestamp = Math.max(
-      parseTimestamp(right.processed_at),
-      parseTimestamp(right.captured_at),
-    );
-    const leftTimestamp = Math.max(
-      parseTimestamp(left.processed_at),
-      parseTimestamp(left.captured_at),
-    );
-
-    if (rightTimestamp !== leftTimestamp) {
-      return rightTimestamp - leftTimestamp;
-    }
-
+    const rightTs = recordingSortTimestampMs(right);
+    const leftTs = recordingSortTimestampMs(left);
+    if (rightTs !== leftTs) return rightTs - leftTs;
     return right.id.localeCompare(left.id);
   });
 }
+
+/** @deprecated Use {@link sortTranscriptionsByRecordingDate} */
+export const sortTranscriptionsByNewest = sortTranscriptionsByRecordingDate;
