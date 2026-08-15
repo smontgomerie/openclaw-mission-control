@@ -586,11 +586,13 @@ function SpeakerDirectoryPanel({
 
   useEffect(() => {
     if (!directory) return;
-    setProfileNames(
-      Object.fromEntries(
-        directory.profiles.map((profile) => [profile.id, profile.display_name]),
-      ),
-    );
+    setProfileNames((current) => {
+      const next: Record<string, string> = {};
+      for (const profile of directory.profiles) {
+        next[profile.id] = current[profile.id] ?? profile.display_name;
+      }
+      return next;
+    });
   }, [directory]);
 
   const run = async (key: string, action: () => Promise<unknown>) => {
@@ -1217,6 +1219,7 @@ export default function TranscriptionsPage() {
   const [reloadToken, setReloadToken] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const selectedIdRef = useRef<string | null>(null);
+  const detailEpochRef = useRef(0);
   const speakerNameDatalistId = useId();
 
   selectedIdRef.current = selectedId;
@@ -1296,12 +1299,13 @@ export default function TranscriptionsPage() {
     }
 
     let cancelled = false;
+    const epoch = ++detailEpochRef.current;
     setIsDetailLoading(true);
     setDetailError(null);
 
     void fetchTranscriptionDetail(selectedId)
       .then((data) => {
-        if (cancelled) return;
+        if (cancelled || epoch !== detailEpochRef.current) return;
         setDetail(data);
         setEditingSpeakerLabel(null);
         setEditingTurnKey(null);
@@ -1320,7 +1324,7 @@ export default function TranscriptionsPage() {
         });
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (cancelled || epoch !== detailEpochRef.current) return;
         const message =
           error instanceof ApiError || error instanceof Error
             ? error.message
@@ -1328,7 +1332,9 @@ export default function TranscriptionsPage() {
         setDetailError(message);
       })
       .finally(() => {
-        if (!cancelled) setIsDetailLoading(false);
+        if (!cancelled && epoch === detailEpochRef.current) {
+          setIsDetailLoading(false);
+        }
       });
 
     return () => {
@@ -1531,14 +1537,24 @@ export default function TranscriptionsPage() {
 
   const refreshOpenTranscript = async (entryId: string | null) => {
     if (!entryId) return;
-    const updated = await fetchTranscriptionDetail(entryId);
-    if (selectedIdRef.current !== entryId) return;
-    setDetail(updated);
-    setEntries((current) =>
-      current.map((entry) =>
-        entry.id === updated.id ? { ...entry, ...updated } : entry,
-      ),
-    );
+    const epoch = ++detailEpochRef.current;
+    try {
+      const updated = await fetchTranscriptionDetail(entryId);
+      if (epoch !== detailEpochRef.current) return;
+      if (selectedIdRef.current !== entryId) return;
+      setDetail(updated);
+      setDetailError(null);
+      setIsDetailLoading(false);
+      setEntries((current) =>
+        current.map((entry) =>
+          entry.id === updated.id ? { ...entry, ...updated } : entry,
+        ),
+      );
+    } catch (error: unknown) {
+      if (epoch !== detailEpochRef.current) return;
+      setIsDetailLoading(false);
+      throw error;
+    }
   };
 
   const handleConfirmSpeaker = (turn: DiarizedTranscriptTurn) => {
@@ -1580,9 +1596,21 @@ export default function TranscriptionsPage() {
           const nextDirectory = await fetchSpeakerDirectory();
           setSpeakerDirectory(nextDirectory);
           setSpeakerDirectoryError(null);
+        } catch (cause: unknown) {
+          setSpeakerDirectoryError(
+            cause instanceof Error
+              ? cause.message
+              : "Unable to refresh the speaker list after confirm.",
+          );
+        }
+        try {
           await refreshOpenTranscript(confirmedEntryId);
-        } catch {
-          // Confirm already succeeded; keep the dialog closed if refresh fails.
+        } catch (cause: unknown) {
+          setDetailError(
+            cause instanceof Error
+              ? cause.message
+              : "Unable to refresh the transcript after confirm.",
+          );
         }
       })
       .catch((cause: unknown) => {
@@ -1620,7 +1648,13 @@ export default function TranscriptionsPage() {
             setSpeakerDirectory(next);
             setSpeakerDirectoryError(null);
           })
-          .catch(() => undefined);
+          .catch((cause: unknown) => {
+            setSpeakerDirectoryError(
+              cause instanceof Error
+                ? cause.message
+                : "Unable to refresh the speaker list after rename.",
+            );
+          });
         setEditingSpeakerLabel(null);
         setEditingTurnKey(null);
         setEditingSpeakerValue("");
