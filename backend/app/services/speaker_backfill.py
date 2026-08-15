@@ -18,7 +18,7 @@ from app.models.speaker_profiles import SpeakerBackfillRun
 from app.services.queue import QueuedTask, enqueue_task
 from app.services.queue import requeue_if_failed as generic_requeue_if_failed
 from app.services.speaker_learning import SpeakerLearningService, normalize_speaker_name
-from app.services.transcriptions import SharedTranscriptionsService
+from app.services.transcriptions import SharedTranscriptionsService, _write_speaker_list_preview
 
 TASK_TYPE = "speaker_annotation_backfill"
 
@@ -123,6 +123,7 @@ def _write_overlay(entry: Path, transcript: dict[str, Any]) -> None:
     temporary = output.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     temporary.replace(output)
+    _write_speaker_list_preview(entry, transcript)
 
 
 def _backup_annotations(root: Path, entry: Path, run_id: UUID) -> None:
@@ -257,6 +258,7 @@ async def process_backfill_task(task: QueuedTask) -> None:
                         await learning.add_confirmed_embedding(
                             name=confirmed_name,
                             source_type="historical_annotation",
+                            persist_registry=False,
                             **common,
                         )
                         run.confirmed_samples += 1
@@ -270,13 +272,18 @@ async def process_backfill_task(task: QueuedTask) -> None:
             except Exception as exc:
                 run.skipped_recordings += 1
                 run.errors = [*run.errors, {"entry_id": entry.name, "reason": str(exc)}]
+                run.updated_at = utcnow()
+                session.add(run)
+                await session.commit()
+                continue
             processed_entry_ids.add(entry.name)
             run.processed_entry_ids = sorted(processed_entry_ids)
             run.processed_recordings = len(processed_entry_ids)
             run.updated_at = utcnow()
             session.add(run)
             await session.commit()
-        run.status = "completed"
+        await learning.export_registry()
+        run.status = "failed" if run.errors else "completed"
         run.completed_at = utcnow()
         run.updated_at = utcnow()
         session.add(run)

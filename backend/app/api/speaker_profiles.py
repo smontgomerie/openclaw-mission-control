@@ -1,4 +1,10 @@
-"""Admin APIs for organization-scoped speaker learning."""
+"""Admin APIs for organization-scoped speaker learning.
+
+Speaker profile rows are isolated by organization_id. The transcriptions
+mount itself is single-tenant: mutating APIs refuse another organization's
+IDs (404, no filesystem or database writes) rather than pretending files are
+per-org.
+"""
 
 from __future__ import annotations
 

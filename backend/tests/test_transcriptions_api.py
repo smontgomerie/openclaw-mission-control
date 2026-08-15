@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import zipfile
 from io import BytesIO
@@ -19,7 +20,10 @@ from app.api.deps import require_org_admin
 from app.api.transcriptions import router as transcriptions_router
 from app.core.config import settings
 from app.db.session import get_session
-from app.services.transcriptions import SharedTranscriptionsService
+from app.services.transcriptions import (
+    SharedTranscriptionsService,
+    _apply_manual_speaker_name,
+)
 
 
 def _build_test_app(ctx: object) -> FastAPI:
@@ -146,6 +150,67 @@ async def test_list_transcriptions_skips_diarized_speaker_preview_for_fast_loadi
     assert payload[0]["id"] == "meet"
     assert payload[0]["diarized_speaker_count"] is None
     assert payload[0]["diarized_speaker_preview"] == []
+
+
+@pytest.mark.asyncio
+async def test_list_transcriptions_reads_cheap_speaker_preview_sidecar(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    root = workspace / "transcriptions"
+    processed = root / "processed"
+    _write(root / "meet.m4a", "audio")
+    _write(processed / "meet" / "transcript.json", '{"segments":[]}')
+    _write(processed / "meet" / ".done", "")
+    _write(
+        processed / "meet" / "speaker-preview.json",
+        json.dumps({"count": 2, "names": ["Scott", "Ada"]}),
+    )
+
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
+    app = _build_test_app(SimpleNamespace())
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/api/v1/transcriptions")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["diarized_speaker_count"] == 2
+    assert payload[0]["diarized_speaker_preview"] == ["Scott", "Ada"]
+
+
+@pytest.mark.asyncio
+async def test_list_transcriptions_keeps_non_epoch_mtime_order(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    root = workspace / "transcriptions"
+    processed = root / "processed"
+    older = processed / "zeta-meeting"
+    newer = processed / "alpha-meeting"
+    _write(older / "transcript.txt", "older")
+    _write(newer / "transcript.txt", "newer")
+    _write(older / ".done", "")
+    _write(newer / ".done", "")
+    os.utime(older, (1_700_000_000, 1_700_000_000))
+    os.utime(newer, (1_800_000_000, 1_800_000_000))
+
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
+    app = _build_test_app(SimpleNamespace())
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/api/v1/transcriptions")
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == ["alpha-meeting", "zeta-meeting"]
 
 
 @pytest.mark.asyncio
@@ -495,6 +560,110 @@ async def test_export_transcription_docx_rejects_non_diarized_transcript(
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Only diarized transcripts can be exported to DOCX."
+
+
+@pytest.mark.asyncio
+async def test_export_transcription_docx_keeps_named_turns_without_raw_speaker(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    root = workspace / "transcriptions"
+    processed = root / "processed"
+    _write(root / "named-only.m4a", "audio")
+    _write(
+        processed / "named-only" / "transcript.json",
+        json.dumps(
+            {
+                "segments": [
+                    {
+                        "speaker_name": "Scott",
+                        "start": 1.2,
+                        "end": 4.9,
+                        "text": "Named turn",
+                    }
+                ]
+            }
+        ),
+    )
+
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
+    app = _build_test_app(SimpleNamespace())
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/api/v1/transcriptions/named-only/export.docx")
+
+    assert response.status_code == 200
+    document_xml = (
+        zipfile.ZipFile(BytesIO(response.content)).read("word/document.xml").decode("utf-8")
+    )
+    assert "Scott" in document_xml
+    assert "Named turn" in document_xml
+
+
+@pytest.mark.asyncio
+async def test_export_rejects_symlink_escape_outside_processed_root(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    root = workspace / "transcriptions"
+    processed = root / "processed"
+    processed.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    _write(
+        outside / "transcript.json",
+        json.dumps(
+            {"segments": [{"speaker": "SPEAKER_00", "start": 0, "end": 1, "text": "secret"}]}
+        ),
+    )
+    (processed / "escape").symlink_to(outside)
+
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
+    app = _build_test_app(SimpleNamespace())
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.get("/api/v1/transcriptions/escape/export.docx")
+
+    assert response.status_code == 404
+    assert not (outside / "speaker-annotations.json").exists()
+
+
+def test_apply_manual_speaker_name_clears_tentative_flag(tmp_path: Path) -> None:
+    transcript_path = tmp_path / "transcript.json"
+    text_path = tmp_path / "transcript.txt"
+    transcript = {
+        "segments": [
+            {
+                "speaker": "SPEAKER_00",
+                "speaker_name": "Guess",
+                "speaker_name_tentative": True,
+                "start": 0,
+                "end": 4,
+                "text": "hello",
+            }
+        ]
+    }
+    transcript_path.write_text(json.dumps(transcript), encoding="utf-8")
+    text_path.write_text("[Guess] hello", encoding="utf-8")
+
+    _apply_manual_speaker_name(
+        transcript_path,
+        text_path,
+        speaker_label="SPEAKER_00",
+        new_name="Scott",
+        source_transcripts=[transcript],
+    )
+
+    updated = json.loads(transcript_path.read_text(encoding="utf-8"))
+    assert updated["segments"][0]["speaker_name"] == "Scott"
+    assert "speaker_name_tentative" not in updated["segments"][0]
 
 
 @pytest.mark.asyncio

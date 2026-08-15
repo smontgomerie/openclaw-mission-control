@@ -1298,6 +1298,7 @@ export default function TranscriptionsPage() {
 
     let cancelled = false;
     const epoch = ++detailEpochRef.current;
+    setDetail(null);
     setIsDetailLoading(true);
     setDetailError(null);
 
@@ -1453,7 +1454,9 @@ export default function TranscriptionsPage() {
     (entry) => getEntryStatus(entry).label === "Pending",
   ).length;
   const selectedEntry =
-    detail ?? entries.find((entry) => entry.id === selectedId) ?? null;
+    (detail?.id === selectedId ? detail : null) ??
+    entries.find((entry) => entry.id === selectedId) ??
+    null;
 
   const handleRenameStart = (turn: DiarizedTranscriptTurn) => {
     if (!turn.rawSpeakerLabel || renamePending) return;
@@ -1631,11 +1634,15 @@ export default function TranscriptionsPage() {
     setRenamePending(true);
     setRenameError(null);
 
+    const renamedEntryId = selectedId;
+    const epoch = detailEpochRef.current;
     void renameTranscriptionSpeaker(selectedId, {
       speaker_label: editingSpeakerLabel,
       new_name: newName,
     })
       .then((updated) => {
+        if (epoch !== detailEpochRef.current) return;
+        if (selectedIdRef.current !== renamedEntryId) return;
         setDetail(updated);
         setEntries((current) =>
           current.map((entry) =>

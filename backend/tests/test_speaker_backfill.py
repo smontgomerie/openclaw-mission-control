@@ -4,9 +4,24 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
-from app.services.speaker_backfill import preview_annotation_backfill
+import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlmodel import SQLModel
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from app import models as _models
+from app.models.organizations import Organization
+from app.models.speaker_profiles import SpeakerBackfillRun
+from app.services.queue import QueuedTask
+from app.services.speaker_backfill import (
+    preview_annotation_backfill,
+    process_backfill_task,
+)
+
+MODEL_REGISTRY = _models
 
 
 def _write_transcript(path: Path, segments: list[dict[str, object]]) -> bytes:
@@ -66,3 +81,94 @@ def test_preview_snapshot_changes_when_annotation_changes(tmp_path: Path) -> Non
         [{"speaker_name": "Mike", "start": 0, "end": 5, "text": "Hello"}],
     )
     assert preview_annotation_backfill(tmp_path)["snapshot_hash"] != first
+
+
+@pytest.mark.asyncio
+async def test_backfill_apply_writes_overlay_and_leaves_failures_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    processed = tmp_path / "processed"
+    meeting = processed / "meeting-1"
+    broken = processed / "meeting-2"
+    _write_transcript(
+        meeting / "transcript.json",
+        [
+            {
+                "speaker": "SPEAKER_00",
+                "speaker_name": "Scott",
+                "start": 0,
+                "end": 5,
+                "text": "Hello",
+            }
+        ],
+    )
+    _write_transcript(broken / "transcript.json", [{"speaker": "SPEAKER_00", "text": "x"}])
+    (tmp_path / "meeting-1.m4a").write_text("audio", encoding="utf-8")
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'backfill.db'}")
+    async with engine.begin() as connection:
+        await connection.run_sync(SQLModel.metadata.create_all)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with session_factory() as session:
+        organization = Organization(name="Backfill Org")
+        session.add(organization)
+        await session.commit()
+        await session.refresh(organization)
+        preview = preview_annotation_backfill(tmp_path)
+        run = SpeakerBackfillRun(
+            organization_id=organization.id,
+            snapshot_hash=str(preview["snapshot_hash"]),
+            total_recordings=int(preview["transcript_count"]),
+        )
+        session.add(run)
+        await session.commit()
+        await session.refresh(run)
+        run_id = run.id
+        org_id = organization.id
+
+    class _FakeTranscriptions:
+        def _transcriptions_root(self) -> Path:
+            return tmp_path
+
+        def _source_audio_path(self, entry_id: str, *, transcriptions_root: Path) -> Path:
+            if entry_id == "meeting-2":
+                raise RuntimeError("missing audio")
+            return transcriptions_root / f"{entry_id}.m4a"
+
+        def _speaker_python_bin(self, *, transcriptions_root: Path) -> str:
+            return "python3"
+
+    monkeypatch.setattr(
+        "app.services.speaker_backfill.SharedTranscriptionsService",
+        lambda: _FakeTranscriptions(),
+    )
+    monkeypatch.setattr("app.services.speaker_backfill.async_session_maker", session_factory)
+    monkeypatch.setattr(
+        "app.services.speaker_backfill.subprocess.run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("encoder skipped")),
+    )
+
+    await process_backfill_task(
+        QueuedTask(
+            task_type="speaker_annotation_backfill",
+            payload={"run_id": str(run_id), "organization_id": str(org_id)},
+            created_at=datetime.now(UTC),
+        )
+    )
+
+    overlay = meeting / "speaker-annotations.json"
+    assert overlay.is_file()
+    payload = json.loads(overlay.read_text(encoding="utf-8"))
+    assert payload["assignments"][0]["speaker_name"] == "Scott"
+
+    async with session_factory() as session:
+        stored = await SpeakerBackfillRun.objects.by_id(run_id).first(session)
+        assert stored is not None
+        assert stored.status == "failed"
+        assert "meeting-1" not in stored.processed_entry_ids
+        assert "meeting-2" not in stored.processed_entry_ids
+        assert stored.skipped_recordings >= 1
+
+    await engine.dispose()

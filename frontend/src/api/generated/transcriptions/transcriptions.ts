@@ -22,6 +22,16 @@ import type {
 
 import type {
   HTTPValidationError,
+  ListTranscriptionsApiV1TranscriptionsGetParams,
+  OkResponse,
+  SpeakerBackfillPreviewRead,
+  SpeakerBackfillRunRead,
+  SpeakerBackfillStartRequest,
+  SpeakerDirectoryRead,
+  SpeakerProfileMergeRequest,
+  SpeakerProfileRead,
+  SpeakerProfileRenameRequest,
+  SpeakerSampleConfirmRequest,
   TranscriptionDetailRead,
   TranscriptionEntryRead,
   TranscriptionSpeakerRenameRequest,
@@ -41,22 +51,48 @@ export type listTranscriptionsApiV1TranscriptionsGetResponse200 = {
   status: 200;
 };
 
+export type listTranscriptionsApiV1TranscriptionsGetResponse422 = {
+  data: HTTPValidationError;
+  status: 422;
+};
+
 export type listTranscriptionsApiV1TranscriptionsGetResponseSuccess =
   listTranscriptionsApiV1TranscriptionsGetResponse200 & {
     headers: Headers;
   };
-export type listTranscriptionsApiV1TranscriptionsGetResponse =
-  listTranscriptionsApiV1TranscriptionsGetResponseSuccess;
+export type listTranscriptionsApiV1TranscriptionsGetResponseError =
+  listTranscriptionsApiV1TranscriptionsGetResponse422 & {
+    headers: Headers;
+  };
 
-export const getListTranscriptionsApiV1TranscriptionsGetUrl = () => {
-  return `/api/v1/transcriptions`;
+export type listTranscriptionsApiV1TranscriptionsGetResponse =
+  | listTranscriptionsApiV1TranscriptionsGetResponseSuccess
+  | listTranscriptionsApiV1TranscriptionsGetResponseError;
+
+export const getListTranscriptionsApiV1TranscriptionsGetUrl = (
+  params?: ListTranscriptionsApiV1TranscriptionsGetParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/v1/transcriptions?${stringifiedParams}`
+    : `/api/v1/transcriptions`;
 };
 
 export const listTranscriptionsApiV1TranscriptionsGet = async (
+  params?: ListTranscriptionsApiV1TranscriptionsGetParams,
   options?: RequestInit,
 ): Promise<listTranscriptionsApiV1TranscriptionsGetResponse> => {
   return customFetch<listTranscriptionsApiV1TranscriptionsGetResponse>(
-    getListTranscriptionsApiV1TranscriptionsGetUrl(),
+    getListTranscriptionsApiV1TranscriptionsGetUrl(params),
     {
       ...options,
       method: "GET",
@@ -64,33 +100,41 @@ export const listTranscriptionsApiV1TranscriptionsGet = async (
   );
 };
 
-export const getListTranscriptionsApiV1TranscriptionsGetQueryKey = () => {
-  return [`/api/v1/transcriptions`] as const;
+export const getListTranscriptionsApiV1TranscriptionsGetQueryKey = (
+  params?: ListTranscriptionsApiV1TranscriptionsGetParams,
+) => {
+  return [`/api/v1/transcriptions`, ...(params ? [params] : [])] as const;
 };
 
 export const getListTranscriptionsApiV1TranscriptionsGetQueryOptions = <
   TData = Awaited<ReturnType<typeof listTranscriptionsApiV1TranscriptionsGet>>,
-  TError = unknown,
->(options?: {
-  query?: Partial<
-    UseQueryOptions<
-      Awaited<ReturnType<typeof listTranscriptionsApiV1TranscriptionsGet>>,
-      TError,
-      TData
-    >
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
+  TError = HTTPValidationError,
+>(
+  params?: ListTranscriptionsApiV1TranscriptionsGetParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof listTranscriptionsApiV1TranscriptionsGet>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
   const queryKey =
     queryOptions?.queryKey ??
-    getListTranscriptionsApiV1TranscriptionsGetQueryKey();
+    getListTranscriptionsApiV1TranscriptionsGetQueryKey(params);
 
   const queryFn: QueryFunction<
     Awaited<ReturnType<typeof listTranscriptionsApiV1TranscriptionsGet>>
   > = ({ signal }) =>
-    listTranscriptionsApiV1TranscriptionsGet({ signal, ...requestOptions });
+    listTranscriptionsApiV1TranscriptionsGet(params, {
+      signal,
+      ...requestOptions,
+    });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof listTranscriptionsApiV1TranscriptionsGet>>,
@@ -102,12 +146,14 @@ export const getListTranscriptionsApiV1TranscriptionsGetQueryOptions = <
 export type ListTranscriptionsApiV1TranscriptionsGetQueryResult = NonNullable<
   Awaited<ReturnType<typeof listTranscriptionsApiV1TranscriptionsGet>>
 >;
-export type ListTranscriptionsApiV1TranscriptionsGetQueryError = unknown;
+export type ListTranscriptionsApiV1TranscriptionsGetQueryError =
+  HTTPValidationError;
 
 export function useListTranscriptionsApiV1TranscriptionsGet<
   TData = Awaited<ReturnType<typeof listTranscriptionsApiV1TranscriptionsGet>>,
-  TError = unknown,
+  TError = HTTPValidationError,
 >(
+  params: undefined | ListTranscriptionsApiV1TranscriptionsGetParams,
   options: {
     query: Partial<
       UseQueryOptions<
@@ -132,8 +178,9 @@ export function useListTranscriptionsApiV1TranscriptionsGet<
 };
 export function useListTranscriptionsApiV1TranscriptionsGet<
   TData = Awaited<ReturnType<typeof listTranscriptionsApiV1TranscriptionsGet>>,
-  TError = unknown,
+  TError = HTTPValidationError,
 >(
+  params?: ListTranscriptionsApiV1TranscriptionsGetParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -158,8 +205,9 @@ export function useListTranscriptionsApiV1TranscriptionsGet<
 };
 export function useListTranscriptionsApiV1TranscriptionsGet<
   TData = Awaited<ReturnType<typeof listTranscriptionsApiV1TranscriptionsGet>>,
-  TError = unknown,
+  TError = HTTPValidationError,
 >(
+  params?: ListTranscriptionsApiV1TranscriptionsGetParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -180,8 +228,9 @@ export function useListTranscriptionsApiV1TranscriptionsGet<
 
 export function useListTranscriptionsApiV1TranscriptionsGet<
   TData = Awaited<ReturnType<typeof listTranscriptionsApiV1TranscriptionsGet>>,
-  TError = unknown,
+  TError = HTTPValidationError,
 >(
+  params?: ListTranscriptionsApiV1TranscriptionsGetParams,
   options?: {
     query?: Partial<
       UseQueryOptions<
@@ -196,8 +245,10 @@ export function useListTranscriptionsApiV1TranscriptionsGet<
 ): UseQueryResult<TData, TError> & {
   queryKey: DataTag<QueryKey, TData, TError>;
 } {
-  const queryOptions =
-    getListTranscriptionsApiV1TranscriptionsGetQueryOptions(options);
+  const queryOptions = getListTranscriptionsApiV1TranscriptionsGetQueryOptions(
+    params,
+    options,
+  );
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<
     TData,
@@ -335,6 +386,1817 @@ export const useReprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetad
   > => {
     return useMutation(
       getReprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostMutationOptions(
+        options,
+      ),
+      queryClient,
+    );
+  };
+/**
+ * @summary Get Speaker Directory
+ */
+export type getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponse200 = {
+  data: SpeakerDirectoryRead;
+  status: 200;
+};
+
+export type getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponseSuccess =
+  getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponse200 & {
+    headers: Headers;
+  };
+export type getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponse =
+  getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponseSuccess;
+
+export const getGetSpeakerDirectoryApiV1TranscriptionsSpeakersGetUrl = () => {
+  return `/api/v1/transcriptions/speakers`;
+};
+
+export const getSpeakerDirectoryApiV1TranscriptionsSpeakersGet = async (
+  options?: RequestInit,
+): Promise<getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponse> => {
+  return customFetch<getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponse>(
+    getGetSpeakerDirectoryApiV1TranscriptionsSpeakersGetUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetSpeakerDirectoryApiV1TranscriptionsSpeakersGetQueryKey =
+  () => {
+    return [`/api/v1/transcriptions/speakers`] as const;
+  };
+
+export const getGetSpeakerDirectoryApiV1TranscriptionsSpeakersGetQueryOptions =
+  <
+    TData = Awaited<
+      ReturnType<typeof getSpeakerDirectoryApiV1TranscriptionsSpeakersGet>
+    >,
+    TError = unknown,
+  >(options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof getSpeakerDirectoryApiV1TranscriptionsSpeakersGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  }) => {
+    const { query: queryOptions, request: requestOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetSpeakerDirectoryApiV1TranscriptionsSpeakersGetQueryKey();
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<typeof getSpeakerDirectoryApiV1TranscriptionsSpeakersGet>
+      >
+    > = ({ signal }) =>
+      getSpeakerDirectoryApiV1TranscriptionsSpeakersGet({
+        signal,
+        ...requestOptions,
+      });
+
+    return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+      Awaited<
+        ReturnType<typeof getSpeakerDirectoryApiV1TranscriptionsSpeakersGet>
+      >,
+      TError,
+      TData
+    > & { queryKey: DataTag<QueryKey, TData, TError> };
+  };
+
+export type GetSpeakerDirectoryApiV1TranscriptionsSpeakersGetQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<typeof getSpeakerDirectoryApiV1TranscriptionsSpeakersGet>
+    >
+  >;
+export type GetSpeakerDirectoryApiV1TranscriptionsSpeakersGetQueryError =
+  unknown;
+
+export function useGetSpeakerDirectoryApiV1TranscriptionsSpeakersGet<
+  TData = Awaited<
+    ReturnType<typeof getSpeakerDirectoryApiV1TranscriptionsSpeakersGet>
+  >,
+  TError = unknown,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof getSpeakerDirectoryApiV1TranscriptionsSpeakersGet>
+        >,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<
+            ReturnType<typeof getSpeakerDirectoryApiV1TranscriptionsSpeakersGet>
+          >,
+          TError,
+          Awaited<
+            ReturnType<typeof getSpeakerDirectoryApiV1TranscriptionsSpeakersGet>
+          >
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetSpeakerDirectoryApiV1TranscriptionsSpeakersGet<
+  TData = Awaited<
+    ReturnType<typeof getSpeakerDirectoryApiV1TranscriptionsSpeakersGet>
+  >,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof getSpeakerDirectoryApiV1TranscriptionsSpeakersGet>
+        >,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<
+            ReturnType<typeof getSpeakerDirectoryApiV1TranscriptionsSpeakersGet>
+          >,
+          TError,
+          Awaited<
+            ReturnType<typeof getSpeakerDirectoryApiV1TranscriptionsSpeakersGet>
+          >
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetSpeakerDirectoryApiV1TranscriptionsSpeakersGet<
+  TData = Awaited<
+    ReturnType<typeof getSpeakerDirectoryApiV1TranscriptionsSpeakersGet>
+  >,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof getSpeakerDirectoryApiV1TranscriptionsSpeakersGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+/**
+ * @summary Get Speaker Directory
+ */
+
+export function useGetSpeakerDirectoryApiV1TranscriptionsSpeakersGet<
+  TData = Awaited<
+    ReturnType<typeof getSpeakerDirectoryApiV1TranscriptionsSpeakersGet>
+  >,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<typeof getSpeakerDirectoryApiV1TranscriptionsSpeakersGet>
+        >,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions =
+    getGetSpeakerDirectoryApiV1TranscriptionsSpeakersGetQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Preview Speaker Annotation Import
+ */
+export type previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponse200 =
+  {
+    data: SpeakerBackfillPreviewRead;
+    status: 200;
+  };
+
+export type previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponseSuccess =
+  previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponse200 & {
+    headers: Headers;
+  };
+export type previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponse =
+  previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponseSuccess;
+
+export const getPreviewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetUrl =
+  () => {
+    return `/api/v1/transcriptions/speakers/annotation-import/preview`;
+  };
+
+export const previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet =
+  async (
+    options?: RequestInit,
+  ): Promise<previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponse> => {
+    return customFetch<previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponse>(
+      getPreviewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetUrl(),
+      {
+        ...options,
+        method: "GET",
+      },
+    );
+  };
+
+export const getPreviewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetQueryKey =
+  () => {
+    return [
+      `/api/v1/transcriptions/speakers/annotation-import/preview`,
+    ] as const;
+  };
+
+export const getPreviewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetQueryOptions =
+  <
+    TData = Awaited<
+      ReturnType<
+        typeof previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet
+      >
+    >,
+    TError = unknown,
+  >(options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  }) => {
+    const { query: queryOptions, request: requestOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getPreviewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetQueryKey();
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet
+        >
+      >
+    > = ({ signal }) =>
+      previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet(
+        { signal, ...requestOptions },
+      );
+
+    return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet
+        >
+      >,
+      TError,
+      TData
+    > & { queryKey: DataTag<QueryKey, TData, TError> };
+  };
+
+export type PreviewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet
+      >
+    >
+  >;
+export type PreviewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetQueryError =
+  unknown;
+
+export function usePreviewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet<
+  TData = Awaited<
+    ReturnType<
+      typeof previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet
+    >
+  >,
+  TError = unknown,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet
+          >
+        >,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<
+            ReturnType<
+              typeof previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet
+            >
+          >,
+          TError,
+          Awaited<
+            ReturnType<
+              typeof previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet
+            >
+          >
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function usePreviewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet<
+  TData = Awaited<
+    ReturnType<
+      typeof previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet
+    >
+  >,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet
+          >
+        >,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<
+            ReturnType<
+              typeof previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet
+            >
+          >,
+          TError,
+          Awaited<
+            ReturnType<
+              typeof previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet
+            >
+          >
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function usePreviewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet<
+  TData = Awaited<
+    ReturnType<
+      typeof previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet
+    >
+  >,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+/**
+ * @summary Preview Speaker Annotation Import
+ */
+
+export function usePreviewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet<
+  TData = Awaited<
+    ReturnType<
+      typeof previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet
+    >
+  >,
+  TError = unknown,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions =
+    getPreviewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetQueryOptions(
+      options,
+    );
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Start Speaker Annotation Import
+ */
+export type startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse202 =
+  {
+    data: SpeakerBackfillRunRead;
+    status: 202;
+  };
+
+export type startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponseSuccess =
+  startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse202 & {
+    headers: Headers;
+  };
+export type startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponseError =
+  startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse422 & {
+    headers: Headers;
+  };
+
+export type startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse =
+
+    | startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponseSuccess
+    | startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponseError;
+
+export const getStartSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostUrl =
+  () => {
+    return `/api/v1/transcriptions/speakers/annotation-imports`;
+  };
+
+export const startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPost =
+  async (
+    speakerBackfillStartRequest: SpeakerBackfillStartRequest,
+    options?: RequestInit,
+  ): Promise<startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse> => {
+    return customFetch<startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse>(
+      getStartSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostUrl(),
+      {
+        ...options,
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...options?.headers },
+        body: JSON.stringify(speakerBackfillStartRequest),
+      },
+    );
+  };
+
+export const getStartSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostMutationOptions =
+  <TError = HTTPValidationError, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<
+          typeof startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPost
+        >
+      >,
+      TError,
+      { data: SpeakerBackfillStartRequest },
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  }): UseMutationOptions<
+    Awaited<
+      ReturnType<
+        typeof startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPost
+      >
+    >,
+    TError,
+    { data: SpeakerBackfillStartRequest },
+    TContext
+  > => {
+    const mutationKey = [
+      "startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPost",
+    ];
+    const { mutation: mutationOptions, request: requestOptions } = options
+      ? options.mutation &&
+        "mutationKey" in options.mutation &&
+        options.mutation.mutationKey
+        ? options
+        : { ...options, mutation: { ...options.mutation, mutationKey } }
+      : { mutation: { mutationKey }, request: undefined };
+
+    const mutationFn: MutationFunction<
+      Awaited<
+        ReturnType<
+          typeof startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPost
+        >
+      >,
+      { data: SpeakerBackfillStartRequest }
+    > = (props) => {
+      const { data } = props ?? {};
+
+      return startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPost(
+        data,
+        requestOptions,
+      );
+    };
+
+    return { mutationFn, ...mutationOptions };
+  };
+
+export type StartSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostMutationResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPost
+      >
+    >
+  >;
+export type StartSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostMutationBody =
+  SpeakerBackfillStartRequest;
+export type StartSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostMutationError =
+  HTTPValidationError;
+
+/**
+ * @summary Start Speaker Annotation Import
+ */
+export const useStartSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPost =
+  <TError = HTTPValidationError, TContext = unknown>(
+    options?: {
+      mutation?: UseMutationOptions<
+        Awaited<
+          ReturnType<
+            typeof startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPost
+          >
+        >,
+        TError,
+        { data: SpeakerBackfillStartRequest },
+        TContext
+      >;
+      request?: SecondParameter<typeof customFetch>;
+    },
+    queryClient?: QueryClient,
+  ): UseMutationResult<
+    Awaited<
+      ReturnType<
+        typeof startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPost
+      >
+    >,
+    TError,
+    { data: SpeakerBackfillStartRequest },
+    TContext
+  > => {
+    return useMutation(
+      getStartSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostMutationOptions(
+        options,
+      ),
+      queryClient,
+    );
+  };
+/**
+ * @summary Get Speaker Annotation Import
+ */
+export type getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse200 =
+  {
+    data: SpeakerBackfillRunRead;
+    status: 200;
+  };
+
+export type getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponseSuccess =
+  getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse200 & {
+    headers: Headers;
+  };
+export type getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponseError =
+  getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse422 & {
+    headers: Headers;
+  };
+
+export type getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse =
+
+    | getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponseSuccess
+    | getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponseError;
+
+export const getGetSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetUrl =
+  (runId: string) => {
+    return `/api/v1/transcriptions/speakers/annotation-imports/${runId}`;
+  };
+
+export const getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet =
+  async (
+    runId: string,
+    options?: RequestInit,
+  ): Promise<getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse> => {
+    return customFetch<getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse>(
+      getGetSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetUrl(
+        runId,
+      ),
+      {
+        ...options,
+        method: "GET",
+      },
+    );
+  };
+
+export const getGetSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetQueryKey =
+  (runId: string) => {
+    return [
+      `/api/v1/transcriptions/speakers/annotation-imports/${runId}`,
+    ] as const;
+  };
+
+export const getGetSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetQueryOptions =
+  <
+    TData = Awaited<
+      ReturnType<
+        typeof getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet
+      >
+    >,
+    TError = HTTPValidationError,
+  >(
+    runId: string,
+    options?: {
+      query?: Partial<
+        UseQueryOptions<
+          Awaited<
+            ReturnType<
+              typeof getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet
+            >
+          >,
+          TError,
+          TData
+        >
+      >;
+      request?: SecondParameter<typeof customFetch>;
+    },
+  ) => {
+    const { query: queryOptions, request: requestOptions } = options ?? {};
+
+    const queryKey =
+      queryOptions?.queryKey ??
+      getGetSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetQueryKey(
+        runId,
+      );
+
+    const queryFn: QueryFunction<
+      Awaited<
+        ReturnType<
+          typeof getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet
+        >
+      >
+    > = ({ signal }) =>
+      getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet(
+        runId,
+        { signal, ...requestOptions },
+      );
+
+    return {
+      queryKey,
+      queryFn,
+      enabled: !!runId,
+      ...queryOptions,
+    } as UseQueryOptions<
+      Awaited<
+        ReturnType<
+          typeof getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet
+        >
+      >,
+      TError,
+      TData
+    > & { queryKey: DataTag<QueryKey, TData, TError> };
+  };
+
+export type GetSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetQueryResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet
+      >
+    >
+  >;
+export type GetSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetQueryError =
+  HTTPValidationError;
+
+export function useGetSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  runId: string,
+  options: {
+    query: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet
+          >
+        >,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<
+            ReturnType<
+              typeof getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet
+            >
+          >,
+          TError,
+          Awaited<
+            ReturnType<
+              typeof getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet
+            >
+          >
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  runId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet
+          >
+        >,
+        TError,
+        TData
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<
+            ReturnType<
+              typeof getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet
+            >
+          >,
+          TError,
+          Awaited<
+            ReturnType<
+              typeof getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet
+            >
+          >
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+export function useGetSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  runId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+};
+/**
+ * @summary Get Speaker Annotation Import
+ */
+
+export function useGetSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet<
+  TData = Awaited<
+    ReturnType<
+      typeof getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet
+    >
+  >,
+  TError = HTTPValidationError,
+>(
+  runId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<
+          ReturnType<
+            typeof getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet
+          >
+        >,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & {
+  queryKey: DataTag<QueryKey, TData, TError>;
+} {
+  const queryOptions =
+    getGetSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetQueryOptions(
+      runId,
+      options,
+    );
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Import Legacy Speakers
+ */
+export type importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponse200 =
+  {
+    data: SpeakerDirectoryRead;
+    status: 200;
+  };
+
+export type importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponseSuccess =
+  importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponse200 & {
+    headers: Headers;
+  };
+export type importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponse =
+  importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponseSuccess;
+
+export const getImportLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostUrl =
+  () => {
+    return `/api/v1/transcriptions/speakers/import-legacy`;
+  };
+
+export const importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPost =
+  async (
+    options?: RequestInit,
+  ): Promise<importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponse> => {
+    return customFetch<importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponse>(
+      getImportLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostUrl(),
+      {
+        ...options,
+        method: "POST",
+      },
+    );
+  };
+
+export const getImportLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostMutationOptions =
+  <TError = unknown, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<
+          typeof importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPost
+        >
+      >,
+      TError,
+      void,
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  }): UseMutationOptions<
+    Awaited<
+      ReturnType<
+        typeof importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPost
+      >
+    >,
+    TError,
+    void,
+    TContext
+  > => {
+    const mutationKey = [
+      "importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPost",
+    ];
+    const { mutation: mutationOptions, request: requestOptions } = options
+      ? options.mutation &&
+        "mutationKey" in options.mutation &&
+        options.mutation.mutationKey
+        ? options
+        : { ...options, mutation: { ...options.mutation, mutationKey } }
+      : { mutation: { mutationKey }, request: undefined };
+
+    const mutationFn: MutationFunction<
+      Awaited<
+        ReturnType<
+          typeof importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPost
+        >
+      >,
+      void
+    > = () => {
+      return importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPost(
+        requestOptions,
+      );
+    };
+
+    return { mutationFn, ...mutationOptions };
+  };
+
+export type ImportLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostMutationResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPost
+      >
+    >
+  >;
+
+export type ImportLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostMutationError =
+  unknown;
+
+/**
+ * @summary Import Legacy Speakers
+ */
+export const useImportLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPost =
+  <TError = unknown, TContext = unknown>(
+    options?: {
+      mutation?: UseMutationOptions<
+        Awaited<
+          ReturnType<
+            typeof importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPost
+          >
+        >,
+        TError,
+        void,
+        TContext
+      >;
+      request?: SecondParameter<typeof customFetch>;
+    },
+    queryClient?: QueryClient,
+  ): UseMutationResult<
+    Awaited<
+      ReturnType<
+        typeof importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPost
+      >
+    >,
+    TError,
+    void,
+    TContext
+  > => {
+    return useMutation(
+      getImportLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostMutationOptions(
+        options,
+      ),
+      queryClient,
+    );
+  };
+/**
+ * @summary Confirm Speaker Sample
+ */
+export type confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse200 =
+  {
+    data: SpeakerProfileRead;
+    status: 200;
+  };
+
+export type confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponseSuccess =
+  confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse200 & {
+    headers: Headers;
+  };
+export type confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponseError =
+  confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse422 & {
+    headers: Headers;
+  };
+
+export type confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse =
+
+    | confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponseSuccess
+    | confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponseError;
+
+export const getConfirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostUrl =
+  (sampleId: string) => {
+    return `/api/v1/transcriptions/speakers/samples/${sampleId}/confirm`;
+  };
+
+export const confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPost =
+  async (
+    sampleId: string,
+    speakerSampleConfirmRequest: SpeakerSampleConfirmRequest,
+    options?: RequestInit,
+  ): Promise<confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse> => {
+    return customFetch<confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse>(
+      getConfirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostUrl(
+        sampleId,
+      ),
+      {
+        ...options,
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...options?.headers },
+        body: JSON.stringify(speakerSampleConfirmRequest),
+      },
+    );
+  };
+
+export const getConfirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostMutationOptions =
+  <TError = HTTPValidationError, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<
+          typeof confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPost
+        >
+      >,
+      TError,
+      { sampleId: string; data: SpeakerSampleConfirmRequest },
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  }): UseMutationOptions<
+    Awaited<
+      ReturnType<
+        typeof confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPost
+      >
+    >,
+    TError,
+    { sampleId: string; data: SpeakerSampleConfirmRequest },
+    TContext
+  > => {
+    const mutationKey = [
+      "confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPost",
+    ];
+    const { mutation: mutationOptions, request: requestOptions } = options
+      ? options.mutation &&
+        "mutationKey" in options.mutation &&
+        options.mutation.mutationKey
+        ? options
+        : { ...options, mutation: { ...options.mutation, mutationKey } }
+      : { mutation: { mutationKey }, request: undefined };
+
+    const mutationFn: MutationFunction<
+      Awaited<
+        ReturnType<
+          typeof confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPost
+        >
+      >,
+      { sampleId: string; data: SpeakerSampleConfirmRequest }
+    > = (props) => {
+      const { sampleId, data } = props ?? {};
+
+      return confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPost(
+        sampleId,
+        data,
+        requestOptions,
+      );
+    };
+
+    return { mutationFn, ...mutationOptions };
+  };
+
+export type ConfirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostMutationResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPost
+      >
+    >
+  >;
+export type ConfirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostMutationBody =
+  SpeakerSampleConfirmRequest;
+export type ConfirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostMutationError =
+  HTTPValidationError;
+
+/**
+ * @summary Confirm Speaker Sample
+ */
+export const useConfirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPost =
+  <TError = HTTPValidationError, TContext = unknown>(
+    options?: {
+      mutation?: UseMutationOptions<
+        Awaited<
+          ReturnType<
+            typeof confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPost
+          >
+        >,
+        TError,
+        { sampleId: string; data: SpeakerSampleConfirmRequest },
+        TContext
+      >;
+      request?: SecondParameter<typeof customFetch>;
+    },
+    queryClient?: QueryClient,
+  ): UseMutationResult<
+    Awaited<
+      ReturnType<
+        typeof confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPost
+      >
+    >,
+    TError,
+    { sampleId: string; data: SpeakerSampleConfirmRequest },
+    TContext
+  > => {
+    return useMutation(
+      getConfirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostMutationOptions(
+        options,
+      ),
+      queryClient,
+    );
+  };
+/**
+ * @summary Reject Speaker Sample
+ */
+export type rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse200 =
+  {
+    data: OkResponse;
+    status: 200;
+  };
+
+export type rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponseSuccess =
+  rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse200 & {
+    headers: Headers;
+  };
+export type rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponseError =
+  rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse422 & {
+    headers: Headers;
+  };
+
+export type rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse =
+
+    | rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponseSuccess
+    | rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponseError;
+
+export const getRejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostUrl =
+  (sampleId: string) => {
+    return `/api/v1/transcriptions/speakers/samples/${sampleId}/reject`;
+  };
+
+export const rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPost =
+  async (
+    sampleId: string,
+    options?: RequestInit,
+  ): Promise<rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse> => {
+    return customFetch<rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse>(
+      getRejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostUrl(
+        sampleId,
+      ),
+      {
+        ...options,
+        method: "POST",
+      },
+    );
+  };
+
+export const getRejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostMutationOptions =
+  <TError = HTTPValidationError, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<
+          typeof rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPost
+        >
+      >,
+      TError,
+      { sampleId: string },
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  }): UseMutationOptions<
+    Awaited<
+      ReturnType<
+        typeof rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPost
+      >
+    >,
+    TError,
+    { sampleId: string },
+    TContext
+  > => {
+    const mutationKey = [
+      "rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPost",
+    ];
+    const { mutation: mutationOptions, request: requestOptions } = options
+      ? options.mutation &&
+        "mutationKey" in options.mutation &&
+        options.mutation.mutationKey
+        ? options
+        : { ...options, mutation: { ...options.mutation, mutationKey } }
+      : { mutation: { mutationKey }, request: undefined };
+
+    const mutationFn: MutationFunction<
+      Awaited<
+        ReturnType<
+          typeof rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPost
+        >
+      >,
+      { sampleId: string }
+    > = (props) => {
+      const { sampleId } = props ?? {};
+
+      return rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPost(
+        sampleId,
+        requestOptions,
+      );
+    };
+
+    return { mutationFn, ...mutationOptions };
+  };
+
+export type RejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostMutationResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPost
+      >
+    >
+  >;
+
+export type RejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostMutationError =
+  HTTPValidationError;
+
+/**
+ * @summary Reject Speaker Sample
+ */
+export const useRejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPost =
+  <TError = HTTPValidationError, TContext = unknown>(
+    options?: {
+      mutation?: UseMutationOptions<
+        Awaited<
+          ReturnType<
+            typeof rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPost
+          >
+        >,
+        TError,
+        { sampleId: string },
+        TContext
+      >;
+      request?: SecondParameter<typeof customFetch>;
+    },
+    queryClient?: QueryClient,
+  ): UseMutationResult<
+    Awaited<
+      ReturnType<
+        typeof rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPost
+      >
+    >,
+    TError,
+    { sampleId: string },
+    TContext
+  > => {
+    return useMutation(
+      getRejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostMutationOptions(
+        options,
+      ),
+      queryClient,
+    );
+  };
+/**
+ * @summary Delete Speaker Profile
+ */
+export type deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse200 =
+  {
+    data: OkResponse;
+    status: 200;
+  };
+
+export type deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponseSuccess =
+  deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse200 & {
+    headers: Headers;
+  };
+export type deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponseError =
+  deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse422 & {
+    headers: Headers;
+  };
+
+export type deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse =
+
+    | deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponseSuccess
+    | deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponseError;
+
+export const getDeleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteUrl =
+  (profileId: string) => {
+    return `/api/v1/transcriptions/speakers/${profileId}`;
+  };
+
+export const deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDelete =
+  async (
+    profileId: string,
+    options?: RequestInit,
+  ): Promise<deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse> => {
+    return customFetch<deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse>(
+      getDeleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteUrl(
+        profileId,
+      ),
+      {
+        ...options,
+        method: "DELETE",
+      },
+    );
+  };
+
+export const getDeleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteMutationOptions =
+  <TError = HTTPValidationError, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<
+          typeof deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDelete
+        >
+      >,
+      TError,
+      { profileId: string },
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  }): UseMutationOptions<
+    Awaited<
+      ReturnType<
+        typeof deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDelete
+      >
+    >,
+    TError,
+    { profileId: string },
+    TContext
+  > => {
+    const mutationKey = [
+      "deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDelete",
+    ];
+    const { mutation: mutationOptions, request: requestOptions } = options
+      ? options.mutation &&
+        "mutationKey" in options.mutation &&
+        options.mutation.mutationKey
+        ? options
+        : { ...options, mutation: { ...options.mutation, mutationKey } }
+      : { mutation: { mutationKey }, request: undefined };
+
+    const mutationFn: MutationFunction<
+      Awaited<
+        ReturnType<
+          typeof deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDelete
+        >
+      >,
+      { profileId: string }
+    > = (props) => {
+      const { profileId } = props ?? {};
+
+      return deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDelete(
+        profileId,
+        requestOptions,
+      );
+    };
+
+    return { mutationFn, ...mutationOptions };
+  };
+
+export type DeleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteMutationResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDelete
+      >
+    >
+  >;
+
+export type DeleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteMutationError =
+  HTTPValidationError;
+
+/**
+ * @summary Delete Speaker Profile
+ */
+export const useDeleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDelete =
+  <TError = HTTPValidationError, TContext = unknown>(
+    options?: {
+      mutation?: UseMutationOptions<
+        Awaited<
+          ReturnType<
+            typeof deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDelete
+          >
+        >,
+        TError,
+        { profileId: string },
+        TContext
+      >;
+      request?: SecondParameter<typeof customFetch>;
+    },
+    queryClient?: QueryClient,
+  ): UseMutationResult<
+    Awaited<
+      ReturnType<
+        typeof deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDelete
+      >
+    >,
+    TError,
+    { profileId: string },
+    TContext
+  > => {
+    return useMutation(
+      getDeleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteMutationOptions(
+        options,
+      ),
+      queryClient,
+    );
+  };
+/**
+ * @summary Rename Speaker Profile
+ */
+export type renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse200 =
+  {
+    data: SpeakerProfileRead;
+    status: 200;
+  };
+
+export type renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponseSuccess =
+  renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse200 & {
+    headers: Headers;
+  };
+export type renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponseError =
+  renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse422 & {
+    headers: Headers;
+  };
+
+export type renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse =
+
+    | renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponseSuccess
+    | renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponseError;
+
+export const getRenameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchUrl =
+  (profileId: string) => {
+    return `/api/v1/transcriptions/speakers/${profileId}`;
+  };
+
+export const renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatch =
+  async (
+    profileId: string,
+    speakerProfileRenameRequest: SpeakerProfileRenameRequest,
+    options?: RequestInit,
+  ): Promise<renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse> => {
+    return customFetch<renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse>(
+      getRenameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchUrl(
+        profileId,
+      ),
+      {
+        ...options,
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...options?.headers },
+        body: JSON.stringify(speakerProfileRenameRequest),
+      },
+    );
+  };
+
+export const getRenameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchMutationOptions =
+  <TError = HTTPValidationError, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<
+          typeof renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatch
+        >
+      >,
+      TError,
+      { profileId: string; data: SpeakerProfileRenameRequest },
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  }): UseMutationOptions<
+    Awaited<
+      ReturnType<
+        typeof renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatch
+      >
+    >,
+    TError,
+    { profileId: string; data: SpeakerProfileRenameRequest },
+    TContext
+  > => {
+    const mutationKey = [
+      "renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatch",
+    ];
+    const { mutation: mutationOptions, request: requestOptions } = options
+      ? options.mutation &&
+        "mutationKey" in options.mutation &&
+        options.mutation.mutationKey
+        ? options
+        : { ...options, mutation: { ...options.mutation, mutationKey } }
+      : { mutation: { mutationKey }, request: undefined };
+
+    const mutationFn: MutationFunction<
+      Awaited<
+        ReturnType<
+          typeof renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatch
+        >
+      >,
+      { profileId: string; data: SpeakerProfileRenameRequest }
+    > = (props) => {
+      const { profileId, data } = props ?? {};
+
+      return renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatch(
+        profileId,
+        data,
+        requestOptions,
+      );
+    };
+
+    return { mutationFn, ...mutationOptions };
+  };
+
+export type RenameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchMutationResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatch
+      >
+    >
+  >;
+export type RenameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchMutationBody =
+  SpeakerProfileRenameRequest;
+export type RenameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchMutationError =
+  HTTPValidationError;
+
+/**
+ * @summary Rename Speaker Profile
+ */
+export const useRenameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatch =
+  <TError = HTTPValidationError, TContext = unknown>(
+    options?: {
+      mutation?: UseMutationOptions<
+        Awaited<
+          ReturnType<
+            typeof renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatch
+          >
+        >,
+        TError,
+        { profileId: string; data: SpeakerProfileRenameRequest },
+        TContext
+      >;
+      request?: SecondParameter<typeof customFetch>;
+    },
+    queryClient?: QueryClient,
+  ): UseMutationResult<
+    Awaited<
+      ReturnType<
+        typeof renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatch
+      >
+    >,
+    TError,
+    { profileId: string; data: SpeakerProfileRenameRequest },
+    TContext
+  > => {
+    return useMutation(
+      getRenameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchMutationOptions(
+        options,
+      ),
+      queryClient,
+    );
+  };
+/**
+ * @summary Merge Speaker Profiles
+ */
+export type mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse200 =
+  {
+    data: SpeakerProfileRead;
+    status: 200;
+  };
+
+export type mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponseSuccess =
+  mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse200 & {
+    headers: Headers;
+  };
+export type mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponseError =
+  mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse422 & {
+    headers: Headers;
+  };
+
+export type mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse =
+
+    | mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponseSuccess
+    | mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponseError;
+
+export const getMergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostUrl =
+  (profileId: string) => {
+    return `/api/v1/transcriptions/speakers/${profileId}/merge`;
+  };
+
+export const mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePost =
+  async (
+    profileId: string,
+    speakerProfileMergeRequest: SpeakerProfileMergeRequest,
+    options?: RequestInit,
+  ): Promise<mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse> => {
+    return customFetch<mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse>(
+      getMergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostUrl(
+        profileId,
+      ),
+      {
+        ...options,
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...options?.headers },
+        body: JSON.stringify(speakerProfileMergeRequest),
+      },
+    );
+  };
+
+export const getMergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostMutationOptions =
+  <TError = HTTPValidationError, TContext = unknown>(options?: {
+    mutation?: UseMutationOptions<
+      Awaited<
+        ReturnType<
+          typeof mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePost
+        >
+      >,
+      TError,
+      { profileId: string; data: SpeakerProfileMergeRequest },
+      TContext
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  }): UseMutationOptions<
+    Awaited<
+      ReturnType<
+        typeof mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePost
+      >
+    >,
+    TError,
+    { profileId: string; data: SpeakerProfileMergeRequest },
+    TContext
+  > => {
+    const mutationKey = [
+      "mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePost",
+    ];
+    const { mutation: mutationOptions, request: requestOptions } = options
+      ? options.mutation &&
+        "mutationKey" in options.mutation &&
+        options.mutation.mutationKey
+        ? options
+        : { ...options, mutation: { ...options.mutation, mutationKey } }
+      : { mutation: { mutationKey }, request: undefined };
+
+    const mutationFn: MutationFunction<
+      Awaited<
+        ReturnType<
+          typeof mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePost
+        >
+      >,
+      { profileId: string; data: SpeakerProfileMergeRequest }
+    > = (props) => {
+      const { profileId, data } = props ?? {};
+
+      return mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePost(
+        profileId,
+        data,
+        requestOptions,
+      );
+    };
+
+    return { mutationFn, ...mutationOptions };
+  };
+
+export type MergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostMutationResult =
+  NonNullable<
+    Awaited<
+      ReturnType<
+        typeof mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePost
+      >
+    >
+  >;
+export type MergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostMutationBody =
+  SpeakerProfileMergeRequest;
+export type MergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostMutationError =
+  HTTPValidationError;
+
+/**
+ * @summary Merge Speaker Profiles
+ */
+export const useMergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePost =
+  <TError = HTTPValidationError, TContext = unknown>(
+    options?: {
+      mutation?: UseMutationOptions<
+        Awaited<
+          ReturnType<
+            typeof mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePost
+          >
+        >,
+        TError,
+        { profileId: string; data: SpeakerProfileMergeRequest },
+        TContext
+      >;
+      request?: SecondParameter<typeof customFetch>;
+    },
+    queryClient?: QueryClient,
+  ): UseMutationResult<
+    Awaited<
+      ReturnType<
+        typeof mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePost
+      >
+    >,
+    TError,
+    { profileId: string; data: SpeakerProfileMergeRequest },
+    TContext
+  > => {
+    return useMutation(
+      getMergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostMutationOptions(
         options,
       ),
       queryClient,

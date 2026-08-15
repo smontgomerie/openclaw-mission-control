@@ -1494,4 +1494,168 @@ describe("TranscriptionsPage", () => {
       screen.getByText("Speaker profiles could not be loaded."),
     ).toBeTruthy();
   });
+
+  it("does not keep the previous transcript on screen after a failed detail fetch", async () => {
+    fetchTranscriptionsMock.mockResolvedValue([
+      {
+        id: "entry-a",
+        title: "First recording",
+        is_done: true,
+        source_files: [{ name: "entry-a.m4a", relative_path: "entry-a.m4a" }],
+        artifact_files: [],
+        has_transcript_text: true,
+        has_transcript_json: true,
+      },
+      {
+        id: "entry-b",
+        title: "Second recording",
+        is_done: true,
+        source_files: [{ name: "entry-b.m4a", relative_path: "entry-b.m4a" }],
+        artifact_files: [],
+        has_transcript_text: true,
+        has_transcript_json: true,
+      },
+    ]);
+    fetchTranscriptionDetailMock.mockImplementation(async (entryId: string) => {
+      if (entryId === "entry-a") {
+        return {
+          id: "entry-a",
+          title: "First recording",
+          is_done: true,
+          source_files: [{ name: "entry-a.m4a", relative_path: "entry-a.m4a" }],
+          artifact_files: [],
+          has_transcript_text: true,
+          has_transcript_json: true,
+          transcript_text_content: "[Ada] Only in the first recording",
+          transcript_json_content: JSON.stringify({
+            segments: [
+              {
+                speaker: "SPEAKER_00",
+                speaker_name: "Ada",
+                text: "Only in the first recording",
+              },
+            ],
+          }),
+        };
+      }
+      throw new Error("detail missing");
+    });
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Only in the first recording")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Second recording/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText("detail missing")).toBeTruthy();
+    });
+    expect(screen.queryByText("Only in the first recording")).toBeNull();
+  });
+
+  it("does not apply a rename response after the selected recording changes", async () => {
+    let resolveRename: ((value: object) => void) | undefined;
+    fetchTranscriptionsMock.mockResolvedValue([
+      {
+        id: "entry-a",
+        title: "First recording",
+        is_done: true,
+        source_files: [{ name: "entry-a.m4a", relative_path: "entry-a.m4a" }],
+        artifact_files: [],
+        has_transcript_text: true,
+        has_transcript_json: true,
+      },
+      {
+        id: "entry-b",
+        title: "Second recording",
+        is_done: true,
+        source_files: [{ name: "entry-b.m4a", relative_path: "entry-b.m4a" }],
+        artifact_files: [],
+        has_transcript_text: true,
+        has_transcript_json: true,
+      },
+    ]);
+    fetchTranscriptionDetailMock.mockImplementation(
+      async (entryId: string) => ({
+        id: entryId,
+        title: entryId === "entry-a" ? "First recording" : "Second recording",
+        is_done: true,
+        source_files: [
+          { name: `${entryId}.m4a`, relative_path: `${entryId}.m4a` },
+        ],
+        artifact_files: [],
+        has_transcript_text: true,
+        has_transcript_json: true,
+        transcript_text_content:
+          entryId === "entry-a"
+            ? "[SPEAKER_00] First line"
+            : "[SPEAKER_01] Second line",
+        transcript_json_content: JSON.stringify({
+          segments: [
+            {
+              speaker: entryId === "entry-a" ? "SPEAKER_00" : "SPEAKER_01",
+              start: 1,
+              end: 2,
+              text: entryId === "entry-a" ? "First line" : "Second line",
+            },
+          ],
+        }),
+      }),
+    );
+    renameTranscriptionSpeakerMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRename = resolve;
+        }),
+    );
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "SPEAKER_00" })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "SPEAKER_00" }));
+    fireEvent.change(screen.getByLabelText("Rename speaker SPEAKER_00"), {
+      target: { value: "Scott" },
+    });
+    fireEvent.keyDown(screen.getByLabelText("Rename speaker SPEAKER_00"), {
+      key: "Enter",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Second recording/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Second line")).toBeTruthy();
+    });
+
+    resolveRename?.({
+      id: "entry-a",
+      title: "First recording",
+      is_done: true,
+      source_files: [{ name: "entry-a.m4a", relative_path: "entry-a.m4a" }],
+      artifact_files: [],
+      has_transcript_text: true,
+      has_transcript_json: true,
+      transcript_text_content: "[Scott] First line",
+      transcript_json_content: JSON.stringify({
+        segments: [
+          {
+            speaker: "SPEAKER_00",
+            speaker_name: "Scott",
+            start: 1,
+            end: 2,
+            text: "First line",
+          },
+        ],
+      }),
+    });
+
+    await waitFor(() => {
+      expect(renameTranscriptionSpeakerMock).toHaveBeenCalled();
+    });
+    expect(screen.getByText("Second line")).toBeTruthy();
+    expect(screen.queryByText("First line")).toBeNull();
+  });
 });
