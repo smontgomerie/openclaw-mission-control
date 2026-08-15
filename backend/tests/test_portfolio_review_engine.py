@@ -68,7 +68,9 @@ async def test_run_portfolio_review_writes_snapshot_and_review(
     assert latest.is_file()
     data = latest.read_text(encoding="utf-8")
     assert "XYZ" in data
-    assert "Rolls detected" in (tmp_path / "portfolio" / "reviews" / f"{result.review_id}.md").read_text(
+    assert "Rolls detected" in (
+        tmp_path / "portfolio" / "reviews" / f"{result.review_id}.md"
+    ).read_text(
         encoding="utf-8",
     )
     await engine.dispose()

@@ -475,11 +475,10 @@ def _render_agent_files(
             rendered[name] = env.from_string(override).render(**context).strip()
             continue
         template_name = (
-            template_overrides[name] if template_overrides and name in template_overrides else name
+            template_overrides[name]
+            if template_overrides and name in template_overrides
+            else BOARD_SHARED_TEMPLATE_MAP.get(name, name)
         )
-        if template_name == "SOUL.md":
-            # Use shared Jinja soul template as the default implementation.
-            template_name = "BOARD_SOUL.md.j2"
         path = _templates_root() / template_name
         if not path.exists():
             msg = f"Missing template file: {template_name}"

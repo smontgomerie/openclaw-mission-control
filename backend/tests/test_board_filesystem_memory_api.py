@@ -13,7 +13,7 @@ from httpx import ASGITransport, AsyncClient
 from app.api.boards import router as boards_router
 from app.api.deps import get_board_for_actor_read
 from app.db.session import get_session
-from app.services.openclaw import filesystem_memory as filesystem_memory_service
+from app.services.openclaw.filesystem_memory import BoardFilesystemMemoryService
 
 
 def _build_test_app(board: object) -> FastAPI:
@@ -63,7 +63,7 @@ async def test_get_board_filesystem_memory_overview_returns_service_payload(
         }
 
     monkeypatch.setattr(
-        filesystem_memory_service.BoardFilesystemMemoryService,
+        BoardFilesystemMemoryService,
         "get_overview",
         _fake_get_overview,
     )
@@ -101,7 +101,7 @@ async def test_get_board_filesystem_memory_file_forwards_path(
         }
 
     monkeypatch.setattr(
-        filesystem_memory_service.BoardFilesystemMemoryService,
+        BoardFilesystemMemoryService,
         "get_file",
         _fake_get_file,
     )

@@ -420,14 +420,18 @@ export function countDiarizedSpeakers(turns: DiarizedTranscriptTurn[]): number {
 const RAW_SPEAKER_LABEL_PATTERN = /^SPEAKER_\d+$/i;
 
 /**
- * Collect unique human-assigned speaker names across known transcriptions plus the
- * currently-inspected transcript. Raw diarization labels like `SPEAKER_00` and the
- * fallback "Unknown speaker" placeholder are filtered out so the result is suitable
- * for autocomplete suggestions when renaming a speaker.
+ * Collect unique human-assigned speaker names across saved profiles, known
+ * transcriptions, and the currently-inspected transcript. Raw diarization labels
+ * like `SPEAKER_00` and the fallback "Unknown speaker" placeholder are filtered
+ * out so the result is suitable for autocomplete suggestions when renaming a
+ * speaker.
  */
 export function collectKnownSpeakerNames(
   entries: ReadonlyArray<Pick<TranscriptionEntry, "diarized_speaker_preview">>,
   turns: ReadonlyArray<DiarizedTranscriptTurn> = [],
+  profiles: ReadonlyArray<
+    Pick<SpeakerProfile, "display_name" | "aliases">
+  > = [],
 ): string[] {
   const seen = new Map<string, string>();
 
@@ -443,6 +447,12 @@ export function collectKnownSpeakerNames(
     }
   };
 
+  for (const profile of profiles) {
+    consider(profile.display_name);
+    for (const alias of profile.aliases ?? []) {
+      consider(alias);
+    }
+  }
   for (const entry of entries) {
     for (const name of entry.diarized_speaker_preview ?? []) {
       consider(name);

@@ -19,8 +19,12 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 from app.core.logging import get_logger
 
 DEFAULT_DEVICE_IDENTITY_PATH = Path.home() / ".openclaw" / "identity" / "device.json"
-DEFAULT_DEVICE_IDENTITY_FALLBACK_PATH = Path.home() / ".cache" / "openclaw" / "identity" / "device.json"
-SHARED_WORKSPACE_DEVICE_IDENTITY_SUFFIX = Path(".system") / "gateway-device-identity" / "device.json"
+DEFAULT_DEVICE_IDENTITY_FALLBACK_PATH = (
+    Path.home() / ".cache" / "openclaw" / "identity" / "device.json"
+)
+SHARED_WORKSPACE_DEVICE_IDENTITY_SUFFIX = (
+    Path(".system") / "gateway-device-identity" / "device.json"
+)
 logger = get_logger(__name__)
 
 
@@ -46,7 +50,8 @@ def _identity_path_candidates() -> list[Path]:
     raw_workspace_root = os.getenv("OPENCLAW_SHARED_WORKSPACE_ROOT", "").strip()
     if raw_workspace_root:
         candidates.append(
-            Path(raw_workspace_root).expanduser().resolve() / SHARED_WORKSPACE_DEVICE_IDENTITY_SUFFIX
+            Path(raw_workspace_root).expanduser().resolve()
+            / SHARED_WORKSPACE_DEVICE_IDENTITY_SUFFIX
         )
     candidates.append(DEFAULT_DEVICE_IDENTITY_FALLBACK_PATH)
 

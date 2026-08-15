@@ -12,6 +12,7 @@ const exportDiarizedTranscriptionDocxMock = vi.hoisted(() => vi.fn());
 const syncTranscriptionsNowMock = vi.hoisted(() => vi.fn());
 const reprocessTranscriptionsMetadataMock = vi.hoisted(() => vi.fn());
 const fetchSpeakerDirectoryMock = vi.hoisted(() => vi.fn());
+const confirmSpeakerSampleMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/auth/clerk", () => ({
   useAuth: () => ({ isSignedIn: true }),
@@ -71,17 +72,8 @@ vi.mock("@/components/ui/input", () => ({
     className,
     autoFocus,
     disabled,
-  }: {
-    value: string;
-    onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
-    onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void;
-    onBlur?: (event: React.FocusEvent<HTMLInputElement>) => void;
-    placeholder?: string;
-    id?: string;
-    className?: string;
-    autoFocus?: boolean;
-    disabled?: boolean;
-  }) => (
+    ...rest
+  }: React.InputHTMLAttributes<HTMLInputElement>) => (
     <input
       id={id}
       className={className}
@@ -92,6 +84,7 @@ vi.mock("@/components/ui/input", () => ({
       placeholder={placeholder}
       autoFocus={autoFocus}
       disabled={disabled}
+      {...rest}
     />
   ),
 }));
@@ -110,6 +103,7 @@ vi.mock("@/lib/transcriptions", async () => {
     syncTranscriptionsNow: syncTranscriptionsNowMock,
     reprocessTranscriptionsMetadata: reprocessTranscriptionsMetadataMock,
     fetchSpeakerDirectory: fetchSpeakerDirectoryMock,
+    confirmSpeakerSample: confirmSpeakerSampleMock,
   };
 });
 
@@ -123,6 +117,7 @@ describe("TranscriptionsPage", () => {
     syncTranscriptionsNowMock.mockReset();
     reprocessTranscriptionsMetadataMock.mockReset();
     fetchSpeakerDirectoryMock.mockReset();
+    confirmSpeakerSampleMock.mockReset();
     fetchSpeakerDirectoryMock.mockResolvedValue({
       profiles: [],
       pending_samples: [],
@@ -762,5 +757,741 @@ describe("TranscriptionsPage", () => {
       );
     });
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
+  });
+
+  const iso = "2026-07-15T00:00:00Z";
+
+  it("offers saved profile names in the rename datalist after rename", async () => {
+    fetchTranscriptionsMock.mockResolvedValue([
+      {
+        id: "entry-a",
+        title: "entry-a",
+        is_done: true,
+        source_files: [{ name: "entry-a.m4a", relative_path: "entry-a.m4a" }],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+        diarized_speaker_preview: [],
+      },
+    ]);
+    fetchTranscriptionDetailMock.mockResolvedValue({
+      id: "entry-a",
+      title: "entry-a",
+      is_done: true,
+      source_files: [{ name: "entry-a.m4a", relative_path: "entry-a.m4a" }],
+      artifact_files: [],
+      has_analysis: false,
+      has_transcript_text: true,
+      has_transcript_json: true,
+      diarized_speaker_preview: [],
+      transcript_text_content: "[SPEAKER_00] First line",
+      transcript_json_content: JSON.stringify({
+        segments: [
+          {
+            speaker: "SPEAKER_00",
+            start: 1.2,
+            end: 4.9,
+            text: "First line",
+          },
+        ],
+      }),
+    });
+    const adaProfile = {
+      id: "ada-profile",
+      display_name: "Ada",
+      aliases: ["Addie"],
+      encoder: "ecapa",
+      confirmed_sample_count: 1,
+      represented_sample_count: 1,
+      pending_sample_count: 0,
+      created_at: iso,
+      updated_at: iso,
+    };
+    let directory = { profiles: [adaProfile], pending_samples: [] as object[] };
+    fetchSpeakerDirectoryMock.mockImplementation(async () => directory);
+    const renamedDetail = {
+      id: "entry-a",
+      title: "entry-a",
+      is_done: true,
+      source_files: [{ name: "entry-a.m4a", relative_path: "entry-a.m4a" }],
+      artifact_files: [],
+      has_analysis: false,
+      has_transcript_text: true,
+      has_transcript_json: true,
+      diarized_speaker_preview: [],
+      transcript_text_content: "[Scott] First line",
+      transcript_json_content: JSON.stringify({
+        segments: [
+          {
+            speaker: "SPEAKER_00",
+            speaker_name: "Scott",
+            start: 1.2,
+            end: 4.9,
+            text: "First line",
+          },
+        ],
+      }),
+    };
+    renameTranscriptionSpeakerMock.mockImplementation(async () => {
+      directory = {
+        profiles: [
+          adaProfile,
+          {
+            id: "scott-profile",
+            display_name: "Scott",
+            aliases: [],
+            encoder: "ecapa",
+            confirmed_sample_count: 1,
+            represented_sample_count: 1,
+            pending_sample_count: 0,
+            created_at: iso,
+            updated_at: iso,
+          },
+        ],
+        pending_samples: [],
+      };
+      return renamedDetail;
+    });
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "SPEAKER_00" })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "SPEAKER_00" }));
+    const renameInput = screen.getByLabelText("Rename speaker SPEAKER_00");
+    const listId = renameInput.getAttribute("list");
+    expect(listId).toBeTruthy();
+    expect(
+      document.querySelector(`#${listId} option[value="Ada"]`),
+    ).toBeTruthy();
+    expect(
+      document.querySelector(`#${listId} option[value="Addie"]`),
+    ).toBeTruthy();
+
+    fireEvent.change(renameInput, { target: { value: "Scott" } });
+    fireEvent.keyDown(renameInput, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Scott" })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Scott" }));
+    const afterInput = screen.getByLabelText("Rename speaker Scott");
+    const afterListId = afterInput.getAttribute("list")!;
+    expect(
+      document.querySelector(`#${afterListId} option[value="Scott"]`),
+    ).toBeTruthy();
+  });
+
+  it("clears the shared Speakers review queue after rename without a reload", async () => {
+    fetchTranscriptionsMock.mockResolvedValue([
+      {
+        id: "recording-1",
+        title: "recording-1",
+        is_done: true,
+        source_files: [
+          { name: "recording-1.m4a", relative_path: "recording-1.m4a" },
+        ],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+      },
+    ]);
+    fetchTranscriptionDetailMock.mockResolvedValue({
+      id: "recording-1",
+      title: "recording-1",
+      is_done: true,
+      source_files: [
+        { name: "recording-1.m4a", relative_path: "recording-1.m4a" },
+      ],
+      artifact_files: [],
+      has_analysis: false,
+      has_transcript_text: true,
+      has_transcript_json: true,
+      transcript_text_content: "[SPEAKER_00] This is Steve speaking.",
+      transcript_json_content: JSON.stringify({
+        segments: [
+          {
+            speaker: "SPEAKER_00",
+            start: 12,
+            end: 16,
+            text: "This is Steve speaking.",
+          },
+        ],
+      }),
+    });
+    const pendingDirectory = {
+      profiles: [
+        {
+          id: "monil-profile",
+          display_name: "Monil",
+          aliases: [],
+          encoder: "ecapa",
+          confirmed_sample_count: 3,
+          represented_sample_count: 3,
+          pending_sample_count: 1,
+          created_at: iso,
+          updated_at: iso,
+        },
+      ],
+      pending_samples: [
+        {
+          id: "pending-sample",
+          candidate_profile_id: "monil-profile",
+          candidate_name: "Monil",
+          transcription_entry_id: "recording-1",
+          speaker_label: "SPEAKER_00",
+          source_audio_path: "recording-1.m4a",
+          encoder: "ecapa",
+          speech_duration_seconds: 4,
+          segment_count: 1,
+          segment_evidence: [],
+          similarity: 0.29,
+          status: "pending",
+          source_type: "observation",
+          represented_sample_count: 1,
+          created_at: iso,
+          updated_at: iso,
+        },
+      ],
+    };
+    const clearedDirectory = {
+      profiles: [
+        {
+          id: "steve-profile",
+          display_name: "Steve",
+          aliases: [],
+          encoder: "ecapa",
+          confirmed_sample_count: 1,
+          represented_sample_count: 1,
+          pending_sample_count: 0,
+          created_at: iso,
+          updated_at: iso,
+        },
+      ],
+      pending_samples: [],
+    };
+    let directory = pendingDirectory;
+    fetchSpeakerDirectoryMock.mockImplementation(async () => directory);
+    renameTranscriptionSpeakerMock.mockImplementation(async () => {
+      directory = clearedDirectory;
+      return {
+        id: "recording-1",
+        title: "recording-1",
+        is_done: true,
+        source_files: [
+          { name: "recording-1.m4a", relative_path: "recording-1.m4a" },
+        ],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+        transcript_text_content: "[Steve] This is Steve speaking.",
+        transcript_json_content: JSON.stringify({
+          segments: [
+            {
+              speaker: "SPEAKER_00",
+              speaker_name: "Steve",
+              start: 12,
+              end: 16,
+              text: "This is Steve speaking.",
+            },
+          ],
+        }),
+      };
+    });
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Review: Monil \(29%\)/)).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "SPEAKER_00" }));
+    fireEvent.change(screen.getByLabelText("Rename speaker SPEAKER_00"), {
+      target: { value: "Steve" },
+    });
+    fireEvent.keyDown(screen.getByLabelText("Rename speaker SPEAKER_00"), {
+      key: "Enter",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Steve" })).toBeTruthy();
+    });
+    expect(screen.queryByText(/Review: Monil/)).toBeNull();
+    expect(
+      screen.getByText("No speaker observations need review."),
+    ).toBeTruthy();
+  });
+
+  it("refreshes the open transcript after confirming a pending speaker sample", async () => {
+    fetchTranscriptionsMock.mockResolvedValue([
+      {
+        id: "entry-confirm",
+        title: "entry-confirm",
+        is_done: true,
+        source_files: [
+          { name: "entry-confirm.m4a", relative_path: "entry-confirm.m4a" },
+        ],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+      },
+    ]);
+    fetchTranscriptionDetailMock
+      .mockResolvedValueOnce({
+        id: "entry-confirm",
+        title: "entry-confirm",
+        is_done: true,
+        source_files: [
+          { name: "entry-confirm.m4a", relative_path: "entry-confirm.m4a" },
+        ],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+        transcript_text_content: "[SPEAKER_00] Hello",
+        transcript_json_content: JSON.stringify({
+          segments: [
+            {
+              speaker: "SPEAKER_00",
+              start: 1,
+              end: 4,
+              text: "Hello",
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        id: "entry-confirm",
+        title: "entry-confirm",
+        is_done: true,
+        source_files: [
+          { name: "entry-confirm.m4a", relative_path: "entry-confirm.m4a" },
+        ],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+        transcript_text_content: "[Jamie] Hello",
+        transcript_json_content: JSON.stringify({
+          segments: [
+            {
+              speaker: "SPEAKER_00",
+              speaker_name: "Jamie",
+              start: 1,
+              end: 4,
+              text: "Hello",
+            },
+          ],
+        }),
+      });
+    let directory: {
+      profiles: object[];
+      pending_samples: object[];
+    } = {
+      profiles: [],
+      pending_samples: [
+        {
+          id: "sample-confirm",
+          candidate_profile_id: null,
+          candidate_name: null,
+          transcription_entry_id: "entry-confirm",
+          speaker_label: "SPEAKER_00",
+          source_audio_path: "entry-confirm.m4a",
+          encoder: "ecapa",
+          speech_duration_seconds: 4,
+          segment_count: 1,
+          segment_evidence: [],
+          similarity: null,
+          status: "pending",
+          source_type: "observation",
+          represented_sample_count: 1,
+          created_at: iso,
+          updated_at: iso,
+        },
+      ],
+    };
+    fetchSpeakerDirectoryMock.mockImplementation(async () => directory);
+    confirmSpeakerSampleMock.mockImplementation(async () => {
+      directory = {
+        profiles: [
+          {
+            id: "jamie-profile",
+            display_name: "Jamie",
+            aliases: [],
+            encoder: "ecapa",
+            confirmed_sample_count: 1,
+            represented_sample_count: 1,
+            pending_sample_count: 0,
+            created_at: iso,
+            updated_at: iso,
+          },
+        ],
+        pending_samples: [],
+      };
+      return directory.profiles[0];
+    });
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Review speaker/i }),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Review speaker/i }));
+    fireEvent.change(screen.getByLabelText("Confirm new speaker name"), {
+      target: { value: "Jamie" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Confirm example/i }));
+
+    await waitFor(() => {
+      expect(confirmSpeakerSampleMock).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Jamie" })).toBeTruthy();
+    });
+    expect(screen.queryByRole("button", { name: "SPEAKER_00" })).toBeNull();
+  });
+
+  it("refreshes the open transcript after confirming from the Speakers panel", async () => {
+    fetchTranscriptionsMock.mockResolvedValue([
+      {
+        id: "entry-panel",
+        title: "entry-panel",
+        is_done: true,
+        source_files: [
+          { name: "entry-panel.m4a", relative_path: "entry-panel.m4a" },
+        ],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+      },
+    ]);
+    fetchTranscriptionDetailMock
+      .mockResolvedValueOnce({
+        id: "entry-panel",
+        title: "entry-panel",
+        is_done: true,
+        source_files: [
+          { name: "entry-panel.m4a", relative_path: "entry-panel.m4a" },
+        ],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+        transcript_text_content: "[SPEAKER_00] Hello",
+        transcript_json_content: JSON.stringify({
+          segments: [
+            {
+              speaker: "SPEAKER_00",
+              start: 1,
+              end: 4,
+              text: "Hello",
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        id: "entry-panel",
+        title: "entry-panel",
+        is_done: true,
+        source_files: [
+          { name: "entry-panel.m4a", relative_path: "entry-panel.m4a" },
+        ],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+        transcript_text_content: "[Riley] Hello",
+        transcript_json_content: JSON.stringify({
+          segments: [
+            {
+              speaker: "SPEAKER_00",
+              speaker_name: "Riley",
+              start: 1,
+              end: 4,
+              text: "Hello",
+            },
+          ],
+        }),
+      });
+    let directory: {
+      profiles: object[];
+      pending_samples: object[];
+    } = {
+      profiles: [],
+      pending_samples: [
+        {
+          id: "sample-panel",
+          candidate_profile_id: null,
+          candidate_name: null,
+          transcription_entry_id: "entry-panel",
+          speaker_label: "SPEAKER_00",
+          source_audio_path: "entry-panel.m4a",
+          encoder: "ecapa",
+          speech_duration_seconds: 4,
+          segment_count: 1,
+          segment_evidence: [],
+          similarity: null,
+          status: "pending",
+          source_type: "observation",
+          represented_sample_count: 1,
+          created_at: iso,
+          updated_at: iso,
+        },
+      ],
+    };
+    fetchSpeakerDirectoryMock.mockImplementation(async () => directory);
+    confirmSpeakerSampleMock.mockImplementation(async () => {
+      directory = {
+        profiles: [
+          {
+            id: "riley-profile",
+            display_name: "Riley",
+            aliases: [],
+            encoder: "ecapa",
+            confirmed_sample_count: 1,
+            represented_sample_count: 1,
+            pending_sample_count: 0,
+            created_at: iso,
+            updated_at: iso,
+          },
+        ],
+        pending_samples: [],
+      };
+      return directory.profiles[0];
+    });
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^Confirm$/ })).toBeTruthy();
+    });
+    fireEvent.change(screen.getByPlaceholderText("Or create a new speaker"), {
+      target: { value: "Riley" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^Confirm$/ }));
+
+    await waitFor(() => {
+      expect(confirmSpeakerSampleMock).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Riley" })).toBeTruthy();
+    });
+    expect(screen.queryByRole("button", { name: "SPEAKER_00" })).toBeNull();
+  });
+
+  it("shows a Speakers panel error if transcript refresh fails after panel confirm", async () => {
+    fetchTranscriptionsMock.mockResolvedValue([
+      {
+        id: "entry-panel-fail",
+        title: "entry-panel-fail",
+        is_done: true,
+        source_files: [
+          {
+            name: "entry-panel-fail.m4a",
+            relative_path: "entry-panel-fail.m4a",
+          },
+        ],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+      },
+    ]);
+    fetchTranscriptionDetailMock
+      .mockResolvedValueOnce({
+        id: "entry-panel-fail",
+        title: "entry-panel-fail",
+        is_done: true,
+        source_files: [
+          {
+            name: "entry-panel-fail.m4a",
+            relative_path: "entry-panel-fail.m4a",
+          },
+        ],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+        transcript_text_content: "[SPEAKER_00] Hello",
+        transcript_json_content: JSON.stringify({
+          segments: [
+            {
+              speaker: "SPEAKER_00",
+              start: 1,
+              end: 4,
+              text: "Hello",
+            },
+          ],
+        }),
+      })
+      .mockRejectedValueOnce(new Error("panel transcript refresh failed"));
+    let directory: {
+      profiles: object[];
+      pending_samples: object[];
+    } = {
+      profiles: [],
+      pending_samples: [
+        {
+          id: "sample-panel-fail",
+          candidate_profile_id: null,
+          candidate_name: null,
+          transcription_entry_id: "entry-panel-fail",
+          speaker_label: "SPEAKER_00",
+          source_audio_path: "entry-panel-fail.m4a",
+          encoder: "ecapa",
+          speech_duration_seconds: 4,
+          segment_count: 1,
+          segment_evidence: [],
+          similarity: null,
+          status: "pending",
+          source_type: "observation",
+          represented_sample_count: 1,
+          created_at: iso,
+          updated_at: iso,
+        },
+      ],
+    };
+    fetchSpeakerDirectoryMock.mockImplementation(async () => directory);
+    confirmSpeakerSampleMock.mockImplementation(async () => {
+      directory = { profiles: [], pending_samples: [] };
+      return {};
+    });
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^Confirm$/ })).toBeTruthy();
+    });
+    fireEvent.change(screen.getByPlaceholderText("Or create a new speaker"), {
+      target: { value: "Riley" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^Confirm$/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText("panel transcript refresh failed")).toBeTruthy();
+    });
+  });
+
+  it("shows a refresh error after confirm succeeds if the transcript reload fails", async () => {
+    fetchTranscriptionsMock.mockResolvedValue([
+      {
+        id: "entry-refresh-fail",
+        title: "entry-refresh-fail",
+        is_done: true,
+        source_files: [
+          {
+            name: "entry-refresh-fail.m4a",
+            relative_path: "entry-refresh-fail.m4a",
+          },
+        ],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+      },
+    ]);
+    fetchTranscriptionDetailMock
+      .mockResolvedValueOnce({
+        id: "entry-refresh-fail",
+        title: "entry-refresh-fail",
+        is_done: true,
+        source_files: [
+          {
+            name: "entry-refresh-fail.m4a",
+            relative_path: "entry-refresh-fail.m4a",
+          },
+        ],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+        transcript_text_content: "[SPEAKER_00] Hello",
+        transcript_json_content: JSON.stringify({
+          segments: [
+            {
+              speaker: "SPEAKER_00",
+              start: 1,
+              end: 4,
+              text: "Hello",
+            },
+          ],
+        }),
+      })
+      .mockRejectedValueOnce(new Error("transcript refresh failed"));
+    let directory: {
+      profiles: object[];
+      pending_samples: object[];
+    } = {
+      profiles: [],
+      pending_samples: [
+        {
+          id: "sample-refresh-fail",
+          candidate_profile_id: null,
+          candidate_name: null,
+          transcription_entry_id: "entry-refresh-fail",
+          speaker_label: "SPEAKER_00",
+          source_audio_path: "entry-refresh-fail.m4a",
+          encoder: "ecapa",
+          speech_duration_seconds: 4,
+          segment_count: 1,
+          segment_evidence: [],
+          similarity: null,
+          status: "pending",
+          source_type: "observation",
+          represented_sample_count: 1,
+          created_at: iso,
+          updated_at: iso,
+        },
+      ],
+    };
+    fetchSpeakerDirectoryMock.mockImplementation(async () => directory);
+    confirmSpeakerSampleMock.mockImplementation(async () => {
+      directory = { profiles: [], pending_samples: [] };
+      return {};
+    });
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Review speaker/i }),
+      ).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Review speaker/i }));
+    fireEvent.change(screen.getByLabelText("Confirm new speaker name"), {
+      target: { value: "Jamie" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Confirm example/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("transcript refresh failed")).toBeTruthy();
+    });
+    expect(
+      screen.queryByRole("button", { name: /Confirm example/i }),
+    ).toBeNull();
+  });
+
+  it("shows a Speakers load error instead of spinning forever", async () => {
+    fetchTranscriptionsMock.mockResolvedValue([]);
+    fetchSpeakerDirectoryMock.mockRejectedValue(new Error("directory down"));
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("directory down")).toBeTruthy();
+    });
+    expect(screen.queryByText("Loading speaker profiles…")).toBeNull();
+    expect(
+      screen.getByText("Speaker profiles could not be loaded."),
+    ).toBeTruthy();
   });
 });

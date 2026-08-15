@@ -177,9 +177,7 @@ async def _hydrate_rationale_snapshot_fields(
     positions: list[dict[str, Any]],
 ) -> None:
     """Attach rationale_updated_at to snapshot rows (latest.json / reviews)."""
-    ts_map = await _rationale_updated_at_by_position_key(
-        session, organization_id, portfolio_root
-    )
+    ts_map = await _rationale_updated_at_by_position_key(session, organization_id, portfolio_root)
     for pos in positions:
         pk = pos.get("position_key")
         if not isinstance(pk, str) or not pk:
@@ -239,9 +237,7 @@ async def _carry_roll(
     carried = False
     dest_existing = await _rationale_record(session, organization_id, roll.rolled_to_position_key)
     if dest_existing is None:
-        src_rec = await _rationale_record(
-            session, organization_id, roll.rolled_from_position_key
-        )
+        src_rec = await _rationale_record(session, organization_id, roll.rolled_from_position_key)
         src_dict = _rationale_from_file(portfolio_root, roll.rolled_from_position_key)
         strategy = why = entry_plan = profit_take_plan = risk_plan = roll_or_reopen_plan = None
         tags: list[str] = []
@@ -264,9 +260,7 @@ async def _carry_roll(
             )
             why = src_dict.get("why") if isinstance(src_dict.get("why"), str) else None
             entry_plan = (
-                src_dict.get("entry_plan")
-                if isinstance(src_dict.get("entry_plan"), str)
-                else None
+                src_dict.get("entry_plan") if isinstance(src_dict.get("entry_plan"), str) else None
             )
             profit_take_plan = (
                 src_dict.get("profit_take_plan")
@@ -274,9 +268,7 @@ async def _carry_roll(
                 else None
             )
             risk_plan = (
-                src_dict.get("risk_plan")
-                if isinstance(src_dict.get("risk_plan"), str)
-                else None
+                src_dict.get("risk_plan") if isinstance(src_dict.get("risk_plan"), str) else None
             )
             roll_or_reopen_plan = (
                 src_dict.get("roll_or_reopen_plan")
@@ -322,24 +314,24 @@ async def _carry_roll(
     await session.refresh(ev)
 
     if carried:
-        # ``new_rec`` is only defined in the carry branch; refresh to pick up defaults.
-        await session.refresh(new_rec)  # type: ignore[has-type]
+        # ``new_rec`` and ``hist_out`` are only assigned in the carry branch.
+        await session.refresh(new_rec)
         rationale_read = PortfolioRationaleRead(
-            position_key=new_rec.position_key,  # type: ignore[has-type]
-            strategy=new_rec.strategy,  # type: ignore[has-type]
-            why=new_rec.why,  # type: ignore[has-type]
-            entry_plan=new_rec.entry_plan,  # type: ignore[has-type]
-            profit_take_plan=new_rec.profit_take_plan,  # type: ignore[has-type]
-            risk_plan=new_rec.risk_plan,  # type: ignore[has-type]
-            roll_or_reopen_plan=new_rec.roll_or_reopen_plan,  # type: ignore[has-type]
-            tags=list(new_rec.tags or []),  # type: ignore[has-type]
-            updated_at=new_rec.updated_at,  # type: ignore[has-type]
-            rolled_from_position_key=new_rec.rolled_from_position_key,  # type: ignore[has-type]
+            position_key=new_rec.position_key,
+            strategy=new_rec.strategy,
+            why=new_rec.why,
+            entry_plan=new_rec.entry_plan,
+            profit_take_plan=new_rec.profit_take_plan,
+            risk_plan=new_rec.risk_plan,
+            roll_or_reopen_plan=new_rec.roll_or_reopen_plan,
+            tags=list(new_rec.tags or []),
+            updated_at=new_rec.updated_at,
+            rolled_from_position_key=new_rec.rolled_from_position_key,
         )
         svc._write_rationale_mirror(
             position_key=roll.rolled_to_position_key,
             payload=rationale_read,
-            history=hist_out,  # type: ignore[has-type]
+            history=hist_out,
         )
 
     credit_usd = roll.net_credit_cents / 100.0

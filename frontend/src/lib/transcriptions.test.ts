@@ -7,6 +7,7 @@ import {
   matchesTranscriptionSearch,
   sortTranscriptionsByRecordingDate,
   type DiarizedTranscriptTurn,
+  type SpeakerProfile,
   type TranscriptionEntry,
 } from "./transcriptions";
 
@@ -16,7 +17,9 @@ describe("transcriptions helpers", () => {
       id: "1773166957",
       title: "1773166957",
       is_done: true,
-      source_files: [{ name: "1773166957.m4a", relative_path: "1773166957.m4a" }],
+      source_files: [
+        { name: "1773166957.m4a", relative_path: "1773166957.m4a" },
+      ],
       artifact_files: [
         {
           name: "analysis.md",
@@ -53,10 +56,9 @@ describe("transcriptions helpers", () => {
       },
     ];
 
-    expect(sortTranscriptionsByRecordingDate(entries).map((entry) => entry.id)).toEqual([
-      "1800000000",
-      "1700000000",
-    ]);
+    expect(
+      sortTranscriptionsByRecordingDate(entries).map((entry) => entry.id),
+    ).toEqual(["1800000000", "1700000000"]);
   });
 
   it("falls back to processed_at only when there is no capture time or numeric id", () => {
@@ -77,10 +79,9 @@ describe("transcriptions helpers", () => {
       },
     ];
 
-    expect(sortTranscriptionsByRecordingDate(entries).map((entry) => entry.id)).toEqual([
-      "newer-processed",
-      "older-processed",
-    ]);
+    expect(
+      sortTranscriptionsByRecordingDate(entries).map((entry) => entry.id),
+    ).toEqual(["newer-processed", "older-processed"]);
   });
 
   it("extracts diarized speaker turns from transcript json", () => {
@@ -111,29 +112,71 @@ describe("transcriptions helpers", () => {
   });
 
   it("collects unique human speaker names from entries and current turns, excluding raw labels", () => {
-    const entries: Array<Pick<TranscriptionEntry, "diarized_speaker_preview">> = [
-      { diarized_speaker_preview: ["Scott", "Ava", "SPEAKER_00"] },
-      { diarized_speaker_preview: ["ava", "Unknown speaker", "  "] },
-      { diarized_speaker_preview: undefined },
-    ];
+    const entries: Array<Pick<TranscriptionEntry, "diarized_speaker_preview">> =
+      [
+        { diarized_speaker_preview: ["Scott", "Ava", "SPEAKER_00"] },
+        { diarized_speaker_preview: ["ava", "Unknown speaker", "  "] },
+        { diarized_speaker_preview: undefined },
+      ];
     const turns: DiarizedTranscriptTurn[] = [
-      { speakerLabel: "Jamie", rawSpeakerLabel: "SPEAKER_02", text: "hi", start: 0, end: 1 },
-      { speakerLabel: "SPEAKER_03", rawSpeakerLabel: "SPEAKER_03", text: "yo", start: 1, end: 2 },
-      { speakerLabel: "scott", rawSpeakerLabel: "SPEAKER_00", text: "again", start: 2, end: 3 },
+      {
+        speakerLabel: "Jamie",
+        rawSpeakerLabel: "SPEAKER_02",
+        text: "hi",
+        start: 0,
+        end: 1,
+      },
+      {
+        speakerLabel: "SPEAKER_03",
+        rawSpeakerLabel: "SPEAKER_03",
+        text: "yo",
+        start: 1,
+        end: 2,
+      },
+      {
+        speakerLabel: "scott",
+        rawSpeakerLabel: "SPEAKER_00",
+        text: "again",
+        start: 2,
+        end: 3,
+      },
     ];
 
-    expect(collectKnownSpeakerNames(entries, turns)).toEqual(["Ava", "Jamie", "Scott"]);
+    expect(collectKnownSpeakerNames(entries, turns)).toEqual([
+      "Ava",
+      "Jamie",
+      "Scott",
+    ]);
   });
 
   it("returns an empty list when no human speaker names are present", () => {
     expect(
-      collectKnownSpeakerNames([{ diarized_speaker_preview: ["SPEAKER_00", "Unknown speaker"] }]),
+      collectKnownSpeakerNames([
+        { diarized_speaker_preview: ["SPEAKER_00", "Unknown speaker"] },
+      ]),
     ).toEqual([]);
+  });
+
+  it("includes saved profile names and aliases when list previews are empty", () => {
+    const profiles: Array<Pick<SpeakerProfile, "display_name" | "aliases">> = [
+      { display_name: "Ada", aliases: ["Addie", "SPEAKER_00"] },
+      { display_name: "Scott", aliases: [] },
+    ];
+
+    expect(
+      collectKnownSpeakerNames(
+        [{ diarized_speaker_preview: [] }],
+        [],
+        profiles,
+      ),
+    ).toEqual(["Ada", "Addie", "Scott"]);
   });
 
   it("ignores non-diarized and malformed transcript json", () => {
     expect(
-      getDiarizedTranscriptTurns(`{"segments":[{"start":0,"end":1,"text":"No speaker"}]}`),
+      getDiarizedTranscriptTurns(
+        `{"segments":[{"start":0,"end":1,"text":"No speaker"}]}`,
+      ),
     ).toEqual([]);
     expect(getDiarizedTranscriptTurns("{not-json")).toEqual([]);
     expect(getDiarizedTranscriptTurns(null)).toEqual([]);

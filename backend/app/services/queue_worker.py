@@ -9,19 +9,17 @@ from dataclasses import dataclass
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.services.speaker_backfill import (
-    TASK_TYPE as SPEAKER_BACKFILL_TASK_TYPE,
-    process_backfill_task,
-    requeue_backfill,
-)
-from app.services.openclaw.lifecycle_queue import (
-    TASK_TYPE as LIFECYCLE_RECONCILE_TASK_TYPE,
-)
+from app.services.openclaw.lifecycle_queue import TASK_TYPE as LIFECYCLE_RECONCILE_TASK_TYPE
 from app.services.openclaw.lifecycle_queue import (
     requeue_lifecycle_queue_task,
 )
 from app.services.openclaw.lifecycle_reconcile import process_lifecycle_queue_task
 from app.services.queue import QueuedTask, dequeue_task
+from app.services.speaker_backfill import TASK_TYPE as SPEAKER_BACKFILL_TASK_TYPE
+from app.services.speaker_backfill import (
+    process_backfill_task,
+    requeue_backfill,
+)
 from app.services.webhooks.dispatch import (
     process_webhook_queue_task,
     requeue_webhook_queue_task,
@@ -54,9 +52,7 @@ _TASK_HANDLERS: dict[str, _TaskHandler] = {
             settings.rq_dispatch_retry_base_seconds * (2 ** max(0, attempts)),
             settings.rq_dispatch_retry_max_seconds,
         ),
-        requeue=lambda task, delay: requeue_lifecycle_queue_task(
-            task, delay_seconds=delay
-        ),
+        requeue=lambda task, delay: requeue_lifecycle_queue_task(task, delay_seconds=delay),
     ),
     WEBHOOK_TASK_TYPE: _TaskHandler(
         handler=process_webhook_queue_task,
@@ -64,17 +60,13 @@ _TASK_HANDLERS: dict[str, _TaskHandler] = {
             settings.rq_dispatch_retry_base_seconds * (2 ** max(0, attempts)),
             settings.rq_dispatch_retry_max_seconds,
         ),
-        requeue=lambda task, delay: requeue_webhook_queue_task(
-            task, delay_seconds=delay
-        ),
+        requeue=lambda task, delay: requeue_webhook_queue_task(task, delay_seconds=delay),
     ),
 }
 
 
 def _compute_jitter(base_delay: float) -> float:
-    return random.uniform(
-        0, min(settings.rq_dispatch_retry_max_seconds / 10, base_delay * 0.1)
-    )
+    return random.uniform(0, min(settings.rq_dispatch_retry_max_seconds / 10, base_delay * 0.1))
 
 
 async def flush_queue(*, block: bool = False, block_timeout: float = 0) -> int:
@@ -170,6 +162,4 @@ def run_worker() -> None:
     try:
         asyncio.run(_run_worker_loop())
     finally:
-        logger.info(
-            "queue.worker.stopped", extra={"queue_name": settings.rq_queue_name}
-        )
+        logger.info("queue.worker.stopped", extra={"queue_name": settings.rq_queue_name})

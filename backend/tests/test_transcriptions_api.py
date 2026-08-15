@@ -1028,3 +1028,130 @@ async def test_list_transcriptions_honors_offset_and_limit(
 
     assert response.status_code == 200
     assert [item["id"] for item in response.json()] == ["1800000000"]
+
+
+@pytest.mark.asyncio
+async def test_rename_transcription_speaker_creates_profile_visible_in_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlmodel import SQLModel
+    from sqlmodel.ext.asyncio.session import AsyncSession
+
+    from app import models as _models
+    from app.api.speaker_profiles import router as speaker_profiles_router
+    from app.models.organizations import Organization
+
+    _ = _models
+
+    workspace = tmp_path / "workspace"
+    registry_root = tmp_path / "speaker-registry"
+    root = workspace / "transcriptions"
+    processed = root / "processed" / "meeting-learn"
+    _write(root / "speaker_identity.py", "#!/usr/bin/env python3\n")
+    _write(root / "meeting-learn.m4a", "audio")
+    transcript = json.dumps(
+        {
+            "segments": [
+                {
+                    "speaker": "SPEAKER_00",
+                    "start": 0,
+                    "end": 4,
+                    "text": "hello there",
+                }
+            ]
+        }
+    )
+    _write(processed / "meeting-learn.json", transcript)
+    _write(processed / "transcript.json", transcript)
+    _write(processed / "transcript.txt", "[SPEAKER_00] hello there")
+
+    def _fake_run(*args, **kwargs):
+        command = list(args[0])
+        if "enroll-from-transcript" in command:
+            registry_dir = Path(command[command.index("--registry-dir") + 1])
+            registry_path = registry_dir / ".speaker_registry" / "registry.json"
+            registry_path.parent.mkdir(parents=True, exist_ok=True)
+            registry_path.write_text(
+                json.dumps(
+                    {
+                        "version": 2,
+                        "speakers": [{"name": "Scott", "embedding": [1.0, 0.0, 0.0]}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+        if "annotate" in command:
+            output_json = Path(command[command.index("--output-json") + 1])
+            output_text = Path(command[command.index("--output-text") + 1])
+            output_json.write_text(
+                json.dumps(
+                    {
+                        "segments": [
+                            {
+                                "speaker": "SPEAKER_00",
+                                "speaker_name": "Scott",
+                                "start": 0,
+                                "end": 4,
+                                "text": "hello there",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            output_text.write_text("[Scott] hello there", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("app.services.transcriptions.subprocess.run", _fake_run)
+    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
+    monkeypatch.setattr(
+        settings, "openclaw_transcriptions_speaker_registry_root", str(registry_root)
+    )
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(SQLModel.metadata.create_all)
+    session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with session_maker() as session:
+        organization = Organization(name="Learn Org")
+        session.add(organization)
+        await session.commit()
+        await session.refresh(organization)
+        org_id = organization.id
+
+    ctx = SimpleNamespace(organization=SimpleNamespace(id=org_id))
+    app = FastAPI()
+    api_v1 = APIRouter(prefix="/api/v1")
+    api_v1.include_router(speaker_profiles_router)
+    api_v1.include_router(transcriptions_router)
+    app.include_router(api_v1)
+
+    async def _override_require_org_admin() -> object:
+        return ctx
+
+    async def _override_get_session():
+        async with session_maker() as session:
+            yield session
+
+    app.dependency_overrides[require_org_admin] = _override_require_org_admin
+    app.dependency_overrides[get_session] = _override_get_session
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        rename_response = await client.post(
+            "/api/v1/transcriptions/meeting-learn/speakers/rename",
+            json={"speaker_label": "SPEAKER_00", "new_name": "Scott"},
+        )
+        directory_response = await client.get("/api/v1/transcriptions/speakers")
+
+    await engine.dispose()
+
+    assert rename_response.status_code == 200, rename_response.text
+    assert directory_response.status_code == 200, directory_response.text
+    names = [profile["display_name"] for profile in directory_response.json()["profiles"]]
+    assert "Scott" in names

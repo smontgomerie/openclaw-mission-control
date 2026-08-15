@@ -223,7 +223,9 @@ def _option_side_from_trade_columns(record: dict[str, Any]) -> str | None:
     return None
 
 
-def _option_fields_for_trade(record: dict[str, Any], blob: str) -> tuple[str | None, float | None, str | None]:
+def _option_fields_for_trade(
+    record: dict[str, Any], blob: str
+) -> tuple[str | None, float | None, str | None]:
     """Prefer explicit sheet columns, then description heuristics."""
     side_d, strike_d, exp_d = _parse_option_from_description(blob)
     side_c = _option_side_from_trade_columns(record)
