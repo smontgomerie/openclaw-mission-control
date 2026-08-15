@@ -496,11 +496,13 @@ function ArtifactList({ files }: { files: TranscriptionFile[] }) {
 
 function SpeakerDirectoryPanel({
   directory,
+  directoryError,
   onDirectoryChange,
   onOpenTranscript,
   onTranscriptMaybeChanged,
 }: {
   directory: SpeakerDirectory | null;
+  directoryError?: string | null;
   onDirectoryChange: (directory: SpeakerDirectory) => void;
   onOpenTranscript: (entryId: string) => void;
   onTranscriptMaybeChanged?: () => Promise<void> | void;
@@ -564,7 +566,7 @@ function SpeakerDirectoryPanel({
         next.profiles.map((profile) => [profile.id, profile.display_name]),
       ),
     );
-    await onTranscriptMaybeChanged?.();
+    await onTranscriptMaybeChanged?.().catch(() => undefined);
   };
 
   useEffect(() => {
@@ -769,9 +771,9 @@ function SpeakerDirectoryPanel({
         </div>
       </div>
 
-      {error ? (
+      {error || directoryError ? (
         <div className="mx-5 mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
+          {error || directoryError}
         </div>
       ) : null}
 
@@ -826,8 +828,12 @@ function SpeakerDirectoryPanel({
               Known speakers
             </p>
           </div>
-          {directory === null ? (
+          {directory === null && !directoryError ? (
             <p className="text-sm text-slate-500">Loading speaker profiles…</p>
+          ) : directory === null ? (
+            <p className="rounded-xl border border-dashed border-slate-300 bg-white/70 p-4 text-sm text-slate-500">
+              Speaker profiles could not be loaded.
+            </p>
           ) : profiles.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-300 bg-white/70 p-4 text-sm text-slate-500">
               No database-backed profiles yet. Import the existing registry or
@@ -1168,6 +1174,9 @@ export default function TranscriptionsPage() {
   const [renameError, setRenameError] = useState<string | null>(null);
   const [speakerDirectory, setSpeakerDirectory] =
     useState<SpeakerDirectory | null>(null);
+  const [speakerDirectoryError, setSpeakerDirectoryError] = useState<
+    string | null
+  >(null);
   const [confirmingSpeakerSample, setConfirmingSpeakerSample] =
     useState<SpeakerVoiceSample | null>(null);
   const [confirmProfileId, setConfirmProfileId] = useState("");
@@ -1190,7 +1199,10 @@ export default function TranscriptionsPage() {
   >("analysis");
   const [reloadToken, setReloadToken] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
   const speakerNameDatalistId = useId();
+
+  selectedIdRef.current = selectedId;
 
   useEffect(() => {
     return () => {
@@ -1353,15 +1365,21 @@ export default function TranscriptionsPage() {
   useEffect(() => {
     if (!isAdmin) {
       setSpeakerDirectory(null);
+      setSpeakerDirectoryError(null);
       return;
     }
     let cancelled = false;
     void fetchSpeakerDirectory()
       .then((next) => {
-        if (!cancelled) setSpeakerDirectory(next);
+        if (cancelled) return;
+        setSpeakerDirectory(next);
+        setSpeakerDirectoryError(null);
       })
-      .catch(() => {
-        if (!cancelled) setSpeakerDirectory(null);
+      .catch((cause: unknown) => {
+        if (cancelled) return;
+        setSpeakerDirectoryError(
+          cause instanceof Error ? cause.message : "Unable to load speakers.",
+        );
       });
     return () => {
       cancelled = true;
@@ -1494,6 +1512,18 @@ export default function TranscriptionsPage() {
     }
   };
 
+  const refreshOpenTranscript = async (entryId: string | null) => {
+    if (!entryId) return;
+    const updated = await fetchTranscriptionDetail(entryId);
+    if (selectedIdRef.current !== entryId) return;
+    setDetail(updated);
+    setEntries((current) =>
+      current.map((entry) =>
+        entry.id === updated.id ? { ...entry, ...updated } : entry,
+      ),
+    );
+  };
+
   const handleConfirmSpeaker = (turn: DiarizedTranscriptTurn) => {
     const sample = pendingSamplesForSelectedTranscript.find((candidate) =>
       turnMatchesSpeakerSample(turn, candidate),
@@ -1517,6 +1547,7 @@ export default function TranscriptionsPage() {
     }
     setConfirmPending(true);
     setConfirmError(null);
+    const confirmedEntryId = selectedId;
     void confirmSpeakerSample(
       confirmingSpeakerSample.id,
       newName
@@ -1527,18 +1558,15 @@ export default function TranscriptionsPage() {
           },
     )
       .then(async () => {
-        const nextDirectory = await fetchSpeakerDirectory();
-        setSpeakerDirectory(nextDirectory);
-        if (selectedId) {
-          const updated = await fetchTranscriptionDetail(selectedId);
-          setDetail(updated);
-          setEntries((current) =>
-            current.map((entry) =>
-              entry.id === updated.id ? { ...entry, ...updated } : entry,
-            ),
-          );
-        }
         setConfirmingSpeakerSample(null);
+        try {
+          const nextDirectory = await fetchSpeakerDirectory();
+          setSpeakerDirectory(nextDirectory);
+          setSpeakerDirectoryError(null);
+          await refreshOpenTranscript(confirmedEntryId);
+        } catch {
+          // Confirm already succeeded; keep the dialog closed if refresh fails.
+        }
       })
       .catch((cause: unknown) => {
         setConfirmError(
@@ -1901,18 +1929,12 @@ export default function TranscriptionsPage() {
         {isAdmin ? (
           <SpeakerDirectoryPanel
             directory={speakerDirectory}
+            directoryError={speakerDirectoryError}
             onDirectoryChange={setSpeakerDirectory}
             onOpenTranscript={setSelectedId}
-            onTranscriptMaybeChanged={async () => {
-              if (!selectedId) return;
-              const updated = await fetchTranscriptionDetail(selectedId);
-              setDetail(updated);
-              setEntries((current) =>
-                current.map((entry) =>
-                  entry.id === updated.id ? { ...entry, ...updated } : entry,
-                ),
-              );
-            }}
+            onTranscriptMaybeChanged={() =>
+              refreshOpenTranscript(selectedIdRef.current)
+            }
           />
         ) : null}
 

@@ -1158,4 +1158,148 @@ describe("TranscriptionsPage", () => {
     });
     expect(screen.queryByRole("button", { name: "SPEAKER_00" })).toBeNull();
   });
+
+  it("refreshes the open transcript after confirming from the Speakers panel", async () => {
+    fetchTranscriptionsMock.mockResolvedValue([
+      {
+        id: "entry-panel",
+        title: "entry-panel",
+        is_done: true,
+        source_files: [
+          { name: "entry-panel.m4a", relative_path: "entry-panel.m4a" },
+        ],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+      },
+    ]);
+    fetchTranscriptionDetailMock
+      .mockResolvedValueOnce({
+        id: "entry-panel",
+        title: "entry-panel",
+        is_done: true,
+        source_files: [
+          { name: "entry-panel.m4a", relative_path: "entry-panel.m4a" },
+        ],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+        transcript_text_content: "[SPEAKER_00] Hello",
+        transcript_json_content: JSON.stringify({
+          segments: [
+            {
+              speaker: "SPEAKER_00",
+              start: 1,
+              end: 4,
+              text: "Hello",
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        id: "entry-panel",
+        title: "entry-panel",
+        is_done: true,
+        source_files: [
+          { name: "entry-panel.m4a", relative_path: "entry-panel.m4a" },
+        ],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+        transcript_text_content: "[Riley] Hello",
+        transcript_json_content: JSON.stringify({
+          segments: [
+            {
+              speaker: "SPEAKER_00",
+              speaker_name: "Riley",
+              start: 1,
+              end: 4,
+              text: "Hello",
+            },
+          ],
+        }),
+      });
+    let directory: {
+      profiles: object[];
+      pending_samples: object[];
+    } = {
+      profiles: [],
+      pending_samples: [
+        {
+          id: "sample-panel",
+          candidate_profile_id: null,
+          candidate_name: null,
+          transcription_entry_id: "entry-panel",
+          speaker_label: "SPEAKER_00",
+          source_audio_path: "entry-panel.m4a",
+          encoder: "ecapa",
+          speech_duration_seconds: 4,
+          segment_count: 1,
+          segment_evidence: [],
+          similarity: null,
+          status: "pending",
+          source_type: "observation",
+          represented_sample_count: 1,
+          created_at: iso,
+          updated_at: iso,
+        },
+      ],
+    };
+    fetchSpeakerDirectoryMock.mockImplementation(async () => directory);
+    confirmSpeakerSampleMock.mockImplementation(async () => {
+      directory = {
+        profiles: [
+          {
+            id: "riley-profile",
+            display_name: "Riley",
+            aliases: [],
+            encoder: "ecapa",
+            confirmed_sample_count: 1,
+            represented_sample_count: 1,
+            pending_sample_count: 0,
+            created_at: iso,
+            updated_at: iso,
+          },
+        ],
+        pending_samples: [],
+      };
+      return directory.profiles[0];
+    });
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^Confirm$/ })).toBeTruthy();
+    });
+    fireEvent.change(screen.getByPlaceholderText("Or create a new speaker"), {
+      target: { value: "Riley" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^Confirm$/ }));
+
+    await waitFor(() => {
+      expect(confirmSpeakerSampleMock).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Riley" })).toBeTruthy();
+    });
+    expect(screen.queryByRole("button", { name: "SPEAKER_00" })).toBeNull();
+  });
+
+  it("shows a Speakers load error instead of spinning forever", async () => {
+    fetchTranscriptionsMock.mockResolvedValue([]);
+    fetchSpeakerDirectoryMock.mockRejectedValue(new Error("directory down"));
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("directory down")).toBeTruthy();
+    });
+    expect(screen.queryByText("Loading speaker profiles…")).toBeNull();
+    expect(
+      screen.getByText("Speaker profiles could not be loaded."),
+    ).toBeTruthy();
+  });
 });
