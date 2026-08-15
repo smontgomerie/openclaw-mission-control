@@ -559,13 +559,22 @@ function SpeakerDirectoryPanel({
   }, [reviewStopAt]);
 
   const load = async () => {
-    const next = await fetchSpeakerDirectory();
-    onDirectoryChange(next);
-    setProfileNames(
-      Object.fromEntries(
-        next.profiles.map((profile) => [profile.id, profile.display_name]),
-      ),
-    );
+    try {
+      const next = await fetchSpeakerDirectory();
+      onDirectoryChange(next);
+      setProfileNames(
+        Object.fromEntries(
+          next.profiles.map((profile) => [profile.id, profile.display_name]),
+        ),
+      );
+    } catch (cause: unknown) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Unable to refresh the speaker list.",
+      );
+      return;
+    }
     await onTranscriptMaybeChanged?.().catch(() => undefined);
   };
 
@@ -1599,7 +1608,10 @@ export default function TranscriptionsPage() {
           ),
         );
         void fetchSpeakerDirectory()
-          .then(setSpeakerDirectory)
+          .then((next) => {
+            setSpeakerDirectory(next);
+            setSpeakerDirectoryError(null);
+          })
           .catch(() => undefined);
         setEditingSpeakerLabel(null);
         setEditingTurnKey(null);
@@ -1930,7 +1942,10 @@ export default function TranscriptionsPage() {
           <SpeakerDirectoryPanel
             directory={speakerDirectory}
             directoryError={speakerDirectoryError}
-            onDirectoryChange={setSpeakerDirectory}
+            onDirectoryChange={(next) => {
+              setSpeakerDirectory(next);
+              setSpeakerDirectoryError(null);
+            }}
             onOpenTranscript={setSelectedId}
             onTranscriptMaybeChanged={() =>
               refreshOpenTranscript(selectedIdRef.current)
