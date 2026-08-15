@@ -1295,7 +1295,10 @@ describe("TranscriptionsPage", () => {
         title: "entry-panel-fail",
         is_done: true,
         source_files: [
-          { name: "entry-panel-fail.m4a", relative_path: "entry-panel-fail.m4a" },
+          {
+            name: "entry-panel-fail.m4a",
+            relative_path: "entry-panel-fail.m4a",
+          },
         ],
         artifact_files: [],
         has_analysis: false,
@@ -1309,7 +1312,10 @@ describe("TranscriptionsPage", () => {
         title: "entry-panel-fail",
         is_done: true,
         source_files: [
-          { name: "entry-panel-fail.m4a", relative_path: "entry-panel-fail.m4a" },
+          {
+            name: "entry-panel-fail.m4a",
+            relative_path: "entry-panel-fail.m4a",
+          },
         ],
         artifact_files: [],
         has_analysis: false,
@@ -1469,7 +1475,9 @@ describe("TranscriptionsPage", () => {
     await waitFor(() => {
       expect(screen.getByText("transcript refresh failed")).toBeTruthy();
     });
-    expect(screen.queryByRole("button", { name: /Confirm example/i })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Confirm example/i }),
+    ).toBeNull();
   });
 
   it("shows a Speakers load error instead of spinning forever", async () => {
