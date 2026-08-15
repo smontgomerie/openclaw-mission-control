@@ -495,11 +495,16 @@ function ArtifactList({ files }: { files: TranscriptionFile[] }) {
 }
 
 function SpeakerDirectoryPanel({
+  directory,
+  onDirectoryChange,
   onOpenTranscript,
+  onTranscriptMaybeChanged,
 }: {
+  directory: SpeakerDirectory | null;
+  onDirectoryChange: (directory: SpeakerDirectory) => void;
   onOpenTranscript: (entryId: string) => void;
+  onTranscriptMaybeChanged?: () => Promise<void> | void;
 }) {
-  const [directory, setDirectory] = useState<SpeakerDirectory | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [backfillPreview, setBackfillPreview] =
@@ -553,36 +558,23 @@ function SpeakerDirectoryPanel({
 
   const load = async () => {
     const next = await fetchSpeakerDirectory();
-    setDirectory(next);
+    onDirectoryChange(next);
     setProfileNames(
       Object.fromEntries(
         next.profiles.map((profile) => [profile.id, profile.display_name]),
       ),
     );
+    await onTranscriptMaybeChanged?.();
   };
 
   useEffect(() => {
-    let cancelled = false;
-    void fetchSpeakerDirectory()
-      .then((next) => {
-        if (cancelled) return;
-        setDirectory(next);
-        setProfileNames(
-          Object.fromEntries(
-            next.profiles.map((profile) => [profile.id, profile.display_name]),
-          ),
-        );
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled)
-          setError(
-            cause instanceof Error ? cause.message : "Unable to load speakers.",
-          );
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (!directory) return;
+    setProfileNames(
+      Object.fromEntries(
+        directory.profiles.map((profile) => [profile.id, profile.display_name]),
+      ),
+    );
+  }, [directory]);
 
   const run = async (key: string, action: () => Promise<unknown>) => {
     setBusyKey(key);
@@ -1359,14 +1351,22 @@ export default function TranscriptionsPage() {
   }, [audioStopAt]);
 
   useEffect(() => {
-    if (!isAdmin || !selectedId) {
+    if (!isAdmin) {
       setSpeakerDirectory(null);
       return;
     }
+    let cancelled = false;
     void fetchSpeakerDirectory()
-      .then(setSpeakerDirectory)
-      .catch(() => setSpeakerDirectory(null));
-  }, [isAdmin, selectedId]);
+      .then((next) => {
+        if (!cancelled) setSpeakerDirectory(next);
+      })
+      .catch(() => {
+        if (!cancelled) setSpeakerDirectory(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin]);
 
   const filteredEntries = useMemo(
     () =>
@@ -1392,8 +1392,13 @@ export default function TranscriptionsPage() {
     [diarizedTurns],
   );
   const knownSpeakerNames = useMemo(
-    () => collectKnownSpeakerNames(entries, diarizedTurns),
-    [entries, diarizedTurns],
+    () =>
+      collectKnownSpeakerNames(
+        entries,
+        diarizedTurns,
+        speakerDirectory?.profiles ?? [],
+      ),
+    [entries, diarizedTurns, speakerDirectory],
   );
 
   const pendingSamplesForSelectedTranscript = useMemo(
@@ -1521,9 +1526,18 @@ export default function TranscriptionsPage() {
             excluded_segment_ids: excludedSegmentIds,
           },
     )
-      .then(() => fetchSpeakerDirectory())
-      .then((directory) => {
-        setSpeakerDirectory(directory);
+      .then(async () => {
+        const nextDirectory = await fetchSpeakerDirectory();
+        setSpeakerDirectory(nextDirectory);
+        if (selectedId) {
+          const updated = await fetchTranscriptionDetail(selectedId);
+          setDetail(updated);
+          setEntries((current) =>
+            current.map((entry) =>
+              entry.id === updated.id ? { ...entry, ...updated } : entry,
+            ),
+          );
+        }
         setConfirmingSpeakerSample(null);
       })
       .catch((cause: unknown) => {
@@ -1885,7 +1899,21 @@ export default function TranscriptionsPage() {
         </Dialog>
 
         {isAdmin ? (
-          <SpeakerDirectoryPanel onOpenTranscript={setSelectedId} />
+          <SpeakerDirectoryPanel
+            directory={speakerDirectory}
+            onDirectoryChange={setSpeakerDirectory}
+            onOpenTranscript={setSelectedId}
+            onTranscriptMaybeChanged={async () => {
+              if (!selectedId) return;
+              const updated = await fetchTranscriptionDetail(selectedId);
+              setDetail(updated);
+              setEntries((current) =>
+                current.map((entry) =>
+                  entry.id === updated.id ? { ...entry, ...updated } : entry,
+                ),
+              );
+            }}
+          />
         ) : null}
 
         <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
