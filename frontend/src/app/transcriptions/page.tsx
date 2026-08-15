@@ -568,7 +568,6 @@ function SpeakerDirectoryPanel({
           ? cause.message
           : "Unable to refresh the speaker list.",
       );
-      return;
     }
     if (onTranscriptMaybeChanged) {
       try {
