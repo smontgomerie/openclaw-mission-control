@@ -562,11 +562,6 @@ function SpeakerDirectoryPanel({
     try {
       const next = await fetchSpeakerDirectory();
       onDirectoryChange(next);
-      setProfileNames(
-        Object.fromEntries(
-          next.profiles.map((profile) => [profile.id, profile.display_name]),
-        ),
-      );
     } catch (cause: unknown) {
       setError(
         cause instanceof Error
@@ -578,8 +573,12 @@ function SpeakerDirectoryPanel({
     if (onTranscriptMaybeChanged) {
       try {
         await Promise.resolve(onTranscriptMaybeChanged());
-      } catch {
-        // Directory reload already succeeded; transcript refresh is best-effort.
+      } catch (cause: unknown) {
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Unable to refresh the transcript after the speaker update.",
+        );
       }
     }
   };
@@ -1537,6 +1536,7 @@ export default function TranscriptionsPage() {
 
   const refreshOpenTranscript = async (entryId: string | null) => {
     if (!entryId) return;
+    if (selectedIdRef.current !== entryId) return;
     const epoch = ++detailEpochRef.current;
     try {
       const updated = await fetchTranscriptionDetail(entryId);

@@ -1288,6 +1288,93 @@ describe("TranscriptionsPage", () => {
     expect(screen.queryByRole("button", { name: "SPEAKER_00" })).toBeNull();
   });
 
+  it("shows a Speakers panel error if transcript refresh fails after panel confirm", async () => {
+    fetchTranscriptionsMock.mockResolvedValue([
+      {
+        id: "entry-panel-fail",
+        title: "entry-panel-fail",
+        is_done: true,
+        source_files: [
+          { name: "entry-panel-fail.m4a", relative_path: "entry-panel-fail.m4a" },
+        ],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+      },
+    ]);
+    fetchTranscriptionDetailMock
+      .mockResolvedValueOnce({
+        id: "entry-panel-fail",
+        title: "entry-panel-fail",
+        is_done: true,
+        source_files: [
+          { name: "entry-panel-fail.m4a", relative_path: "entry-panel-fail.m4a" },
+        ],
+        artifact_files: [],
+        has_analysis: false,
+        has_transcript_text: true,
+        has_transcript_json: true,
+        transcript_text_content: "[SPEAKER_00] Hello",
+        transcript_json_content: JSON.stringify({
+          segments: [
+            {
+              speaker: "SPEAKER_00",
+              start: 1,
+              end: 4,
+              text: "Hello",
+            },
+          ],
+        }),
+      })
+      .mockRejectedValueOnce(new Error("panel transcript refresh failed"));
+    let directory: {
+      profiles: object[];
+      pending_samples: object[];
+    } = {
+      profiles: [],
+      pending_samples: [
+        {
+          id: "sample-panel-fail",
+          candidate_profile_id: null,
+          candidate_name: null,
+          transcription_entry_id: "entry-panel-fail",
+          speaker_label: "SPEAKER_00",
+          source_audio_path: "entry-panel-fail.m4a",
+          encoder: "ecapa",
+          speech_duration_seconds: 4,
+          segment_count: 1,
+          segment_evidence: [],
+          similarity: null,
+          status: "pending",
+          source_type: "observation",
+          represented_sample_count: 1,
+          created_at: iso,
+          updated_at: iso,
+        },
+      ],
+    };
+    fetchSpeakerDirectoryMock.mockImplementation(async () => directory);
+    confirmSpeakerSampleMock.mockImplementation(async () => {
+      directory = { profiles: [], pending_samples: [] };
+      return {};
+    });
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /^Confirm$/ })).toBeTruthy();
+    });
+    fireEvent.change(screen.getByPlaceholderText("Or create a new speaker"), {
+      target: { value: "Riley" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^Confirm$/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText("panel transcript refresh failed")).toBeTruthy();
+    });
+  });
+
   it("shows a refresh error after confirm succeeds if the transcript reload fails", async () => {
     fetchTranscriptionsMock.mockResolvedValue([
       {
