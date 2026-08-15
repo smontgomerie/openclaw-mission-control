@@ -110,9 +110,19 @@ async def test_speaker_mutating_apis_and_refused_other_org_actor(
             segment_count=1,
         )
         extra = await learning.find_or_create_profile("Ada")
+        rejectable = await learning.add_pending_observation(
+            entry_id="meeting-1",
+            speaker_label="SPEAKER_01",
+            source_audio_path="meeting-1.m4a",
+            embedding=[0.0, 1.0],
+            encoder="ecapa",
+            speech_duration_seconds=6.0,
+            segment_count=1,
+        )
         await session.commit()
         sample_id = sample.id
         extra_id = extra.id
+        rejectable_id = rejectable.id
         owner_org_id = owner_org.id
         other_org_id = other_org.id
         owner_user = owner
@@ -142,9 +152,13 @@ async def test_speaker_mutating_apis_and_refused_other_org_actor(
             f"/api/v1/transcriptions/speakers/samples/{sample_id}/confirm",
             json={"new_name": "Scott"},
         )
+        refused_reject = await client.post(
+            f"/api/v1/transcriptions/speakers/samples/{sample_id}/reject",
+        )
         refused_delete = await client.delete(f"/api/v1/transcriptions/speakers/{extra_id}")
 
     assert refused.status_code == 404
+    assert refused_reject.status_code == 404
     assert refused_delete.status_code == 404
     original = (processed / "transcript.json").read_text(encoding="utf-8")
     assert "Guess" in original
@@ -165,6 +179,10 @@ async def test_speaker_mutating_apis_and_refused_other_org_actor(
             json={"new_name": "Scott"},
         )
         assert confirm.status_code == 200, confirm.text
+        rejected = await client.post(
+            f"/api/v1/transcriptions/speakers/samples/{rejectable_id}/reject",
+        )
+        assert rejected.status_code == 200
         collision = await client.patch(
             f"/api/v1/transcriptions/speakers/{extra_id}",
             json={"display_name": "Scott"},

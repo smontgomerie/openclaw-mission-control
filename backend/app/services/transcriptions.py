@@ -1124,12 +1124,12 @@ class SharedTranscriptionsService:
         transcriptions_root = self._transcriptions_root()
         self._validate_entry_id(entry_id)
         processed_root = self._processed_root_if_present()
-        entry_dir = processed_root / entry_id if processed_root is not None else None
-        if entry_dir is not None and entry_dir.exists() and not entry_dir.is_dir():
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Transcription entry not found.",
-            )
+        entry_dir: Path | None = None
+        if processed_root is not None:
+            try:
+                entry_dir = self._entry_dir(entry_id)
+            except HTTPException:
+                entry_dir = None
         source_files = self._source_files(entry_id, transcriptions_root=transcriptions_root)
         if not source_files and (entry_dir is None or not entry_dir.is_dir()):
             raise HTTPException(

@@ -1301,6 +1301,8 @@ export default function TranscriptionsPage() {
     setDetail(null);
     setIsDetailLoading(true);
     setDetailError(null);
+    setRenamePending(false);
+    setRenameError(null);
 
     void fetchTranscriptionDetail(selectedId)
       .then((data) => {
@@ -1635,13 +1637,11 @@ export default function TranscriptionsPage() {
     setRenameError(null);
 
     const renamedEntryId = selectedId;
-    const epoch = detailEpochRef.current;
     void renameTranscriptionSpeaker(selectedId, {
       speaker_label: editingSpeakerLabel,
       new_name: newName,
     })
       .then((updated) => {
-        if (epoch !== detailEpochRef.current) return;
         if (selectedIdRef.current !== renamedEntryId) return;
         setDetail(updated);
         setEntries((current) =>
@@ -1666,6 +1666,7 @@ export default function TranscriptionsPage() {
         setEditingSpeakerValue("");
       })
       .catch((error: unknown) => {
+        if (selectedIdRef.current !== renamedEntryId) return;
         const message =
           error instanceof ApiError || error instanceof Error
             ? error.message
@@ -1673,7 +1674,9 @@ export default function TranscriptionsPage() {
         setRenameError(message);
       })
       .finally(() => {
-        setRenamePending(false);
+        if (selectedIdRef.current === renamedEntryId) {
+          setRenamePending(false);
+        }
       });
   };
 
@@ -2226,6 +2229,10 @@ export default function TranscriptionsPage() {
               ) : isDetailLoading && !detail ? (
                 <p className="text-sm text-slate-500">
                   Loading transcript detail…
+                </p>
+              ) : detailError && !detail ? (
+                <p className="mt-3 text-sm text-slate-500">
+                  Transcript detail could not be loaded for this recording.
                 </p>
               ) : !selectedEntry ? (
                 <p className="text-sm text-slate-500">

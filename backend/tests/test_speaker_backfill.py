@@ -103,8 +103,8 @@ async def test_backfill_apply_writes_overlay_and_leaves_failures_retryable(
             }
         ],
     )
-    _write_transcript(broken / "transcript.json", [{"speaker": "SPEAKER_00", "text": "x"}])
-    (tmp_path / "meeting-1.m4a").write_text("audio", encoding="utf-8")
+    (broken / "transcript.json").parent.mkdir(parents=True, exist_ok=True)
+    (broken / "transcript.json").write_text("not-json", encoding="utf-8")
 
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'backfill.db'}")
     async with engine.begin() as connection:
@@ -162,12 +162,14 @@ async def test_backfill_apply_writes_overlay_and_leaves_failures_retryable(
     assert overlay.is_file()
     payload = json.loads(overlay.read_text(encoding="utf-8"))
     assert payload["assignments"][0]["speaker_name"] == "Scott"
+    preview = json.loads((meeting / "speaker-preview.json").read_text(encoding="utf-8"))
+    assert preview["names"] == ["Scott"]
 
     async with session_factory() as session:
         stored = await SpeakerBackfillRun.objects.by_id(run_id).first(session)
         assert stored is not None
         assert stored.status == "failed"
-        assert "meeting-1" not in stored.processed_entry_ids
+        assert "meeting-1" in stored.processed_entry_ids
         assert "meeting-2" not in stored.processed_entry_ids
         assert stored.skipped_recordings >= 1
 

@@ -664,6 +664,8 @@ def test_apply_manual_speaker_name_clears_tentative_flag(tmp_path: Path) -> None
     updated = json.loads(transcript_path.read_text(encoding="utf-8"))
     assert updated["segments"][0]["speaker_name"] == "Scott"
     assert "speaker_name_tentative" not in updated["segments"][0]
+    preview = json.loads((tmp_path / "speaker-preview.json").read_text(encoding="utf-8"))
+    assert preview["names"] == ["Scott"]
 
 
 @pytest.mark.asyncio

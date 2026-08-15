@@ -17,7 +17,12 @@ from app.db.session import async_session_maker
 from app.models.speaker_profiles import SpeakerBackfillRun
 from app.services.queue import QueuedTask, enqueue_task
 from app.services.queue import requeue_if_failed as generic_requeue_if_failed
-from app.services.speaker_learning import SpeakerLearningService, normalize_speaker_name
+from app.services.speaker_learning import (
+    SpeakerLearningService,
+    _pinned_speaker_helper,
+    _speaker_tools_dir,
+    normalize_speaker_name,
+)
 from app.services.transcriptions import SharedTranscriptionsService, _write_speaker_list_preview
 
 TASK_TYPE = "speaker_annotation_backfill"
@@ -194,6 +199,8 @@ async def process_backfill_task(task: QueuedTask) -> None:
             return
         run.status = "running"
         run.started_at = run.started_at or utcnow()
+        run.errors = []
+        run.skipped_recordings = 0
         run.total_recordings = cast(int, current_preview["transcript_count"])
         session.add(run)
         await session.commit()
@@ -215,21 +222,25 @@ async def process_backfill_task(task: QueuedTask) -> None:
                     raise ValueError("Invalid transcript JSON")
                 _backup_annotations(root, entry, run.id)
                 _write_overlay(entry, transcript)
+                helper_path = _pinned_speaker_helper()
+                if not helper_path.is_file():
+                    processed_entry_ids.add(entry.name)
+                    run.processed_entry_ids = sorted(processed_entry_ids)
+                    run.processed_recordings = len(processed_entry_ids)
+                    run.updated_at = utcnow()
+                    session.add(run)
+                    await session.commit()
+                    continue
                 audio_path = transcription_service._source_audio_path(
                     entry.name, transcriptions_root=root
                 )
                 output = entry / "speaker-observations.json"
-                script = (
-                    Path(__file__).resolve().parents[2]
-                    / "scripts"
-                    / "openclaw-transcriptions"
-                    / "speaker_observations.py"
-                )
+                script = _speaker_tools_dir() / "speaker_observations.py"
                 command = [
                     transcription_service._speaker_python_bin(transcriptions_root=root),
                     str(script),
                     "--helper",
-                    str(root / "speaker_identity.py"),
+                    str(helper_path),
                     "--registry-dir",
                     str(root),
                     "--audio",

@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 CONFIRMED_STATUSES = ("confirmed", "legacy")
 MIN_CONFIRMED_SPEECH_SECONDS = 3.0
-_RECONCILE_CACHE: tuple[Path, int, UUID] | None = None
+_RECONCILE_CACHE: tuple[Path, tuple[tuple[str, int], ...], UUID] | None = None
 
 
 def _speaker_tools_dir() -> Path:
@@ -649,15 +649,22 @@ class SpeakerLearningService:
         processed_root = transcriptions_root / "processed"
         if not processed_root.is_dir():
             return 0
-        try:
-            processed_mtime = processed_root.stat().st_mtime_ns
-        except OSError:
-            processed_mtime = -1
+
+        def _manifest_signature() -> tuple[tuple[str, int], ...]:
+            items: list[tuple[str, int]] = []
+            for path in sorted(processed_root.glob("*/speaker-observations.json")):
+                try:
+                    items.append((str(path), path.stat().st_mtime_ns))
+                except OSError:
+                    continue
+            return tuple(items)
+
+        signature = _manifest_signature()
         cached = _RECONCILE_CACHE
         if (
             cached is not None
             and cached[0] == processed_root
-            and cached[1] == processed_mtime
+            and cached[1] == signature
             and cached[2] == self.organization_id
         ):
             return 0
@@ -700,5 +707,5 @@ class SpeakerLearningService:
                 )
                 if before is None:
                     imported += 1
-        _RECONCILE_CACHE = (processed_root, processed_mtime, self.organization_id)
+        _RECONCILE_CACHE = (processed_root, signature, self.organization_id)
         return imported
