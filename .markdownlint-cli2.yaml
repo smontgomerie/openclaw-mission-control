@@ -22,3 +22,5 @@ ignores:
   - "**/.mypy_cache/**"
   - "**/coverage/**"
   - "**/~/**"
+  - "**/.cursor/**"
+  - "**/.workq/**"

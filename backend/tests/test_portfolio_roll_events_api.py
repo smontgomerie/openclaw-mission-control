@@ -97,7 +97,9 @@ async def test_undo_roll_dismisses_event_and_removes_rationale(
     workspace = tmp_path / "ws"
     (workspace / "portfolio" / "rationales").mkdir(parents=True)
     (workspace / "portfolio" / "rationales" / f"{to_key}.json").write_text(
-        json.dumps({"position_key": to_key, "why": "carried", "rolled_from_position_key": from_key}),
+        json.dumps(
+            {"position_key": to_key, "why": "carried", "rolled_from_position_key": from_key}
+        ),
         encoding="utf-8",
     )
     monkeypatch.setattr(settings, "openclaw_shared_workspace_root", str(workspace))
@@ -109,7 +111,9 @@ async def test_undo_roll_dismisses_event_and_removes_rationale(
 
     async with session_maker() as session:
         left = (
-            await session.exec(select(PortfolioRationale).where(PortfolioRationale.position_key == to_key))
+            await session.exec(
+                select(PortfolioRationale).where(PortfolioRationale.position_key == to_key)
+            )
         ).first()
         assert left is None
         ev = await session.get(PortfolioRollEvent, event_id)

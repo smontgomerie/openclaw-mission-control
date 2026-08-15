@@ -13,7 +13,7 @@ from httpx import ASGITransport, AsyncClient
 from app.api.deps import require_org_admin, require_org_member
 from app.api.gateways import router as gateways_router
 from app.db.session import get_session
-from app.services.openclaw import filesystem_memory as filesystem_memory_service
+from app.services.openclaw.filesystem_memory import GatewayFilesystemMemoryService
 
 
 def _build_test_app(ctx: object) -> FastAPI:
@@ -75,7 +75,7 @@ async def test_get_gateway_filesystem_memory_overview_returns_service_payload(
         _fake_require_gateway,
     )
     monkeypatch.setattr(
-        filesystem_memory_service.GatewayFilesystemMemoryService,
+        GatewayFilesystemMemoryService,
         "get_overview",
         _fake_get_overview,
     )
@@ -125,7 +125,7 @@ async def test_get_gateway_brand_returns_identity_name(
 
     monkeypatch.setattr("app.api.gateways.Gateway.objects", _GatewayQuery())
     monkeypatch.setattr(
-        filesystem_memory_service.GatewayFilesystemMemoryService,
+        GatewayFilesystemMemoryService,
         "get_identity_name",
         _fake_get_identity_name,
     )
@@ -174,7 +174,7 @@ async def test_get_gateway_filesystem_memory_file_forwards_path(
         _fake_require_gateway,
     )
     monkeypatch.setattr(
-        filesystem_memory_service.GatewayFilesystemMemoryService,
+        GatewayFilesystemMemoryService,
         "get_file",
         _fake_get_file,
     )

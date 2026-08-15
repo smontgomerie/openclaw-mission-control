@@ -117,7 +117,10 @@ def test_worker_heartbeat_template_avoids_per_cycle_self_checkins():
     heartbeat = rendered["HEARTBEAT.md"]
 
     assert "Check in via `./.mission-control/heartbeat.sh`." not in heartbeat
-    assert "Do not trigger another heartbeat from inside the recurring `HEARTBEAT.md` loop." in heartbeat
+    assert (
+        "Do not trigger another heartbeat from inside the recurring `HEARTBEAT.md` loop."
+        in heartbeat
+    )
 
 
 def test_bootstrap_heartbeat_wrapper_reads_tools_md_at_runtime():
@@ -159,9 +162,9 @@ def test_bootstrap_heartbeat_wrapper_reads_tools_md_at_runtime():
     bootstrap = rendered["BOOTSTRAP.md"]
 
     assert "read_tools_value()" in bootstrap
-    assert "sub(/^[[:space:]]*-[[:space:]]*/, \"\", line)" in bootstrap
-    assert "gsub(/^`|`$/, \"\", line)" in bootstrap
-    assert "curl -fsS -X POST \"${base_url}/api/v1/agent/heartbeat\"" in bootstrap
+    assert 'sub(/^[[:space:]]*-[[:space:]]*/, "", line)' in bootstrap
+    assert 'gsub(/^`|`$/, "", line)' in bootstrap
+    assert 'curl -fsS -X POST "${base_url}/api/v1/agent/heartbeat"' in bootstrap
 
 
 def test_user_context_uses_email_fallback_when_name_is_missing():

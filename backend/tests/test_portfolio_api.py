@@ -99,7 +99,7 @@ def _seed_portfolio(workspace: Path) -> None:
                                 "headline": "50% premium captured",
                                 "summary": "Consider closing and reopening.",
                                 "recommendation": "Close and scan for a replacement CSP.",
-                            }
+                            },
                         ],
                     }
                 ],
@@ -240,12 +240,10 @@ async def test_update_rationale_writes_json_and_returns_detail(
     assert {flag["code"] for flag in payload["latest_flags"]} == {"profit_target_hit"}
 
     async with session_maker() as session:
-        stored = (
-            await session.exec(
-                select(PortfolioRationale).where(
-                    PortfolioRationale.organization_id == organization_id,
-                    PortfolioRationale.position_key == "AAPL-put-180-2026-04-17",
-                )
+        stored = await session.exec(
+            select(PortfolioRationale).where(
+                PortfolioRationale.organization_id == organization_id,
+                PortfolioRationale.position_key == "AAPL-put-180-2026-04-17",
             )
         )
         rationale_row = stored.one()
@@ -336,7 +334,9 @@ async def test_portfolio_reports_missing_workspace_mount(
 ) -> None:
     engine = await _make_engine()
     session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    monkeypatch.setattr(settings, "openclaw_shared_workspace_root", "/tmp/definitely-missing-openclaw")
+    monkeypatch.setattr(
+        settings, "openclaw_shared_workspace_root", "/tmp/definitely-missing-openclaw"
+    )
     app = _build_test_app(
         SimpleNamespace(organization=SimpleNamespace(id=uuid4())),
         session_maker,
@@ -464,7 +464,9 @@ async def test_sync_portfolio_requires_gateway(
     ctx = SimpleNamespace(organization=SimpleNamespace(id="org-123"))
     app = _build_test_app(ctx)
 
-    async def _fake_latest_gateway_for_org(session: object, organization_id: object) -> object | None:
+    async def _fake_latest_gateway_for_org(
+        session: object, organization_id: object
+    ) -> object | None:
         _ = (session, organization_id)
         return None
 

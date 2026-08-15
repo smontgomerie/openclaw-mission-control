@@ -575,7 +575,13 @@ function SpeakerDirectoryPanel({
       );
       return;
     }
-    await onTranscriptMaybeChanged?.().catch(() => undefined);
+    if (onTranscriptMaybeChanged) {
+      try {
+        await Promise.resolve(onTranscriptMaybeChanged());
+      } catch {
+        // Directory reload already succeeded; transcript refresh is best-effort.
+      }
+    }
   };
 
   useEffect(() => {
@@ -727,6 +733,8 @@ function SpeakerDirectoryPanel({
       });
     }, 2000);
     return () => window.clearInterval(timer);
+    // Polling only needs the current run; load reads latest panel state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backfillRun]);
 
   const profiles = directory?.profiles ?? [];

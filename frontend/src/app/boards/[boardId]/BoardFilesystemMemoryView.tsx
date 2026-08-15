@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import { useEffect, useMemo, useState } from "react";
 
@@ -129,7 +130,10 @@ export function BoardFilesystemMemoryView({
     };
   }, [active, boardId, fileCache, selectedPath]);
 
-  const dailyFiles = overview?.daily_files ?? [];
+  const dailyFiles = useMemo(
+    () => overview?.daily_files ?? [],
+    [overview?.daily_files],
+  );
   const longTermMemory = overview?.long_term_memory ?? null;
   const selectedFile = selectedPath ? fileCache[selectedPath] ?? null : null;
 

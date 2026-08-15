@@ -100,14 +100,16 @@ describe("BoardOnboardingChat polling", () => {
   });
 
   it("does not fetch onboarding state before the initial start session resolves", async () => {
-    let resolveStart:
-      | ((value: { status: number; data: BoardOnboardingRead }) => void)
-      | null = null;
-    const startPromise = new Promise<{ status: number; data: BoardOnboardingRead }>(
-      (resolve) => {
-        resolveStart = resolve;
-      },
-    );
+    let resolveStart!: (value: {
+      status: number;
+      data: BoardOnboardingRead;
+    }) => void;
+    const startPromise = new Promise<{
+      status: number;
+      data: BoardOnboardingRead;
+    }>((resolve) => {
+      resolveStart = resolve;
+    });
     const session = buildQuestionSession("What should we prioritize?");
     startOnboardingMock.mockReturnValue(startPromise);
     getOnboardingMock.mockResolvedValue({ status: 200, data: session });
@@ -123,7 +125,7 @@ describe("BoardOnboardingChat polling", () => {
     expect(startOnboardingMock).toHaveBeenCalledTimes(1);
     expect(getOnboardingMock).not.toHaveBeenCalled();
 
-    resolveStart?.({ status: 200, data: session });
+    resolveStart({ status: 200, data: session });
 
     await screen.findByText("What should we prioritize?");
   });

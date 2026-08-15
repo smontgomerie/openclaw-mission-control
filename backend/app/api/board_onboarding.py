@@ -142,7 +142,9 @@ def _build_onboarding_resume_message(
             continue
         role = entry.get("role")
         content = entry.get("content")
-        if role not in {"user", "assistant"} or not isinstance(content, str):
+        if not isinstance(role, str) or not isinstance(content, str):
+            continue
+        if role not in {"user", "assistant"}:
             continue
         if content.startswith("BOARD ONBOARDING REQUEST"):
             continue

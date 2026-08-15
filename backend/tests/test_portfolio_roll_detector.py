@@ -32,10 +32,7 @@ def test_detect_short_roll_same_day() -> None:
         ],
     ]
     events = detect_rolls(
-        [
-            dict(zip(trades[0], row, strict=False))
-            for row in trades[1:]
-        ],
+        [dict(zip(trades[0], row, strict=False)) for row in trades[1:]],
     )
     assert len(events) >= 1
     assert events[0].rolled_from_position_key != events[0].rolled_to_position_key
