@@ -1298,8 +1298,11 @@ export default function TranscriptionsPage() {
 
     let cancelled = false;
     const epoch = ++detailEpochRef.current;
+    setDetail(null);
     setIsDetailLoading(true);
     setDetailError(null);
+    setRenamePending(false);
+    setRenameError(null);
 
     void fetchTranscriptionDetail(selectedId)
       .then((data) => {
@@ -1453,7 +1456,9 @@ export default function TranscriptionsPage() {
     (entry) => getEntryStatus(entry).label === "Pending",
   ).length;
   const selectedEntry =
-    detail ?? entries.find((entry) => entry.id === selectedId) ?? null;
+    (detail?.id === selectedId ? detail : null) ??
+    entries.find((entry) => entry.id === selectedId) ??
+    null;
 
   const handleRenameStart = (turn: DiarizedTranscriptTurn) => {
     if (!turn.rawSpeakerLabel || renamePending) return;
@@ -1631,11 +1636,14 @@ export default function TranscriptionsPage() {
     setRenamePending(true);
     setRenameError(null);
 
+    const renamedEntryId = selectedId;
     void renameTranscriptionSpeaker(selectedId, {
       speaker_label: editingSpeakerLabel,
       new_name: newName,
     })
       .then((updated) => {
+        if (selectedIdRef.current !== renamedEntryId) return;
+        detailEpochRef.current += 1;
         setDetail(updated);
         setEntries((current) =>
           current.map((entry) =>
@@ -1659,6 +1667,7 @@ export default function TranscriptionsPage() {
         setEditingSpeakerValue("");
       })
       .catch((error: unknown) => {
+        if (selectedIdRef.current !== renamedEntryId) return;
         const message =
           error instanceof ApiError || error instanceof Error
             ? error.message
@@ -1666,7 +1675,9 @@ export default function TranscriptionsPage() {
         setRenameError(message);
       })
       .finally(() => {
-        setRenamePending(false);
+        if (selectedIdRef.current === renamedEntryId) {
+          setRenamePending(false);
+        }
       });
   };
 
@@ -2219,6 +2230,10 @@ export default function TranscriptionsPage() {
               ) : isDetailLoading && !detail ? (
                 <p className="text-sm text-slate-500">
                   Loading transcript detail…
+                </p>
+              ) : detailError && !detail ? (
+                <p className="mt-3 text-sm text-slate-500">
+                  Transcript detail could not be loaded for this recording.
                 </p>
               ) : !selectedEntry ? (
                 <p className="text-sm text-slate-500">

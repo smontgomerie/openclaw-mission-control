@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import importlib.util
 import json
 import math
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -16,6 +16,7 @@ from uuid import UUID
 from fastapi import HTTPException, status
 from sqlmodel import col, select
 
+from app.core.config import settings
 from app.core.time import utcnow
 from app.models.speaker_profiles import SpeakerProfile, SpeakerVoiceSample
 
@@ -24,6 +25,39 @@ if TYPE_CHECKING:
 
 CONFIRMED_STATUSES = ("confirmed", "legacy")
 MIN_CONFIRMED_SPEECH_SECONDS = 3.0
+_RECONCILE_CACHE: tuple[Path, tuple[tuple[str, int], ...], UUID] | None = None
+
+
+def _speaker_tools_dir() -> Path:
+    container = Path("/app/scripts/openclaw-transcriptions")
+    local = Path(__file__).resolve().parents[3] / "scripts" / "openclaw-transcriptions"
+    if (container / "encode_segment_evidence.py").is_file():
+        return container
+    return local
+
+
+def _pinned_speaker_helper() -> Path:
+    configured = settings.openclaw_transcriptions_speaker_helper.strip()
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return _speaker_tools_dir() / "speaker_identity.py"
+
+
+def _confine_audio_path(audio_path: str, root: Path) -> Path:
+    candidate = Path(audio_path).expanduser().resolve()
+    try:
+        candidate.relative_to(root.expanduser().resolve())
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Source audio path is outside the transcriptions workspace.",
+        ) from exc
+    if not candidate.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Source audio file was not found.",
+        )
+    return candidate
 
 
 def normalize_speaker_name(value: str) -> tuple[str, str]:
@@ -67,25 +101,40 @@ def _encode_segment_evidence(
     encoder_name: str,
     evidence: list[dict[str, object]],
 ) -> list[float]:
-    helper_path = registry_base / "speaker_identity.py"
-    spec = importlib.util.spec_from_file_location("openclaw_speaker_identity_runtime", helper_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load speaker helper: {helper_path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    registry = module.SpeakerRegistry(registry_base)
-    encoder = module.SpeakerEncoder(registry, encoder=encoder_name)
-    segments = [
-        {
-            "start": item.get("start"),
-            "end": item.get("end"),
-            "text": item.get("text", ""),
-        }
-        for item in evidence
+    helper_path = _pinned_speaker_helper()
+    if not helper_path.is_file():
+        raise RuntimeError(f"Pinned speaker helper is unavailable: {helper_path}")
+    confined_audio = _confine_audio_path(audio_path, registry_base)
+    script = _speaker_tools_dir() / "encode_segment_evidence.py"
+    command = [
+        sys.executable,
+        str(script),
+        "--helper",
+        str(helper_path),
+        "--registry-dir",
+        str(registry_base),
+        "--audio",
+        str(confined_audio),
+        "--encoder",
+        encoder_name,
+        "--audio-root",
+        str(registry_base.resolve()),
     ]
-    embedding = encoder.encode_segments(Path(audio_path), segments)
-    return [float(value) for value in embedding.tolist()]
+    try:
+        completed = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            input=json.dumps({"evidence": evidence}),
+            timeout=120,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(exc.stderr or exc.stdout or "Speaker encoding failed.") from exc
+    payload = json.loads(completed.stdout)
+    if not isinstance(payload, list):
+        raise RuntimeError("Speaker encoding returned an invalid embedding.")
+    return [float(value) for value in payload]
 
 
 class SpeakerLearningService:
@@ -185,6 +234,7 @@ class SpeakerLearningService:
         segment_evidence: list[dict[str, object]] | None = None,
         source_type: str = "manual_confirmation",
         reviewed_by_user_id: UUID | None = None,
+        persist_registry: bool = True,
     ) -> SpeakerProfile:
         if (
             speech_duration_seconds is not None
@@ -245,7 +295,8 @@ class SpeakerLearningService:
             previous_profile = await self.require_profile(previous_profile_id)
             await self._refresh_profile(previous_profile)
         await self.session.commit()
-        await self.export_registry()
+        if persist_registry:
+            await self.export_registry()
         return profile
 
     async def add_pending_observation(
@@ -594,8 +645,28 @@ class SpeakerLearningService:
 
     async def reconcile_observation_files(self, transcriptions_root: Path) -> int:
         """Import workspace observation manifests without promoting their predictions."""
+        global _RECONCILE_CACHE
         processed_root = transcriptions_root / "processed"
         if not processed_root.is_dir():
+            return 0
+
+        def _manifest_signature() -> tuple[tuple[str, int], ...]:
+            items: list[tuple[str, int]] = []
+            for path in sorted(processed_root.glob("*/speaker-observations.json")):
+                try:
+                    items.append((str(path), path.stat().st_mtime_ns))
+                except OSError:
+                    continue
+            return tuple(items)
+
+        signature = _manifest_signature()
+        cached = _RECONCILE_CACHE
+        if (
+            cached is not None
+            and cached[0] == processed_root
+            and cached[1] == signature
+            and cached[2] == self.organization_id
+        ):
             return 0
         imported = 0
         for manifest_path in sorted(processed_root.glob("*/speaker-observations.json")):
@@ -636,4 +707,5 @@ class SpeakerLearningService:
                 )
                 if before is None:
                     imported += 1
+        _RECONCILE_CACHE = (processed_root, signature, self.organization_id)
         return imported

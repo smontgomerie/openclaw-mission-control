@@ -1,3 +1,16 @@
+import {
+  confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPost,
+  deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDelete,
+  getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet,
+  getSpeakerDirectoryApiV1TranscriptionsSpeakersGet,
+  importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPost,
+  mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePost,
+  previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet,
+  rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPost,
+  renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatch,
+  renameTranscriptionSpeakerApiV1TranscriptionsEntryIdSpeakersRenamePost,
+  startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPost,
+} from "@/api/generated/transcriptions/transcriptions";
 import { authenticatedFetch, customFetch } from "@/api/mutator";
 
 export type TranscriptionFile = {
@@ -170,58 +183,49 @@ export async function renameTranscriptionSpeaker(
   entryId: string,
   payload: RenameTranscriptionSpeakerRequest,
 ): Promise<TranscriptionDetail> {
-  const response = await customFetch<{ data: TranscriptionDetail }>(
-    `/api/v1/transcriptions/${encodeURIComponent(entryId)}/speakers/rename`,
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    },
-  );
-  return response.data;
+  const response =
+    await renameTranscriptionSpeakerApiV1TranscriptionsEntryIdSpeakersRenamePost(
+      entryId,
+      payload,
+    );
+  return response.data as TranscriptionDetail;
 }
 
 export async function fetchSpeakerDirectory(): Promise<SpeakerDirectory> {
-  const response = await customFetch<{ data: SpeakerDirectory }>(
-    "/api/v1/transcriptions/speakers",
-    { method: "GET" },
-  );
-  return response.data;
+  const response = await getSpeakerDirectoryApiV1TranscriptionsSpeakersGet();
+  return response.data as SpeakerDirectory;
 }
 
 export async function previewSpeakerAnnotationImport(): Promise<SpeakerBackfillPreview> {
-  const response = await customFetch<{ data: SpeakerBackfillPreview }>(
-    "/api/v1/transcriptions/speakers/annotation-import/preview",
-    { method: "GET" },
-  );
-  return response.data;
+  const response =
+    await previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet();
+  return response.data as SpeakerBackfillPreview;
 }
 
 export async function startSpeakerAnnotationImport(
   snapshotHash: string,
 ): Promise<SpeakerBackfillRun> {
-  const response = await customFetch<{ data: SpeakerBackfillRun }>(
-    "/api/v1/transcriptions/speakers/annotation-imports",
-    { method: "POST", body: JSON.stringify({ snapshot_hash: snapshotHash }) },
-  );
-  return response.data;
+  const response =
+    await startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPost(
+      { snapshot_hash: snapshotHash },
+    );
+  return response.data as SpeakerBackfillRun;
 }
 
 export async function fetchSpeakerAnnotationImport(
   runId: string,
 ): Promise<SpeakerBackfillRun> {
-  const response = await customFetch<{ data: SpeakerBackfillRun }>(
-    `/api/v1/transcriptions/speakers/annotation-imports/${encodeURIComponent(runId)}`,
-    { method: "GET" },
-  );
-  return response.data;
+  const response =
+    await getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet(
+      runId,
+    );
+  return response.data as SpeakerBackfillRun;
 }
 
 export async function importLegacySpeakerRegistry(): Promise<SpeakerDirectory> {
-  const response = await customFetch<{ data: SpeakerDirectory }>(
-    "/api/v1/transcriptions/speakers/import-legacy",
-    { method: "POST" },
-  );
-  return response.data;
+  const response =
+    await importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPost();
+  return response.data as SpeakerDirectory;
 }
 
 export async function confirmSpeakerSample(
@@ -232,17 +236,17 @@ export async function confirmSpeakerSample(
     excluded_segment_ids?: string[];
   },
 ): Promise<SpeakerProfile> {
-  const response = await customFetch<{ data: SpeakerProfile }>(
-    `/api/v1/transcriptions/speakers/samples/${encodeURIComponent(sampleId)}/confirm`,
-    { method: "POST", body: JSON.stringify(payload) },
-  );
-  return response.data;
+  const response =
+    await confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPost(
+      sampleId,
+      payload,
+    );
+  return response.data as SpeakerProfile;
 }
 
 export async function rejectSpeakerSample(sampleId: string): Promise<void> {
-  await customFetch<{ data: { ok: boolean } }>(
-    `/api/v1/transcriptions/speakers/samples/${encodeURIComponent(sampleId)}/reject`,
-    { method: "POST" },
+  await rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPost(
+    sampleId,
   );
 }
 
@@ -250,31 +254,29 @@ export async function renameSpeakerProfile(
   profileId: string,
   displayName: string,
 ): Promise<SpeakerProfile> {
-  const response = await customFetch<{ data: SpeakerProfile }>(
-    `/api/v1/transcriptions/speakers/${encodeURIComponent(profileId)}`,
-    { method: "PATCH", body: JSON.stringify({ display_name: displayName }) },
-  );
-  return response.data;
+  const response =
+    await renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatch(
+      profileId,
+      { display_name: displayName },
+    );
+  return response.data as SpeakerProfile;
 }
 
 export async function mergeSpeakerProfiles(
   sourceProfileId: string,
   targetProfileId: string,
 ): Promise<SpeakerProfile> {
-  const response = await customFetch<{ data: SpeakerProfile }>(
-    `/api/v1/transcriptions/speakers/${encodeURIComponent(sourceProfileId)}/merge`,
-    {
-      method: "POST",
-      body: JSON.stringify({ target_profile_id: targetProfileId }),
-    },
-  );
-  return response.data;
+  const response =
+    await mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePost(
+      sourceProfileId,
+      { target_profile_id: targetProfileId },
+    );
+  return response.data as SpeakerProfile;
 }
 
 export async function deleteSpeakerProfile(profileId: string): Promise<void> {
-  await customFetch<{ data: { ok: boolean } }>(
-    `/api/v1/transcriptions/speakers/${encodeURIComponent(profileId)}`,
-    { method: "DELETE" },
+  await deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDelete(
+    profileId,
   );
 }
 

@@ -7,6 +7,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from app.services.openclaw.device_identity import (
+    _identity_path_candidates,
     build_device_auth_payload,
     load_or_create_device_identity,
     sign_device_payload,
@@ -103,3 +104,27 @@ def test_load_or_create_device_identity_falls_back_when_primary_path_is_unwritab
     assert first.device_id == second.device_id
     assert first.public_key_pem.strip() == second.public_key_pem.strip()
     assert first.private_key_pem.strip() == second.private_key_pem.strip()
+
+
+def test_load_or_create_device_identity_does_not_use_shared_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    identity_path = tmp_path / "identity" / "device.json"
+    workspace = tmp_path / "shared-workspace"
+    monkeypatch.setenv("OPENCLAW_GATEWAY_DEVICE_IDENTITY_PATH", str(identity_path))
+    monkeypatch.setenv("OPENCLAW_SHARED_WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setattr(
+        "app.services.openclaw.device_identity.DEFAULT_DEVICE_IDENTITY_FALLBACK_PATH",
+        tmp_path / "unused-fallback" / "device.json",
+    )
+
+    identity = load_or_create_device_identity()
+
+    workspace_identity = (
+        workspace.expanduser().resolve() / ".system" / "gateway-device-identity" / "device.json"
+    )
+    assert workspace_identity not in _identity_path_candidates()
+    assert identity_path.exists()
+    assert not workspace_identity.exists()
+    assert identity.private_key_pem

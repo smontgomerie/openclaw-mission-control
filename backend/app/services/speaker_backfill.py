@@ -6,6 +6,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -17,8 +18,13 @@ from app.db.session import async_session_maker
 from app.models.speaker_profiles import SpeakerBackfillRun
 from app.services.queue import QueuedTask, enqueue_task
 from app.services.queue import requeue_if_failed as generic_requeue_if_failed
-from app.services.speaker_learning import SpeakerLearningService, normalize_speaker_name
-from app.services.transcriptions import SharedTranscriptionsService
+from app.services.speaker_learning import (
+    SpeakerLearningService,
+    _pinned_speaker_helper,
+    _speaker_tools_dir,
+    normalize_speaker_name,
+)
+from app.services.transcriptions import SharedTranscriptionsService, _write_speaker_list_preview
 
 TASK_TYPE = "speaker_annotation_backfill"
 
@@ -57,6 +63,13 @@ def preview_annotation_backfill(root: Path) -> dict[str, object]:
     speaker_names: dict[str, int] = {}
     skipped: list[dict[str, str]] = []
     for entry in entries:
+        confined = _confined_processed_entry(processed, entry)
+        if confined is None:
+            skipped.append(
+                {"entry_id": entry.name, "reason": "entry path is outside processed root"}
+            )
+            continue
+        entry = confined
         transcript_path = entry / "transcript.json"
         if not transcript_path.is_file():
             skipped.append({"entry_id": entry.name, "reason": "transcript.json is missing"})
@@ -96,6 +109,18 @@ def preview_annotation_backfill(root: Path) -> dict[str, object]:
     }
 
 
+def _confined_processed_entry(processed_root: Path, entry: Path) -> Path | None:
+    try:
+        root = processed_root.resolve()
+        resolved = entry.resolve()
+        resolved.relative_to(root)
+    except (OSError, ValueError):
+        return None
+    if not resolved.is_dir():
+        return None
+    return resolved
+
+
 def _write_overlay(entry: Path, transcript: dict[str, Any]) -> None:
     assignments: list[dict[str, object]] = []
     for segment in _segments(transcript):
@@ -123,6 +148,7 @@ def _write_overlay(entry: Path, transcript: dict[str, Any]) -> None:
     temporary = output.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     temporary.replace(output)
+    _write_speaker_list_preview(entry, transcript)
 
 
 def _backup_annotations(root: Path, entry: Path, run_id: UUID) -> None:
@@ -193,6 +219,8 @@ async def process_backfill_task(task: QueuedTask) -> None:
             return
         run.status = "running"
         run.started_at = run.started_at or utcnow()
+        run.errors = []
+        run.skipped_recordings = 0
         run.total_recordings = cast(int, current_preview["transcript_count"])
         session.add(run)
         await session.commit()
@@ -202,10 +230,24 @@ async def process_backfill_task(task: QueuedTask) -> None:
             await learning.find_or_create_profile(name)
         await session.commit()
 
-        entries = sorted((root / "processed").glob("*/transcript.json"))
+        processed_root = root / "processed"
+        entries = sorted(processed_root.glob("*/transcript.json"))
         processed_entry_ids = set(run.processed_entry_ids)
         for transcript_path in entries:
-            entry = transcript_path.parent
+            entry = _confined_processed_entry(processed_root, transcript_path.parent)
+            if entry is None:
+                run.skipped_recordings += 1
+                run.errors = [
+                    *run.errors,
+                    {
+                        "entry_id": transcript_path.parent.name,
+                        "reason": "entry path is outside processed root",
+                    },
+                ]
+                run.updated_at = utcnow()
+                session.add(run)
+                await session.commit()
+                continue
             if entry.name in processed_entry_ids:
                 continue
             try:
@@ -214,21 +256,19 @@ async def process_backfill_task(task: QueuedTask) -> None:
                     raise ValueError("Invalid transcript JSON")
                 _backup_annotations(root, entry, run.id)
                 _write_overlay(entry, transcript)
+                helper_path = _pinned_speaker_helper()
+                if not helper_path.is_file():
+                    raise FileNotFoundError(f"Pinned speaker helper is unavailable: {helper_path}")
                 audio_path = transcription_service._source_audio_path(
                     entry.name, transcriptions_root=root
                 )
                 output = entry / "speaker-observations.json"
-                script = (
-                    Path(__file__).resolve().parents[2]
-                    / "scripts"
-                    / "openclaw-transcriptions"
-                    / "speaker_observations.py"
-                )
+                script = _speaker_tools_dir() / "speaker_observations.py"
                 command = [
-                    transcription_service._speaker_python_bin(transcriptions_root=root),
+                    sys.executable,
                     str(script),
                     "--helper",
-                    str(root / "speaker_identity.py"),
+                    str(helper_path),
                     "--registry-dir",
                     str(root),
                     "--audio",
@@ -257,6 +297,7 @@ async def process_backfill_task(task: QueuedTask) -> None:
                         await learning.add_confirmed_embedding(
                             name=confirmed_name,
                             source_type="historical_annotation",
+                            persist_registry=False,
                             **common,
                         )
                         run.confirmed_samples += 1
@@ -270,13 +311,18 @@ async def process_backfill_task(task: QueuedTask) -> None:
             except Exception as exc:
                 run.skipped_recordings += 1
                 run.errors = [*run.errors, {"entry_id": entry.name, "reason": str(exc)}]
+                run.updated_at = utcnow()
+                session.add(run)
+                await session.commit()
+                continue
             processed_entry_ids.add(entry.name)
             run.processed_entry_ids = sorted(processed_entry_ids)
             run.processed_recordings = len(processed_entry_ids)
             run.updated_at = utcnow()
             session.add(run)
             await session.commit()
-        run.status = "completed"
+        await learning.export_registry()
+        run.status = "failed" if run.errors else "completed"
         run.completed_at = utcnow()
         run.updated_at = utcnow()
         session.add(run)

@@ -178,3 +178,45 @@ async def test_legacy_registry_import_is_idempotent(speaker_service) -> None:
     assert profile.confirmed_sample_count == 1
     assert profile.represented_sample_count == 5
     assert (registry_path.parent / "registry.legacy-v1.json").is_file()
+
+
+def test_confine_audio_path_rejects_escape(tmp_path) -> None:
+    from fastapi import HTTPException
+
+    from app.services.speaker_learning import _confine_audio_path
+
+    inside = tmp_path / "ok.m4a"
+    inside.write_bytes(b"audio")
+    assert _confine_audio_path(str(inside), tmp_path) == inside.resolve()
+    with pytest.raises(HTTPException) as exc:
+        _confine_audio_path("/etc/passwd", tmp_path)
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_reconcile_observation_cache_ignores_preview_sidecar(speaker_service) -> None:
+    import app.services.speaker_learning as speaker_learning
+
+    service, _session = speaker_service
+    speaker_learning._RECONCILE_CACHE = None
+    processed = service.registry_base / "processed" / "meeting-1"
+    processed.mkdir(parents=True)
+    (processed / "speaker-preview.json").write_text('{"names":[]}\n', encoding="utf-8")
+    assert await service.reconcile_observation_files(service.registry_base) == 0
+
+    (processed / "speaker-observations.json").write_text(
+        json.dumps(
+            {
+                "entry_id": "meeting-1",
+                "encoder": "ecapa",
+                "observations": [
+                    {"speaker_label": "SPEAKER_00", "embedding": [1.0, 0.0]},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert await service.reconcile_observation_files(service.registry_base) == 1
+    assert await service.reconcile_observation_files(service.registry_base) == 0
+    (processed / "speaker-preview.json").write_text('{"names":["Scott"]}\n', encoding="utf-8")
+    assert await service.reconcile_observation_files(service.registry_base) == 0
