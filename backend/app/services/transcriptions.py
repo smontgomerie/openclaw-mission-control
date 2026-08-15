@@ -7,6 +7,7 @@ import json
 import mimetypes
 import re
 import subprocess
+import sys
 import zipfile
 from datetime import UTC, datetime
 from io import BytesIO
@@ -40,9 +41,7 @@ ANALYSIS_CANDIDATES = ("analysis.md",)
 STRUCTURED_TEXT_SUFFIXES = (".txt", ".md", ".json", ".srt", ".tsv", ".vtt", ".log")
 SOURCE_AUDIO_SUFFIXES = (".m4a", ".wav", ".mp3")
 IGNORED_ROOT_NAMES = {"transcribe.sh", "process_wav_files.sh", ".test"}
-SPEAKER_HELPER_NAME = "speaker_identity.py"
 SPEAKER_REGISTRY_DIRNAME = ".speaker_registry"
-TRANSCRIPT_VENV_DIRNAME = ".venv-whisperx"
 CALENDAR_MATCH_FILENAME = "calendar-match.json"
 TITLE_CACHE_FILENAME = "title.txt"
 TITLE_TIMEZONE = ZoneInfo("America/Los_Angeles")
@@ -892,15 +891,6 @@ class SharedTranscriptionsService:
             )
         return raw_path
 
-    def _speaker_helper_path(self, *, transcriptions_root: Path) -> Path:
-        helper_path = transcriptions_root / SPEAKER_HELPER_NAME
-        if not helper_path.is_file():
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Speaker rename helper is unavailable in the shared transcriptions workspace.",
-            )
-        return helper_path
-
     def _speaker_registry_root(self) -> Path:
         configured = settings.openclaw_transcriptions_speaker_registry_root.strip()
         if configured:
@@ -925,13 +915,7 @@ class SharedTranscriptionsService:
         configured = settings.openclaw_transcriptions_python_bin.strip()
         if configured:
             return configured
-
-        for candidate_name in ("python", "python3"):
-            candidate = transcriptions_root / TRANSCRIPT_VENV_DIRNAME / "bin" / candidate_name
-            if candidate.is_file():
-                return str(candidate)
-
-        return "python3"
+        return sys.executable
 
     def _run_speaker_helper(self, command: list[str], *, transcriptions_root: Path) -> None:
         try:
@@ -1226,7 +1210,9 @@ class SharedTranscriptionsService:
                 )
             enroll_transcript_path = display_json_path
 
-        helper_path = self._speaker_helper_path(transcriptions_root=transcriptions_root)
+        from app.services.speaker_learning import _pinned_speaker_helper
+
+        helper_path = _pinned_speaker_helper()
         normalized_name = " ".join(payload.new_name.strip().split())
         if not normalized_name:
             raise HTTPException(
@@ -1239,106 +1225,111 @@ class SharedTranscriptionsService:
         python_bin = self._speaker_python_bin(transcriptions_root=transcriptions_root)
         registry_dir = str(self._speaker_registry_root())
 
-        enroll_command = [
-            python_bin,
-            str(helper_path),
-            "--registry-dir",
-            registry_dir,
-            "enroll-from-transcript",
-            "--name",
-            normalized_name,
-            "--audio",
-            str(audio_path),
-            "--transcript",
-            str(enroll_transcript_path),
-            "--speaker",
-            speaker_label,
-        ]
-        if learning_service is None:
-            self._run_speaker_helper(
-                enroll_command,
-                transcriptions_root=transcriptions_root,
-            )
-        else:
-            with TemporaryDirectory(prefix="speaker-sample-") as temporary:
-                temporary_root = Path(temporary)
-                temporary_registry = temporary_root / SPEAKER_REGISTRY_DIRNAME
-                temporary_registry.mkdir()
-                shared_models = Path(registry_dir) / SPEAKER_REGISTRY_DIRNAME / "models"
-                if shared_models.exists():
-                    (temporary_registry / "models").symlink_to(
-                        shared_models,
-                        target_is_directory=True,
-                    )
-                isolated_command = list(enroll_command)
-                isolated_command[isolated_command.index("--registry-dir") + 1] = temporary
+        if helper_path.is_file():
+            enroll_command = [
+                python_bin,
+                str(helper_path),
+                "--registry-dir",
+                registry_dir,
+                "enroll-from-transcript",
+                "--name",
+                normalized_name,
+                "--audio",
+                str(audio_path),
+                "--transcript",
+                str(enroll_transcript_path),
+                "--speaker",
+                speaker_label,
+            ]
+            if learning_service is None:
                 self._run_speaker_helper(
-                    isolated_command,
+                    enroll_command,
                     transcriptions_root=transcriptions_root,
                 )
-                sample_registry = json.loads(
-                    (temporary_registry / "registry.json").read_text(encoding="utf-8")
-                )
-                speakers = sample_registry.get("speakers")
-                embedding = (
-                    speakers[0].get("embedding")
-                    if (isinstance(speakers, list) and speakers and isinstance(speakers[0], dict))
-                    else None
-                )
-                if not isinstance(embedding, list):
-                    raise HTTPException(
-                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                        detail="Speaker embedding could not be extracted.",
+            else:
+                with TemporaryDirectory(prefix="speaker-sample-") as temporary:
+                    temporary_root = Path(temporary)
+                    temporary_registry = temporary_root / SPEAKER_REGISTRY_DIRNAME
+                    temporary_registry.mkdir()
+                    shared_models = Path(registry_dir) / SPEAKER_REGISTRY_DIRNAME / "models"
+                    if shared_models.exists():
+                        (temporary_registry / "models").symlink_to(
+                            shared_models,
+                            target_is_directory=True,
+                        )
+                    isolated_command = list(enroll_command)
+                    isolated_command[isolated_command.index("--registry-dir") + 1] = temporary
+                    self._run_speaker_helper(
+                        isolated_command,
+                        transcriptions_root=transcriptions_root,
                     )
-            enroll_payload = json.loads(enroll_transcript_path.read_text(encoding="utf-8"))
-            segments = enroll_payload.get("segments")
-            matching_segments = (
-                [
-                    segment
-                    for segment in segments
-                    if isinstance(segment, dict)
-                    and str(segment.get("speaker") or "").strip() == speaker_label
-                ]
-                if isinstance(segments, list)
-                else []
-            )
-            speech_duration = sum(
-                max(
-                    0.0,
-                    (_parse_offset_seconds(segment.get("end")) or 0.0)
-                    - (_parse_offset_seconds(segment.get("start")) or 0.0),
+                    sample_registry = json.loads(
+                        (temporary_registry / "registry.json").read_text(encoding="utf-8")
+                    )
+                    speakers = sample_registry.get("speakers")
+                    embedding = (
+                        speakers[0].get("embedding")
+                        if (
+                            isinstance(speakers, list)
+                            and speakers
+                            and isinstance(speakers[0], dict)
+                        )
+                        else None
+                    )
+                    if not isinstance(embedding, list):
+                        raise HTTPException(
+                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail="Speaker embedding could not be extracted.",
+                        )
+                enroll_payload = json.loads(enroll_transcript_path.read_text(encoding="utf-8"))
+                segments = enroll_payload.get("segments")
+                matching_segments = (
+                    [
+                        segment
+                        for segment in segments
+                        if isinstance(segment, dict)
+                        and str(segment.get("speaker") or "").strip() == speaker_label
+                    ]
+                    if isinstance(segments, list)
+                    else []
                 )
-                for segment in matching_segments
-            )
-            await learning_service.add_confirmed_embedding(
-                name=normalized_name,
-                entry_id=entry_id,
-                speaker_label=speaker_label,
-                source_audio_path=str(audio_path),
-                embedding=[float(value) for value in embedding],
-                speech_duration_seconds=speech_duration,
-                segment_count=len(matching_segments),
-                reviewed_by_user_id=reviewed_by_user_id,
-            )
-        annotate_cmd = [
-            python_bin,
-            str(helper_path),
-            "--registry-dir",
-            registry_dir,
-            "annotate",
-            "--audio",
-            str(audio_path),
-            "--transcript",
-            str(raw_json_path),
-            "--output-json",
-            str(transcript_json_path),
-            "--output-text",
-            str(transcript_text_path),
-        ]
-        calendar_match_path = entry_dir / CALENDAR_MATCH_FILENAME
-        if calendar_match_path.is_file():
-            annotate_cmd.extend(["--calendar-match", str(calendar_match_path)])
-        self._run_speaker_helper(annotate_cmd, transcriptions_root=transcriptions_root)
+                speech_duration = sum(
+                    max(
+                        0.0,
+                        (_parse_offset_seconds(segment.get("end")) or 0.0)
+                        - (_parse_offset_seconds(segment.get("start")) or 0.0),
+                    )
+                    for segment in matching_segments
+                )
+                await learning_service.add_confirmed_embedding(
+                    name=normalized_name,
+                    entry_id=entry_id,
+                    speaker_label=speaker_label,
+                    source_audio_path=str(audio_path),
+                    embedding=[float(value) for value in embedding],
+                    speech_duration_seconds=speech_duration,
+                    segment_count=len(matching_segments),
+                    reviewed_by_user_id=reviewed_by_user_id,
+                )
+            annotate_cmd = [
+                python_bin,
+                str(helper_path),
+                "--registry-dir",
+                registry_dir,
+                "annotate",
+                "--audio",
+                str(audio_path),
+                "--transcript",
+                str(raw_json_path),
+                "--output-json",
+                str(transcript_json_path),
+                "--output-text",
+                str(transcript_text_path),
+            ]
+            calendar_match_path = entry_dir / CALENDAR_MATCH_FILENAME
+            if calendar_match_path.is_file():
+                annotate_cmd.extend(["--calendar-match", str(calendar_match_path)])
+            self._run_speaker_helper(annotate_cmd, transcriptions_root=transcriptions_root)
         _apply_manual_speaker_name(
             transcript_json_path,
             transcript_text_path,

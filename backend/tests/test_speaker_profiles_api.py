@@ -156,10 +156,15 @@ async def test_speaker_mutating_apis_and_refused_other_org_actor(
             f"/api/v1/transcriptions/speakers/samples/{sample_id}/reject",
         )
         refused_delete = await client.delete(f"/api/v1/transcriptions/speakers/{extra_id}")
+        refused_merge = await client.post(
+            f"/api/v1/transcriptions/speakers/{extra_id}/merge",
+            json={"target_profile_id": str(uuid4())},
+        )
 
     assert refused.status_code == 404
     assert refused_reject.status_code == 404
     assert refused_delete.status_code == 404
+    assert refused_merge.status_code == 404
     original = (processed / "transcript.json").read_text(encoding="utf-8")
     assert "Guess" in original
 
@@ -169,6 +174,7 @@ async def test_speaker_mutating_apis_and_refused_other_org_actor(
         assert stored is not None
         assert stored.status == "pending"
         assert profile is not None
+        assert profile.display_name == "Ada"
 
     async with AsyncClient(
         transport=ASGITransport(app=owner_app),

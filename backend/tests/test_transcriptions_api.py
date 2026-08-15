@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import zipfile
 from io import BytesIO
 from pathlib import Path
@@ -46,6 +47,13 @@ def _build_test_app(ctx: object) -> FastAPI:
 def _write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
+
+
+def _pin_workspace_helper(monkeypatch: pytest.MonkeyPatch, root: Path) -> Path:
+    helper = root / "speaker_identity.py"
+    _write(helper, "#!/usr/bin/env python3\n")
+    monkeypatch.setattr(settings, "openclaw_transcriptions_speaker_helper", str(helper))
+    return helper
 
 
 @pytest.mark.asyncio
@@ -668,6 +676,21 @@ def test_apply_manual_speaker_name_clears_tentative_flag(tmp_path: Path) -> None
     assert preview["names"] == ["Scott"]
 
 
+def test_speaker_python_bin_ignores_workspace_venv(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import sys
+
+    monkeypatch.setattr(settings, "openclaw_transcriptions_python_bin", "")
+    venv_bin = tmp_path / ".venv-whisperx" / "bin"
+    venv_bin.mkdir(parents=True)
+    (venv_bin / "python").write_text("#!/bin/sh\n", encoding="utf-8")
+    (venv_bin / "python").chmod(0o755)
+    assert SharedTranscriptionsService()._speaker_python_bin(transcriptions_root=tmp_path) == (
+        sys.executable
+    )
+
+
 @pytest.mark.asyncio
 async def test_sync_transcriptions_enqueues_gateway_cron_job(
     monkeypatch: pytest.MonkeyPatch,
@@ -885,7 +908,7 @@ async def test_rename_transcription_speaker_enrolls_and_reannotates(
     registry_root = tmp_path / "speaker-registry"
     root = workspace / "transcriptions"
     processed = root / "processed" / "meeting-1"
-    _write(root / "speaker_identity.py", "#!/usr/bin/env python3\n")
+    _pin_workspace_helper(monkeypatch, root)
     _write(root / "meeting-1.m4a", "audio")
     _write(processed / "meeting-1.json", '{"segments":[{"speaker":"SPEAKER_00","text":"hello"}]}')
     _write(processed / "transcript.json", '{"segments":[{"speaker":"SPEAKER_00","text":"hello"}]}')
@@ -942,7 +965,7 @@ async def test_rename_transcription_speaker_applies_name_to_selected_label_when_
     workspace = tmp_path / "workspace"
     root = workspace / "transcriptions"
     processed = root / "processed" / "meeting-missed"
-    _write(root / "speaker_identity.py", "#!/usr/bin/env python3\n")
+    _pin_workspace_helper(monkeypatch, root)
     _write(root / "meeting-missed.m4a", "audio")
     _write(
         processed / "meeting-missed.json",
@@ -996,7 +1019,7 @@ async def test_rename_transcription_speaker_uses_display_transcript_for_merged_l
     workspace = tmp_path / "workspace"
     root = workspace / "transcriptions"
     processed = root / "processed" / "meeting-merged"
-    _write(root / "speaker_identity.py", "#!/usr/bin/env python3\n")
+    _pin_workspace_helper(monkeypatch, root)
     _write(root / "meeting-merged.m4a", "audio")
     _write(
         processed / "meeting-merged.json",
@@ -1046,7 +1069,7 @@ async def test_rename_transcription_speaker_uses_display_transcript_for_merged_l
 
 
 @pytest.mark.asyncio
-async def test_rename_transcription_speaker_prefers_workspace_venv_python(
+async def test_rename_transcription_speaker_uses_interpreter_not_workspace_venv(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -1054,7 +1077,7 @@ async def test_rename_transcription_speaker_prefers_workspace_venv_python(
     root = workspace / "transcriptions"
     processed = root / "processed" / "meeting-venv"
     venv_python = root / ".venv-whisperx" / "bin" / "python"
-    _write(root / "speaker_identity.py", "#!/usr/bin/env python3\n")
+    _pin_workspace_helper(monkeypatch, root)
     _write(root / "meeting-venv.m4a", "audio")
     _write(venv_python, "#!/usr/bin/env python3\n")
     _write(
@@ -1093,8 +1116,9 @@ async def test_rename_transcription_speaker_prefers_workspace_venv_python(
         )
 
     assert response.status_code == 200
-    assert calls[0][0] == str(venv_python)
-    assert calls[1][0] == str(venv_python)
+    assert calls[0][0] == sys.executable
+    assert calls[1][0] == sys.executable
+    assert calls[0][0] != str(venv_python)
 
 
 @pytest.mark.asyncio
@@ -1105,7 +1129,7 @@ async def test_rename_transcription_speaker_requires_raw_json(
     workspace = tmp_path / "workspace"
     root = workspace / "transcriptions"
     processed = root / "processed" / "meeting-2"
-    _write(root / "speaker_identity.py", "#!/usr/bin/env python3\n")
+    _pin_workspace_helper(monkeypatch, root)
     _write(root / "meeting-2.m4a", "audio")
     _write(processed / "transcript.json", '{"segments":[{"speaker":"SPEAKER_00","text":"hello"}]}')
 
@@ -1133,7 +1157,7 @@ async def test_rename_transcription_speaker_skips_warning_prefixed_stderr(
     workspace = tmp_path / "workspace"
     root = workspace / "transcriptions"
     processed = root / "processed" / "meeting-warn"
-    _write(root / "speaker_identity.py", "#!/usr/bin/env python3\n")
+    _pin_workspace_helper(monkeypatch, root)
     _write(root / "meeting-warn.m4a", "audio")
     _write(
         processed / "meeting-warn.json",
@@ -1220,7 +1244,7 @@ async def test_rename_transcription_speaker_creates_profile_visible_in_directory
     registry_root = tmp_path / "speaker-registry"
     root = workspace / "transcriptions"
     processed = root / "processed" / "meeting-learn"
-    _write(root / "speaker_identity.py", "#!/usr/bin/env python3\n")
+    _pin_workspace_helper(monkeypatch, root)
     _write(root / "meeting-learn.m4a", "audio")
     transcript = json.dumps(
         {

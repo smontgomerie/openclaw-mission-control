@@ -1643,6 +1643,7 @@ export default function TranscriptionsPage() {
     })
       .then((updated) => {
         if (selectedIdRef.current !== renamedEntryId) return;
+        detailEpochRef.current += 1;
         setDetail(updated);
         setEntries((current) =>
           current.map((entry) =>

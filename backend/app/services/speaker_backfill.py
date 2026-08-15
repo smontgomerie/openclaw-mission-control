@@ -6,6 +6,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -62,6 +63,13 @@ def preview_annotation_backfill(root: Path) -> dict[str, object]:
     speaker_names: dict[str, int] = {}
     skipped: list[dict[str, str]] = []
     for entry in entries:
+        confined = _confined_processed_entry(processed, entry)
+        if confined is None:
+            skipped.append(
+                {"entry_id": entry.name, "reason": "entry path is outside processed root"}
+            )
+            continue
+        entry = confined
         transcript_path = entry / "transcript.json"
         if not transcript_path.is_file():
             skipped.append({"entry_id": entry.name, "reason": "transcript.json is missing"})
@@ -99,6 +107,18 @@ def preview_annotation_backfill(root: Path) -> dict[str, object]:
         "tentative_annotation_count": tentative_count,
         "skipped": skipped,
     }
+
+
+def _confined_processed_entry(processed_root: Path, entry: Path) -> Path | None:
+    try:
+        root = processed_root.resolve()
+        resolved = entry.resolve()
+        resolved.relative_to(root)
+    except (OSError, ValueError):
+        return None
+    if not resolved.is_dir():
+        return None
+    return resolved
 
 
 def _write_overlay(entry: Path, transcript: dict[str, Any]) -> None:
@@ -210,10 +230,24 @@ async def process_backfill_task(task: QueuedTask) -> None:
             await learning.find_or_create_profile(name)
         await session.commit()
 
-        entries = sorted((root / "processed").glob("*/transcript.json"))
+        processed_root = root / "processed"
+        entries = sorted(processed_root.glob("*/transcript.json"))
         processed_entry_ids = set(run.processed_entry_ids)
         for transcript_path in entries:
-            entry = transcript_path.parent
+            entry = _confined_processed_entry(processed_root, transcript_path.parent)
+            if entry is None:
+                run.skipped_recordings += 1
+                run.errors = [
+                    *run.errors,
+                    {
+                        "entry_id": transcript_path.parent.name,
+                        "reason": "entry path is outside processed root",
+                    },
+                ]
+                run.updated_at = utcnow()
+                session.add(run)
+                await session.commit()
+                continue
             if entry.name in processed_entry_ids:
                 continue
             try:
@@ -224,20 +258,14 @@ async def process_backfill_task(task: QueuedTask) -> None:
                 _write_overlay(entry, transcript)
                 helper_path = _pinned_speaker_helper()
                 if not helper_path.is_file():
-                    processed_entry_ids.add(entry.name)
-                    run.processed_entry_ids = sorted(processed_entry_ids)
-                    run.processed_recordings = len(processed_entry_ids)
-                    run.updated_at = utcnow()
-                    session.add(run)
-                    await session.commit()
-                    continue
+                    raise FileNotFoundError(f"Pinned speaker helper is unavailable: {helper_path}")
                 audio_path = transcription_service._source_audio_path(
                     entry.name, transcriptions_root=root
                 )
                 output = entry / "speaker-observations.json"
                 script = _speaker_tools_dir() / "speaker_observations.py"
                 command = [
-                    transcription_service._speaker_python_bin(transcriptions_root=root),
+                    sys.executable,
                     str(script),
                     "--helper",
                     str(helper_path),

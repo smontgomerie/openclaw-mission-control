@@ -169,8 +169,144 @@ async def test_backfill_apply_writes_overlay_and_leaves_failures_retryable(
         stored = await SpeakerBackfillRun.objects.by_id(run_id).first(session)
         assert stored is not None
         assert stored.status == "failed"
-        assert "meeting-1" in stored.processed_entry_ids
+        assert "meeting-1" not in stored.processed_entry_ids
         assert "meeting-2" not in stored.processed_entry_ids
         assert stored.skipped_recordings >= 1
+        assert any("helper" in str(item.get("reason", "")).lower() for item in stored.errors)
 
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_backfill_encoder_failure_stays_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    processed = tmp_path / "processed" / "meeting-1"
+    _write_transcript(
+        processed / "transcript.json",
+        [{"speaker": "SPEAKER_00", "speaker_name": "Scott", "start": 0, "end": 5, "text": "Hello"}],
+    )
+    helper = tmp_path / "speaker_identity.py"
+    helper.write_text("# pinned helper\n", encoding="utf-8")
+    (tmp_path / "meeting-1.m4a").write_bytes(b"audio")
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'backfill.db'}")
+    async with engine.begin() as connection:
+        await connection.run_sync(SQLModel.metadata.create_all)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with session_factory() as session:
+        organization = Organization(name="Backfill Org")
+        session.add(organization)
+        await session.commit()
+        await session.refresh(organization)
+        preview = preview_annotation_backfill(tmp_path)
+        run = SpeakerBackfillRun(
+            organization_id=organization.id,
+            snapshot_hash=str(preview["snapshot_hash"]),
+            total_recordings=int(preview["transcript_count"]),
+        )
+        session.add(run)
+        await session.commit()
+        await session.refresh(run)
+        run_id = run.id
+        org_id = organization.id
+
+    class _FakeTranscriptions:
+        def _transcriptions_root(self) -> Path:
+            return tmp_path
+
+        def _source_audio_path(self, entry_id: str, *, transcriptions_root: Path) -> Path:
+            return transcriptions_root / f"{entry_id}.m4a"
+
+    monkeypatch.setattr(
+        "app.services.speaker_backfill.SharedTranscriptionsService",
+        lambda: _FakeTranscriptions(),
+    )
+    monkeypatch.setattr("app.services.speaker_backfill.async_session_maker", session_factory)
+    monkeypatch.setattr(
+        "app.services.speaker_backfill._pinned_speaker_helper",
+        lambda: helper,
+    )
+    monkeypatch.setattr(
+        "app.services.speaker_backfill.subprocess.run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("encoder failed")),
+    )
+
+    payload = QueuedTask(
+        task_type="speaker_annotation_backfill",
+        payload={"run_id": str(run_id), "organization_id": str(org_id)},
+        created_at=datetime.now(UTC),
+    )
+    await process_backfill_task(payload)
+    await process_backfill_task(payload)
+
+    assert (processed / "speaker-annotations.json").is_file()
+    async with session_factory() as session:
+        stored = await SpeakerBackfillRun.objects.by_id(run_id).first(session)
+        assert stored is not None
+        assert stored.status == "failed"
+        assert stored.processed_entry_ids == []
+        assert stored.skipped_recordings >= 1
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_backfill_skips_symlink_escape_outside_processed_root(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    processed = tmp_path / "processed"
+    processed.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _write_transcript(
+        outside / "transcript.json",
+        [{"speaker": "SPEAKER_00", "speaker_name": "Scott", "start": 0, "end": 5, "text": "Hello"}],
+    )
+    (processed / "escaped").symlink_to(outside)
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'backfill.db'}")
+    async with engine.begin() as connection:
+        await connection.run_sync(SQLModel.metadata.create_all)
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with session_factory() as session:
+        organization = Organization(name="Backfill Org")
+        session.add(organization)
+        await session.commit()
+        await session.refresh(organization)
+        preview = preview_annotation_backfill(tmp_path)
+        run = SpeakerBackfillRun(
+            organization_id=organization.id,
+            snapshot_hash=str(preview["snapshot_hash"]),
+            total_recordings=int(preview["transcript_count"]),
+        )
+        session.add(run)
+        await session.commit()
+        await session.refresh(run)
+        run_id = run.id
+        org_id = organization.id
+
+    class _FakeTranscriptions:
+        def _transcriptions_root(self) -> Path:
+            return tmp_path
+
+    monkeypatch.setattr(
+        "app.services.speaker_backfill.SharedTranscriptionsService",
+        lambda: _FakeTranscriptions(),
+    )
+    monkeypatch.setattr("app.services.speaker_backfill.async_session_maker", session_factory)
+
+    await process_backfill_task(
+        QueuedTask(
+            task_type="speaker_annotation_backfill",
+            payload={"run_id": str(run_id), "organization_id": str(org_id)},
+            created_at=datetime.now(UTC),
+        )
+    )
+
+    assert not (outside / "speaker-annotations.json").exists()
     await engine.dispose()

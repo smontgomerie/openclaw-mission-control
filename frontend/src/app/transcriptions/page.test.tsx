@@ -1764,4 +1764,105 @@ describe("TranscriptionsPage", () => {
     });
     expect(screen.queryByRole("button", { name: "SPEAKER_00" })).toBeNull();
   });
+
+  it("does not let a stale detail fetch overwrite a completed rename", async () => {
+    let resolveRename: ((value: object) => void) | undefined;
+    let resolveStaleDetail: ((value: object) => void) | undefined;
+    let entryAFetches = 0;
+    fetchTranscriptionsMock.mockResolvedValue([
+      {
+        id: "entry-a",
+        title: "First recording",
+        is_done: true,
+        source_files: [{ name: "entry-a.m4a", relative_path: "entry-a.m4a" }],
+        artifact_files: [],
+        has_transcript_text: true,
+        has_transcript_json: true,
+      },
+      {
+        id: "entry-b",
+        title: "Second recording",
+        is_done: true,
+        source_files: [{ name: "entry-b.m4a", relative_path: "entry-b.m4a" }],
+        artifact_files: [],
+        has_transcript_text: true,
+        has_transcript_json: true,
+      },
+    ]);
+    const detailFor = (entryId: string, named = false) => ({
+      id: entryId,
+      title: entryId === "entry-a" ? "First recording" : "Second recording",
+      is_done: true,
+      source_files: [
+        { name: `${entryId}.m4a`, relative_path: `${entryId}.m4a` },
+      ],
+      artifact_files: [],
+      has_transcript_text: true,
+      has_transcript_json: true,
+      transcript_text_content:
+        entryId === "entry-a"
+          ? named
+            ? "[Scott] First line"
+            : "[SPEAKER_00] First line"
+          : "[SPEAKER_01] Second line",
+      transcript_json_content: JSON.stringify({
+        segments: [
+          {
+            speaker: entryId === "entry-a" ? "SPEAKER_00" : "SPEAKER_01",
+            speaker_name: named && entryId === "entry-a" ? "Scott" : undefined,
+            start: 1,
+            end: 2,
+            text: entryId === "entry-a" ? "First line" : "Second line",
+          },
+        ],
+      }),
+    });
+    fetchTranscriptionDetailMock.mockImplementation(async (entryId: string) => {
+      if (entryId === "entry-a") {
+        entryAFetches += 1;
+        if (entryAFetches > 1) {
+          return new Promise((resolve) => {
+            resolveStaleDetail = resolve;
+          });
+        }
+      }
+      return detailFor(entryId);
+    });
+    renameTranscriptionSpeakerMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRename = resolve;
+        }),
+    );
+
+    render(<TranscriptionsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "SPEAKER_00" })).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "SPEAKER_00" }));
+    fireEvent.change(screen.getByLabelText("Rename speaker SPEAKER_00"), {
+      target: { value: "Scott" },
+    });
+    fireEvent.keyDown(screen.getByLabelText("Rename speaker SPEAKER_00"), {
+      key: "Enter",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Second recording/ }));
+    await waitFor(() => {
+      expect(screen.getByText("Second line")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /First recording/ }));
+
+    resolveRename?.(detailFor("entry-a", true));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Scott" })).toBeTruthy();
+    });
+
+    resolveStaleDetail?.(detailFor("entry-a", false));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Scott" })).toBeTruthy();
+    });
+    expect(screen.queryByRole("button", { name: "SPEAKER_00" })).toBeNull();
+  });
 });
