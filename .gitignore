@@ -24,7 +24,4 @@ backend/coverage.*
 backend/.coverage
 backend/openapi.json
 frontend/coverage
-frontend/tmp/
-frontend/cypress/screenshots/
-frontend/cypress/videos/
 backend/app/services/openclaw/.device-keys
