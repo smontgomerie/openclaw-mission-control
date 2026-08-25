@@ -1,0 +1,20 @@
+{
+  "testing": {
+    "flowCaptureHarness": {
+      "name": "Mission Control Cypress flow-capture",
+      "command": "npm run flow-capture --prefix frontend -- <scene>",
+      "caseSelector": "Replace <scene> with the shot spec stem (e.g. boards). Specs live in frontend/cypress/e2e/shots/<scene>-shots.cy.ts. Set FLOW_CAPTURE_BASE_URL or CYPRESS_BASE_URL to reuse an already-running local-auth frontend; otherwise the runner boots Next on :3010.",
+      "artifactDir": "frontend/tmp/shots",
+      "artifacts": ["image", "video"],
+      "requiresApp": false,
+      "failureSignal": "exit_status",
+      "assertsRequired": true,
+      "productSourceRoots": ["frontend/src"],
+      "excludeRoots": [
+        "frontend/cypress",
+        "frontend/tmp",
+        "frontend/src/api/generated"
+      ]
+    }
+  }
+}
