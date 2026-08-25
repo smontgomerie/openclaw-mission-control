@@ -9,12 +9,12 @@ Screenshots without assertions are not proof.
 
 ## Convention
 
-| Piece | Location |
-| --- | --- |
-| Shot specs | `frontend/cypress/e2e/shots/<scene>-shots.cy.ts` |
-| Runner | `npm run flow-capture --prefix frontend -- <scene>` |
-| Artifacts | `frontend/tmp/shots/` (screenshots + videos) |
-| Product roots | `frontend/src` |
+| Piece                      | Location                                                         |
+| -------------------------- | ---------------------------------------------------------------- |
+| Shot specs                 | `frontend/cypress/e2e/shots/<scene>-shots.cy.ts`                 |
+| Runner                     | `npm run flow-capture --prefix frontend -- <scene>`              |
+| Artifacts                  | `frontend/tmp/shots/` (screenshots + videos)                     |
+| Product roots              | `frontend/src`                                                   |
 | Excluded from surface∩diff | `frontend/cypress`, `frontend/tmp`, `frontend/src/api/generated` |
 
 Name every new scene `<scene>-shots.cy.ts` and run it with the same stem:
