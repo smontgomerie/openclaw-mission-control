@@ -48,7 +48,9 @@ const paths = (gitDiff.stdout || "")
   .filter((p) => path.basename(p) !== ".gitignore");
 
 if (paths.length === 0) {
-  console.log("assert-changed-format: ok — no prettier-applicable changed files");
+  console.log(
+    "assert-changed-format: ok — no prettier-applicable changed files",
+  );
   process.exit(0);
 }
 
@@ -64,7 +66,9 @@ if (prettier.status === 0) {
   process.exit(0);
 }
 
-console.error("assert-changed-format: REFUSE — changed-files prettier --check refused");
+console.error(
+  "assert-changed-format: REFUSE — changed-files prettier --check refused",
+);
 if (prettier.stdout) console.error(prettier.stdout);
 if (prettier.stderr) console.error(prettier.stderr);
 process.exit(1);
