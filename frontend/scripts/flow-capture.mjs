@@ -21,10 +21,14 @@ const repoRoot = resolve(frontendRoot, "..");
 const artifactDir = join(frontendRoot, "tmp", "shots");
 const defaultPort = process.env.FLOW_CAPTURE_PORT || "3010";
 const defaultBaseUrl = `http://127.0.0.1:${defaultPort}`;
+const reuseRequested = Boolean(
+  process.env.FLOW_CAPTURE_BASE_URL || process.env.CYPRESS_BASE_URL,
+);
 const baseUrl =
   process.env.FLOW_CAPTURE_BASE_URL ||
   process.env.CYPRESS_BASE_URL ||
   defaultBaseUrl;
+const PROBE_TIMEOUT_MS = 3_000;
 
 function usage() {
   console.error("Usage: npm run flow-capture --prefix frontend -- <scene>");
@@ -66,26 +70,41 @@ function run(command, args, opts = {}) {
   });
 }
 
-async function isFrontendUp(url) {
-  try {
-    const res = await fetch(url, { redirect: "manual" });
-    return res.status > 0;
-  } catch {
-    return false;
-  }
-}
-
 function wait(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Probe that an eligible local-auth Mission Control is reachable.
+ * Any HTTP listener is not enough — shot specs seed sessionStorage for local auth.
+ */
+async function isLocalAuthFrontendReady(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      redirect: "manual",
+      signal: controller.signal,
+    });
+    if (!(res.status > 0)) return false;
+    const body = await res.text();
+    return /local authentication/i.test(body);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function waitForFrontend(url, timeoutMs = 120_000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    if (await isFrontendUp(url)) return;
+    if (await isLocalAuthFrontendReady(url)) return;
     await wait(500);
   }
-  throw new Error(`Frontend did not become ready at ${url} within ${timeoutMs}ms`);
+  throw new Error(
+    `Local-auth frontend did not become ready at ${url} within ${timeoutMs}ms`,
+  );
 }
 
 function cypressCliArgs(spec, assertFail) {
@@ -120,7 +139,7 @@ function startNextDev() {
   console.log(
     `flow-capture: starting Next (local auth) on ${baseUrl} (NEXT_PUBLIC_AUTH_MODE=local)`,
   );
-  const child = spawn(
+  return spawn(
     "npx",
     ["next", "dev", "--hostname", "127.0.0.1", "--port", port],
     {
@@ -129,7 +148,23 @@ function startNextDev() {
       cwd: frontendRoot,
     },
   );
-  return child;
+}
+
+async function stopChild(child) {
+  if (!child || child.exitCode !== null) return;
+  child._flowCaptureStopping = true;
+  child.kill("SIGTERM");
+  await Promise.race([
+    new Promise((resolvePromise) => child.once("exit", resolvePromise)),
+    wait(2_000).then(() => {
+      if (child.exitCode === null) {
+        child.kill("SIGKILL");
+      }
+    }),
+  ]);
+  if (child.exitCode === null) {
+    await new Promise((resolvePromise) => child.once("exit", resolvePromise));
+  }
 }
 
 async function main() {
@@ -149,17 +184,25 @@ async function main() {
     process.env.FLOW_CAPTURE_ASSERT_FAIL === "true";
 
   const cyArgs = cypressCliArgs(spec, assertFail);
-  const alreadyUp = await isFrontendUp(baseUrl);
   let code;
   let nextProc;
+  let nextDiedEarly = false;
 
   try {
-    if (alreadyUp) {
-      console.log(`flow-capture: using existing frontend at ${baseUrl}`);
+    if (reuseRequested) {
+      const ready = await isLocalAuthFrontendReady(baseUrl);
+      if (!ready) {
+        console.error(
+          `flow-capture: FLOW_CAPTURE_BASE_URL/CYPRESS_BASE_URL=${baseUrl} is not a reachable local-auth Mission Control (expected page copy matching /local authentication/i).`,
+        );
+        process.exit(2);
+      }
+      console.log(`flow-capture: reusing local-auth frontend at ${baseUrl}`);
     } else {
       nextProc = startNextDev();
       nextProc.on("exit", (exitCode, signal) => {
-        if (exitCode && exitCode !== 0 && !nextProc._flowCaptureStopping) {
+        if (!nextProc._flowCaptureStopping) {
+          nextDiedEarly = true;
           console.error(
             `flow-capture: Next exited early (code=${exitCode}, signal=${signal})`,
           );
@@ -169,13 +212,12 @@ async function main() {
     }
 
     code = await run("npx", cyArgs);
-  } finally {
-    if (nextProc && !nextProc.killed) {
-      nextProc._flowCaptureStopping = true;
-      nextProc.kill("SIGTERM");
-      await wait(500);
-      if (!nextProc.killed) nextProc.kill("SIGKILL");
+    if (nextDiedEarly) {
+      console.error("flow-capture: Next died during the Cypress run");
+      process.exit(1);
     }
+  } finally {
+    await stopChild(nextProc);
   }
 
   if (code !== 0) {

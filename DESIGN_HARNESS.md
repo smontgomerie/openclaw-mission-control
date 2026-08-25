@@ -28,8 +28,11 @@ that shot spec, writes PNGs/videos under `frontend/tmp/shots`, and exits
 non-zero on any failed Cypress assertion.
 
 Override the base URL (for example the Docker stack on `:3100`) with
-`CYPRESS_BASE_URL` or `FLOW_CAPTURE_BASE_URL` when an eligible frontend is
-already up.
+`CYPRESS_BASE_URL` or `FLOW_CAPTURE_BASE_URL` only when that frontend is
+**local-auth** Mission Control. The runner probes for page copy matching
+`/local authentication/i` before reusing; otherwise it boots its own Next
+instance on `:3010`. Without an explicit base URL override, ambient listeners
+are ignored so a random process on `:3010` cannot silently satisfy the run.
 
 ## Fail-closed
 
