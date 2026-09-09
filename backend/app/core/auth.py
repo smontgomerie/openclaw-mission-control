@@ -339,10 +339,10 @@ async def delete_clerk_user(clerk_user_id: str) -> None:
 async def _get_or_sync_user(
     session: AsyncSession,
     *,
-    clerk_user_id: str,
+    external_auth_id: str,
     claims: dict[str, object],
 ) -> User:
-    clerk_user_id_log = clerk_user_id[-6:] if clerk_user_id else ""
+    external_auth_id_log = external_auth_id[-6:] if external_auth_id else ""
     claim_email = _extract_claim_email(claims)
     claim_name = _extract_claim_name(claims)
     defaults: dict[str, object | None] = {
@@ -352,7 +352,7 @@ async def _get_or_sync_user(
     user, created = await crud.get_or_create(
         session,
         User,
-        clerk_user_id=clerk_user_id,
+        external_auth_id=external_auth_id,
         defaults=defaults,
     )
 
@@ -362,7 +362,7 @@ async def _get_or_sync_user(
     # fields are present in our DB.
     should_fetch_profile = created or not user.email or not user.name
     if should_fetch_profile:
-        profile_email, profile_name = await _fetch_clerk_profile(clerk_user_id)
+        profile_email, profile_name = await _fetch_clerk_profile(external_auth_id)
 
     email = profile_email or claim_email
     name = profile_name or claim_name
@@ -379,21 +379,21 @@ async def _get_or_sync_user(
         await session.commit()
         await session.refresh(user)
         logger.info(
-            "auth.user.sync clerk_user_id=%s updated=%s fetched_profile=%s",
-            clerk_user_id_log,
+            "auth.user.sync external_auth_id=%s updated=%s fetched_profile=%s",
+            external_auth_id_log,
             changed,
             should_fetch_profile,
         )
     else:
         logger.debug(
-            "auth.user.sync.noop clerk_user_id=%s fetched_profile=%s",
-            clerk_user_id_log,
+            "auth.user.sync.noop external_auth_id=%s fetched_profile=%s",
+            external_auth_id_log,
             should_fetch_profile,
         )
     if not user.email:
         logger.warning(
-            "auth.user.sync.missing_email clerk_user_id=%s",
-            clerk_user_id_log,
+            "auth.user.sync.missing_email external_auth_id=%s",
+            external_auth_id_log,
         )
     return user
 
@@ -406,7 +406,7 @@ async def _get_or_create_local_user(session: AsyncSession) -> User:
     user, _created = await crud.get_or_create(
         session,
         User,
-        clerk_user_id=LOCAL_AUTH_USER_ID,
+        external_auth_id=LOCAL_AUTH_USER_ID,
         defaults=defaults,
     )
     changed = False
@@ -473,15 +473,15 @@ async def get_auth_context(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
     claims: dict[str, object] = {str(k): v for k, v in request_state.payload.items()}
     try:
-        clerk_user_id = _parse_subject(claims)
+        external_auth_id = _parse_subject(claims)
     except ValidationError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED) from exc
 
-    if not clerk_user_id:
+    if not external_auth_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
     user = await _get_or_sync_user(
         session,
-        clerk_user_id=clerk_user_id,
+        external_auth_id=external_auth_id,
         claims=claims,
     )
     from app.services.organizations import ensure_member_for_user
@@ -515,15 +515,15 @@ async def get_auth_context_optional(
     claims: dict[str, object] = {str(k): v for k, v in request_state.payload.items()}
 
     try:
-        clerk_user_id = _parse_subject(claims)
+        external_auth_id = _parse_subject(claims)
     except ValidationError:
         return None
 
-    if not clerk_user_id:
+    if not external_auth_id:
         return None
     user = await _get_or_sync_user(
         session,
-        clerk_user_id=clerk_user_id,
+        external_auth_id=external_auth_id,
         claims=claims,
     )
     from app.services.organizations import ensure_member_for_user

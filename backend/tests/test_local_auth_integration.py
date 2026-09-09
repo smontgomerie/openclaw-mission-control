@@ -86,7 +86,7 @@ async def test_local_auth_users_me_requires_and_accepts_valid_token(
             )
             assert authorized.status_code == 200
             payload = authorized.json()
-            assert payload["clerk_user_id"] == expected_user_id
+            assert payload["external_auth_id"] == expected_user_id
             assert payload["email"] == expected_email
             assert payload["name"] == expected_name
 

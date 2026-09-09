@@ -39,7 +39,7 @@ class _FakeOrganizationMemberModel:
 async def test_delete_me_aborts_when_clerk_delete_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     """Local deletion should not run if Clerk account deletion fails."""
     session = _FakeSession()
-    user = User(id=uuid4(), clerk_user_id="user_123")
+    user = User(id=uuid4(), external_auth_id="user_123")
     auth = AuthContext(actor_type="user", user=user)
 
     async def _fail_delete(_clerk_user_id: str) -> None:
@@ -68,7 +68,7 @@ async def test_delete_me_deletes_local_user_after_clerk_success(
 ) -> None:
     """User delete should invoke Clerk deletion, then remove local account."""
     session = _FakeSession()
-    user = User(id=uuid4(), clerk_user_id="user_456")
+    user = User(id=uuid4(), external_auth_id="user_456")
     auth = AuthContext(actor_type="user", user=user)
     calls: dict[str, int] = {"clerk": 0, "update": 0, "delete": 0}
 
