@@ -96,6 +96,20 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-auto}
       NEXT_PUBLIC_AUTH_MODE: ${AUTH_MODE}
+      # Better Auth server at /api/auth/* (Google sign-in, JWKS/JWT for the
+      # backend, API keys). All optional at compose level: unset -> the
+      # /api/auth/* routes fail fast with a clear error and the local/clerk
+      # flows keep working. Required (non-placeholder) once you want
+      # /api/auth/* to function. See docs/reference/authentication.md.
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      BETTER_AUTH_GOOGLE_CLIENT_ID: ${BETTER_AUTH_GOOGLE_CLIENT_ID:-}
+      BETTER_AUTH_GOOGLE_CLIENT_SECRET: ${BETTER_AUTH_GOOGLE_CLIENT_SECRET:-}
+      BETTER_AUTH_ALLOWED_GOOGLE_DOMAINS: ${BETTER_AUTH_ALLOWED_GOOGLE_DOMAINS:-}
+      BETTER_AUTH_BASE_URL: ${BETTER_AUTH_BASE_URL:-http://localhost:3000}
+      # Plain postgresql:// URL to the shared db service. The backend's
+      # postgresql+psycopg:// DATABASE_URL is backend-only and not reusable
+      # here.
+      BETTER_AUTH_DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-mission_control}
     depends_on:
       - backend
     ports:
