@@ -21,7 +21,8 @@
  *   a clear 500 instead of breaking `next build` or the rest of the app.
  *   `instrumentation.ts` logs the same core check loudly at server boot.
  */
-import { Pool } from "pg";
+import { createRequire } from "node:module";
+import type { Pool } from "pg";
 import { decodeJwt } from "jose";
 import { betterAuth } from "better-auth";
 import type { BetterAuthOptions } from "better-auth";
@@ -290,18 +291,21 @@ export function buildBetterAuthOptions(
 }
 
 /**
- * Build a Better Auth instance from validated env. `database` is injectable
- * so tests can pass an in-memory Kysely/sqlite setup; in the app we use
- * Postgres via `BETTER_AUTH_DATABASE_URL`, confined to the `better_auth`
- * schema.
- */
-/**
  * Better Auth's Postgres connection, confined to the `better_auth` schema.
  * The session-level `search_path` is set in the connection StartupMessage
  * (libpq `options`), so every Better Auth query lands in `better_auth`
  * while unqualified names fall back to `public` for system catalog use.
  */
 export function createBetterAuthDatabase(config: BetterAuthEnv): Pool {
+  // `pg` is a Node-only driver, so it is loaded here through
+  // `createRequire` (bundler-opaque) rather than a top-level import:
+  // Next.js also bundles `src/instrumentation.ts` for the edge runtime,
+  // and a static `pg` import would drag it into that bundle and fail
+  // `next build` on `util/types`. This factory is only ever called from
+  // nodejs route handlers (`getAuth`), where `pg` resolves from
+  // node_modules.
+  const requireModule = createRequire(import.meta.url);
+  const { Pool } = requireModule("pg") as typeof import("pg");
   return new Pool({
     connectionString: config.databaseUrl,
     options: `-c search_path=${BETTER_AUTH_SCHEMA},public`,
