@@ -57,12 +57,12 @@ async def test_get_auth_context_uses_request_state_payload_claims(
     async def _fake_get_or_sync_user(
         _session: Any,
         *,
-        clerk_user_id: str,
+        external_auth_id: str,
         claims: dict[str, object],
     ) -> User:
-        assert clerk_user_id == "user_123"
+        assert external_auth_id == "user_123"
         assert claims["sub"] == "user_123"
-        return User(clerk_user_id="user_123", email="user@example.com", name="User")
+        return User(external_auth_id="user_123", email="user@example.com", name="User")
 
     async def _fake_ensure_member_for_user(_session: Any, _user: User) -> None:
         return None
@@ -82,7 +82,7 @@ async def test_get_auth_context_uses_request_state_payload_claims(
 
     assert ctx.actor_type == "user"
     assert ctx.user is not None
-    assert ctx.user.clerk_user_id == "user_123"
+    assert ctx.user.external_auth_id == "user_123"
 
 
 @pytest.mark.asyncio
@@ -113,7 +113,7 @@ async def test_get_auth_context_local_mode_requires_valid_bearer_token(
     monkeypatch.setattr(auth.settings, "local_auth_token", "expected-token")
 
     async def _fake_local_user(_session: Any) -> User:
-        return User(clerk_user_id="local-auth-user", email="local@localhost", name="Local User")
+        return User(external_auth_id="local-auth-user", email="local@localhost", name="Local User")
 
     monkeypatch.setattr(auth, "_get_or_create_local_user", _fake_local_user)
 
@@ -125,7 +125,7 @@ async def test_get_auth_context_local_mode_requires_valid_bearer_token(
 
     assert ctx.actor_type == "user"
     assert ctx.user is not None
-    assert ctx.user.clerk_user_id == "local-auth-user"
+    assert ctx.user.external_auth_id == "local-auth-user"
 
 
 @pytest.mark.asyncio

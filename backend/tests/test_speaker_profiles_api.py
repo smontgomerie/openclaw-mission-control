@@ -87,8 +87,8 @@ async def test_speaker_mutating_apis_and_refused_other_org_actor(
     async with session_maker() as session:
         owner_org = Organization(name="Owner Org")
         other_org = Organization(name="Other Org")
-        owner = User(clerk_user_id="owner", email="owner@example.com", name="Owner")
-        stranger = User(clerk_user_id="stranger", email="other@example.com", name="Other")
+        owner = User(external_auth_id="owner", email="owner@example.com", name="Owner")
+        stranger = User(external_auth_id="stranger", email="other@example.com", name="Other")
         session.add(owner_org)
         session.add(other_org)
         session.add(owner)

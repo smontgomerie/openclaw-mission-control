@@ -82,7 +82,7 @@ def test_extract_clerk_profile_prefers_primary_email() -> None:
 
 @pytest.mark.asyncio
 async def test_get_or_sync_user_updates_email_and_name(monkeypatch: pytest.MonkeyPatch) -> None:
-    existing = User(clerk_user_id="user_123", email="old@example.com", name=None)
+    existing = User(external_auth_id="user_123", email="old@example.com", name=None)
 
     async def _fake_get_or_create(*_args: Any, **_kwargs: Any) -> tuple[User, bool]:
         return existing, False
@@ -96,7 +96,7 @@ async def test_get_or_sync_user_updates_email_and_name(monkeypatch: pytest.Monke
     session = _FakeSession()
     out = await auth._get_or_sync_user(
         session,  # type: ignore[arg-type]
-        clerk_user_id="user_123",
+        external_auth_id="user_123",
         claims={},
     )
 
@@ -111,7 +111,7 @@ async def test_get_or_sync_user_updates_email_and_name(monkeypatch: pytest.Monke
 async def test_get_or_sync_user_uses_clerk_profile_when_claims_are_minimal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    existing = User(clerk_user_id="user_123", email=None, name=None)
+    existing = User(external_auth_id="user_123", email=None, name=None)
 
     async def _fake_get_or_create(*_args: Any, **_kwargs: Any) -> tuple[User, bool]:
         return existing, False
@@ -125,7 +125,7 @@ async def test_get_or_sync_user_uses_clerk_profile_when_claims_are_minimal(
     session = _FakeSession()
     out = await auth._get_or_sync_user(
         session,  # type: ignore[arg-type]
-        clerk_user_id="user_123",
+        external_auth_id="user_123",
         claims={"sub": "user_123"},
     )
 
@@ -140,7 +140,7 @@ async def test_get_or_sync_user_uses_clerk_profile_when_claims_are_minimal(
 async def test_get_or_sync_user_skips_commit_when_unchanged(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    existing = User(clerk_user_id="user_123", email="same@example.com", name="Name")
+    existing = User(external_auth_id="user_123", email="same@example.com", name="Name")
 
     async def _fake_get_or_create(*_args: Any, **_kwargs: Any) -> tuple[User, bool]:
         return existing, False
@@ -154,7 +154,7 @@ async def test_get_or_sync_user_skips_commit_when_unchanged(
     session = _FakeSession()
     out = await auth._get_or_sync_user(
         session,  # type: ignore[arg-type]
-        clerk_user_id="user_123",
+        external_auth_id="user_123",
         claims={},
     )
 
