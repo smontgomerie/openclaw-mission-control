@@ -2,8 +2,16 @@
 
 // NOTE: We intentionally keep this file very small and dependency-free.
 // It provides CI/secretless-build safe fallbacks for Clerk hooks/components.
+// In betterauth mode these shims delegate to the Better Auth session
+// (`@/auth/betterAuthSession`) instead of Clerk; local mode keeps its
+// token-based fallbacks; clerk mode is untouched.
 
-import type { ReactNode, ComponentProps, MouseEvent, ReactElement } from "react";
+import type {
+  ReactNode,
+  ComponentProps,
+  MouseEvent,
+  ReactElement,
+} from "react";
 import { cloneElement, isValidElement } from "react";
 
 import {
@@ -16,13 +24,13 @@ import {
   useUser as clerkUseUser,
 } from "@clerk/nextjs";
 
+import { useBetterAuthSession } from "@/auth/betterAuthSession";
+import { getBetterAuthToken, isBetterAuthMode } from "@/auth/betterAuth";
 import { isLikelyValidClerkPublishableKey } from "@/auth/clerkKey";
 import { navigateToFallbackSignIn } from "@/auth/fallbackNavigation";
 import { getLocalAuthToken, isLocalAuthMode } from "@/auth/localAuth";
 
-function resolveFallbackSignInUrl(
-  forceRedirectUrl?: string | null,
-): string {
+function resolveFallbackSignInUrl(forceRedirectUrl?: string | null): string {
   if (!forceRedirectUrl) return "/sign-in";
   const params = new URLSearchParams({ redirect_url: forceRedirectUrl });
   return `/sign-in?${params.toString()}`;
@@ -35,6 +43,7 @@ function hasLocalAuthToken(): boolean {
 export function isClerkEnabled(): boolean {
   // IMPORTANT: keep this in sync with AuthProvider; otherwise components like
   // <SignedOut/> may render without a <ClerkProvider/> and crash during prerender.
+  if (isBetterAuthMode()) return false;
   if (isLocalAuthMode()) return false;
   return isLikelyValidClerkPublishableKey(
     process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
@@ -42,6 +51,10 @@ export function isClerkEnabled(): boolean {
 }
 
 export function SignedIn(props: { children: ReactNode }) {
+  const betterAuth = useBetterAuthSession();
+  if (isBetterAuthMode()) {
+    return betterAuth.isSignedIn ? <>{props.children}</> : null;
+  }
   if (isLocalAuthMode()) {
     return hasLocalAuthToken() ? <>{props.children}</> : null;
   }
@@ -50,6 +63,10 @@ export function SignedIn(props: { children: ReactNode }) {
 }
 
 export function SignedOut(props: { children: ReactNode }) {
+  const betterAuth = useBetterAuthSession();
+  if (isBetterAuthMode()) {
+    return betterAuth.isSignedIn ? null : <>{props.children}</>;
+  }
   if (isLocalAuthMode()) {
     return hasLocalAuthToken() ? null : <>{props.children}</>;
   }
@@ -79,6 +96,33 @@ function renderFallbackTrigger(
   });
 }
 
+/**
+ * Wrap a trigger element so clicking it runs `onSignOut` (which ends the
+ * Better Auth session server-side and clears the cached JWT) and then reloads
+ * so the sign-in gate re-appears — mirroring the local-mode sign-out flow.
+ */
+function renderBetterAuthSignOutTrigger(
+  children: ReactNode,
+  onSignOut: () => Promise<void>,
+): ReactElement | null {
+  if (!isValidElement(children)) {
+    return null;
+  }
+
+  const child = children as ReactElement<{
+    onClick?: (event: MouseEvent<HTMLElement>) => void;
+  }>;
+  const existingOnClick = child.props.onClick;
+
+  return cloneElement(child, {
+    onClick: (event: MouseEvent<HTMLElement>) => {
+      existingOnClick?.(event);
+      if (event.defaultPrevented) return;
+      void onSignOut().then(() => window.location.reload());
+    },
+  });
+}
+
 // Keep the same prop surface as Clerk components so call sites don't need edits.
 export function SignInButton(props: ComponentProps<typeof ClerkSignInButton>) {
   if (!isClerkEnabled()) {
@@ -93,11 +137,23 @@ export function SignInButton(props: ComponentProps<typeof ClerkSignInButton>) {
 export function SignOutButton(
   props: ComponentProps<typeof ClerkSignOutButton>,
 ) {
+  const betterAuth = useBetterAuthSession();
+  if (isBetterAuthMode()) {
+    return renderBetterAuthSignOutTrigger(props.children, betterAuth.signOut);
+  }
   if (!isClerkEnabled()) return null;
   return <ClerkSignOutButton {...props} />;
 }
 
 export function useUser() {
+  const betterAuth = useBetterAuthSession();
+  if (isBetterAuthMode()) {
+    return {
+      isLoaded: betterAuth.isLoaded,
+      isSignedIn: betterAuth.isSignedIn,
+      user: betterAuth.user,
+    } as const;
+  }
   if (isLocalAuthMode()) {
     return {
       isLoaded: true,
@@ -112,6 +168,18 @@ export function useUser() {
 }
 
 export function useAuth() {
+  const betterAuth = useBetterAuthSession();
+  if (isBetterAuthMode()) {
+    return {
+      isLoaded: betterAuth.isLoaded,
+      isSignedIn: betterAuth.isSignedIn,
+      userId: betterAuth.isSignedIn ? (betterAuth.user?.id ?? null) : null,
+      sessionId: betterAuth.sessionId,
+      // Best-effort current JWT for direct fetch call sites; the Orval
+      // mutator is the primary token-attach path.
+      getToken: () => getBetterAuthToken(),
+    } as const;
+  }
   if (isLocalAuthMode()) {
     const token = getLocalAuthToken();
     return {

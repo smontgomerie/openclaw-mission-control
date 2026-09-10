@@ -20,6 +20,10 @@ const frontendRoot = resolve(__dirname, "..");
 const repoRoot = resolve(frontendRoot, "..");
 const artifactDir = join(frontendRoot, "tmp", "shots");
 const defaultPort = process.env.FLOW_CAPTURE_PORT || "3010";
+// Which auth mode the booted frontend runs in. `local` is the default and
+// matches the legacy probe; `betterauth` boots Better Auth mode for the
+// sign-in shots (see cypress/e2e/shots/auth-shots.cy.ts).
+const authMode = process.env.FLOW_CAPTURE_AUTH_MODE || "local";
 const defaultBaseUrl = `http://127.0.0.1:${defaultPort}`;
 const reuseRequested = Boolean(
   process.env.FLOW_CAPTURE_BASE_URL || process.env.CYPRESS_BASE_URL,
@@ -75,10 +79,18 @@ function wait(ms) {
 }
 
 /**
- * Probe that an eligible local-auth Mission Control is reachable.
- * Any HTTP listener is not enough — shot specs seed sessionStorage for local auth.
+ * Probe that a booted Mission Control is reachable and compiled.
+ *
+ * Any HTTP listener is not enough. In local mode the shot specs seed
+ * sessionStorage and the gate renders "Local authentication", so that copy
+ * is the ready signal. In other modes (betterauth) the gate is client-rendered,
+ * so any compiled HTML document counts as ready.
  */
-async function isLocalAuthFrontendReady(url) {
+function readyBodyPattern() {
+  return authMode === "local" ? /local authentication/i : /<html/i;
+}
+
+async function isFrontendReady(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   try {
@@ -88,7 +100,7 @@ async function isLocalAuthFrontendReady(url) {
     });
     if (!(res.status > 0)) return false;
     const body = await res.text();
-    return /local authentication/i.test(body);
+    return readyBodyPattern().test(body);
   } catch {
     return false;
   } finally {
@@ -99,11 +111,11 @@ async function isLocalAuthFrontendReady(url) {
 async function waitForFrontend(url, timeoutMs = 120_000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    if (await isLocalAuthFrontendReady(url)) return;
+    if (await isFrontendReady(url)) return;
     await wait(500);
   }
   throw new Error(
-    `Local-auth frontend did not become ready at ${url} within ${timeoutMs}ms`,
+    `Frontend (${authMode} auth) did not become ready at ${url} within ${timeoutMs}ms`,
   );
 }
 
@@ -131,13 +143,13 @@ function startNextDev() {
   const port = new URL(baseUrl).port || defaultPort;
   const env = {
     ...process.env,
-    NEXT_PUBLIC_AUTH_MODE: "local",
+    NEXT_PUBLIC_AUTH_MODE: authMode,
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || "auto",
     PORT: port,
   };
   delete env.ELECTRON_RUN_AS_NODE;
   console.log(
-    `flow-capture: starting Next (local auth) on ${baseUrl} (NEXT_PUBLIC_AUTH_MODE=local)`,
+    `flow-capture: starting Next (${authMode} auth) on ${baseUrl} (NEXT_PUBLIC_AUTH_MODE=${authMode})`,
   );
   return spawn(
     "npx",
@@ -190,14 +202,16 @@ async function main() {
 
   try {
     if (reuseRequested) {
-      const ready = await isLocalAuthFrontendReady(baseUrl);
+      const ready = await isFrontendReady(baseUrl);
       if (!ready) {
         console.error(
-          `flow-capture: FLOW_CAPTURE_BASE_URL/CYPRESS_BASE_URL=${baseUrl} is not a reachable local-auth Mission Control (expected page copy matching /local authentication/i).`,
+          `flow-capture: FLOW_CAPTURE_BASE_URL/CYPRESS_BASE_URL=${baseUrl} is not a reachable Mission Control in ${authMode} auth mode (expected ready copy matching ${readyBodyPattern()}).`,
         );
         process.exit(2);
       }
-      console.log(`flow-capture: reusing local-auth frontend at ${baseUrl}`);
+      console.log(
+        `flow-capture: reusing ${authMode}-auth frontend at ${baseUrl}`,
+      );
     } else {
       nextProc = startNextDev();
       nextProc.on("exit", (exitCode, signal) => {
