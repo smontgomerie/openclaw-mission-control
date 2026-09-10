@@ -50,6 +50,11 @@ JWKS_FETCH_TIMEOUT_SECONDS = 5.0
 #: After re-fetching for a kid that is still missing, do not re-fetch
 #: again for this long (keeps rejected tokens from hammering the endpoint).
 MISSING_KID_REFETCH_LIMIT_SECONDS = 60.0
+#: Clock leeway when validating `exp`, matching the repo's Clerk pattern
+#: (`clerk_leeway`): the JWKS issuer (the Next.js app's origin) and this
+#: backend can skew by a few seconds, and a valid 15-minute session token
+#: must not be refused in its final seconds because of clock drift.
+CLOCK_LEEWAY_SECONDS = 10.0
 
 _RSA_ALGORITHMS = frozenset({"RS256", "RS384", "RS512", "PS256", "PS384", "PS512"})
 _SUPPORTED_ALGORITHMS = _RSA_ALGORITHMS | frozenset({"EdDSA"})
@@ -219,6 +224,7 @@ class BetterAuthJwtVerifier:
                 algorithms=[alg],
                 issuer=self.issuer,
                 audience=self._expected_audience,
+                leeway=CLOCK_LEEWAY_SECONDS,
                 options={"require": ["sub", "iss", "aud", "exp"]},
             )
         except pyjwt.PyJWTError as exc:
@@ -271,10 +277,16 @@ class BetterAuthJwtVerifier:
                 if fallback is not None and _jwk_is_usable(fallback, time.time()):
                     return _public_key_from_jwk(fallback, alg)
                 raise
-            if self._keys.get(kid) is None:
+            fresh = self._keys.get(kid)
+            if fresh is None:
                 self._last_miss_refetch_at = time.monotonic()
                 return None
-            return _public_key_from_jwk(self._keys[kid], alg)
+            if not _jwk_is_usable(fresh, time.time()):
+                # The document stopped offering this kid (rotated out):
+                # refuse it, and throttle re-fetches like an unknown kid.
+                self._last_miss_refetch_at = time.monotonic()
+                return None
+            return _public_key_from_jwk(fresh, alg)
 
 
 _VERIFIERS: dict[tuple[str, str, str], BetterAuthJwtVerifier] = {}

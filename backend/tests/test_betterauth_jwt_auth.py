@@ -525,3 +525,62 @@ async def test_agent_token_path_short_circuits_before_jwks(
         assert users == []
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_expired_jwk_entry_refused_with_no_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Key rotation: the JWKS entry for a kid carries a past unix `exp`
+    # (Better Auth rotates keys this way). A token under that kid must be
+    # refused even though the key still verifies — the expired entry is not
+    # usable key material.
+    private, jwks_keys = _ed25519_jwks()
+    jwks_keys[0]["exp"] = int(time.time()) - 60
+    token = _issue(
+        private,
+        sub="ba-user-rotated-out",
+        issuer=BASE_URL,
+        audience=BASE_URL,
+        alg="EdDSA",
+        kid="mc-ed-1",
+    )
+    await _refused_creates_nothing(monkeypatch, token=token, jwks_keys=jwks_keys)
+
+
+@pytest.mark.asyncio
+async def test_jwk_algorithm_mismatch_refused_with_no_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The JWKS entry advertises EdDSA but the token header claims RS256
+    # (or vice versa): an alg-confusion attempt must be refused, not
+    # verified against a key of the wrong family.
+    private, _ = _ed25519_jwks()
+    jwks_keys = _rsa_jwks()[1]
+    jwks_keys[0]["kid"] = "mc-ed-1"
+    jwks_keys[0]["alg"] = "EdDSA"
+    token = _issue(
+        private,
+        sub="ba-user-algmix",
+        issuer=BASE_URL,
+        audience=BASE_URL,
+        alg="EdDSA",
+        kid="mc-ed-1",
+    )
+    await _refused_creates_nothing(monkeypatch, token=token, jwks_keys=jwks_keys)
+
+
+@pytest.mark.asyncio
+async def test_empty_sub_refused_with_no_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    private, jwks_keys = _ed25519_jwks()
+    token = _issue(
+        private,
+        sub="",
+        issuer=BASE_URL,
+        audience=BASE_URL,
+        alg="EdDSA",
+        kid="mc-ed-1",
+    )
+    await _refused_creates_nothing(monkeypatch, token=token, jwks_keys=jwks_keys)
