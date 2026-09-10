@@ -1,8 +1,10 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { isBetterAuthMode } from "@/auth/betterAuth";
+import { useBetterAuthSession } from "@/auth/betterAuthSession";
 import { isLocalAuthMode } from "@/auth/localAuth";
 import { resolveSignInRedirectUrl } from "@/auth/redirects";
 import { BetterAuthLogin } from "@/components/organisms/BetterAuthLogin";
@@ -10,12 +12,39 @@ import { LocalAuthLogin } from "@/components/organisms/LocalAuthLogin";
 
 export default function SignInPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const betterAuth = useBetterAuthSession();
+
+  useEffect(() => {
+    if (!isBetterAuthMode() || !betterAuth.isLoaded || !betterAuth.isSignedIn) {
+      return;
+    }
+    router.replace(
+      resolveSignInRedirectUrl(searchParams.get("redirect_url")),
+    );
+  }, [
+    betterAuth.isLoaded,
+    betterAuth.isSignedIn,
+    router,
+    searchParams,
+  ]);
 
   if (isLocalAuthMode()) {
     return <LocalAuthLogin />;
   }
 
   if (isBetterAuthMode()) {
+    if (!betterAuth.isLoaded || betterAuth.isSignedIn) {
+      return (
+        <div
+          className="flex min-h-screen items-center justify-center bg-app"
+          role="status"
+          aria-label="Loading your session"
+        >
+          <span className="text-sm text-muted">Loading…</span>
+        </div>
+      );
+    }
     const redirectUrl = resolveSignInRedirectUrl(
       searchParams.get("redirect_url"),
     );

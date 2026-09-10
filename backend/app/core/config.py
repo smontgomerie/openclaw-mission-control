@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Annotated, Self
 from urllib.parse import urlparse
 
-from pydantic import BeforeValidator, Field, ValidationError, model_validator
+from pydantic import AliasChoices, BeforeValidator, Field, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.auth_mode import AuthMode
@@ -58,6 +58,9 @@ class Settings(BaseSettings):
         # (Important when running uvicorn from repo root or via a process manager.)
         env_file=[DEFAULT_ENV_FILE, ".env"],
         env_file_encoding="utf-8",
+        # Allow Field(validation_alias=...) for BETTER_AUTH_* while tests and
+        # call sites still pass betterauth_* keyword args.
+        populate_by_name=True,
         extra="ignore",
     )
 
@@ -73,9 +76,20 @@ class Settings(BaseSettings):
     # Better Auth JWTs (from the Next.js app's /api/auth/* instance)
     # statelessly against the JWKS the app publishes — never talking to
     # Google or Better Auth on the request path.
-    betterauth_jwks_url: str = ""
-    betterauth_issuer: str = ""
-    betterauth_audience: str = ""
+    # Env names are BETTER_AUTH_* (docs / compose / .env.example). The
+    # BETTERAUTH_* aliases match pydantic-settings' default field-name mapping.
+    betterauth_jwks_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("BETTER_AUTH_JWKS_URL", "BETTERAUTH_JWKS_URL"),
+    )
+    betterauth_issuer: str = Field(
+        default="",
+        validation_alias=AliasChoices("BETTER_AUTH_ISSUER", "BETTERAUTH_ISSUER"),
+    )
+    betterauth_audience: str = Field(
+        default="",
+        validation_alias=AliasChoices("BETTER_AUTH_AUDIENCE", "BETTERAUTH_AUDIENCE"),
+    )
 
     cors_origins: str = ""
     base_url: str = ""

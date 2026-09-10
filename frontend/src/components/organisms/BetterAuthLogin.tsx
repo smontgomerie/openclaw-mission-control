@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { signInWithGoogle } from "@/auth/betterAuth";
-import { resolveSignInRedirectUrl } from "@/auth/redirects";
+import {
+  betterAuthCanonicalContinueUrl,
+  describeAuthQueryError,
+  resolveSignInRedirectUrl,
+} from "@/auth/redirects";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
@@ -59,10 +63,33 @@ export function BetterAuthLogin({
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = describeAuthQueryError(params.get("error"));
+    if (fromQuery) {
+      setError(fromQuery);
+    }
+  }, []);
+
   const handleSignIn = async () => {
     setIsRedirecting(true);
     setError(null);
     try {
+      // OAuth state cookies are host-bound + Secure. If this tab is on a
+      // different origin than BETTER_AUTH_BASE_URL (e.g. http://localhost:3100
+      // vs the HTTPS Tailscale URL), bounce to the canonical origin first so
+      // the state cookie and Google redirect_uri share a host.
+      const continueOnCanonical = betterAuthCanonicalContinueUrl(
+        window.location.href,
+      );
+      if (continueOnCanonical) {
+        window.location.assign(continueOnCanonical);
+        return;
+      }
+
       // `resolveSignInRedirectUrl` validates the callback (relative, same-
       // origin) and is SSR-safe; the default lands on the shared sign-in
       // fallback (/onboarding or NEXT_PUBLIC_SIGN_IN_FALLBACK_REDIRECT_URL).

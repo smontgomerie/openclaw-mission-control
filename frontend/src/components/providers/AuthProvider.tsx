@@ -47,7 +47,7 @@ function BetterAuthGate({ children }: { children: ReactNode }) {
   // mode just reloads that URL), instead of the /onboarding fallback.
   // An explicit ?redirect_url= param (e.g. /sign-in?redirect_url=/boards)
   // wins; the value is validated in BetterAuthLogin via
-  // resolveSignInRedirectUrl.
+  // resolveSignInRedirectUrl (including treating /sign-in itself as empty).
   const redirectUrl =
     typeof window === "undefined"
       ? null

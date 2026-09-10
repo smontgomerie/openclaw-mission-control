@@ -20,6 +20,13 @@ describe("resolveSignInRedirectUrl", () => {
     expect(resolveSignInRedirectUrl(null)).toBe("/onboarding");
   });
 
+  it("treats /sign-in as empty and uses the fallback", () => {
+    expect(resolveSignInRedirectUrl("/sign-in")).toBe("/onboarding");
+    expect(resolveSignInRedirectUrl("/sign-in?redirect_url=%2Fboards")).toBe(
+      "/onboarding",
+    );
+  });
+
   it("allows safe relative paths", () => {
     expect(resolveSignInRedirectUrl("/dashboard?tab=ops#queue")).toBe(
       "/dashboard?tab=ops#queue",
@@ -66,5 +73,40 @@ describe("currentSignInRedirectUrl", () => {
     expect(currentSignInRedirectUrl("/sign-in", "?redirect_url=")).toBe(
       "/sign-in?redirect_url=",
     );
+  });
+});
+
+describe("betterAuthCanonicalContinueUrl", () => {
+  it("returns null when already on the canonical origin", async () => {
+    vi.stubEnv(
+      "NEXT_PUBLIC_BETTER_AUTH_BASE_URL",
+      "https://mc.example.com:8443",
+    );
+    const { betterAuthCanonicalContinueUrl } = await import("@/auth/redirects");
+    expect(
+      betterAuthCanonicalContinueUrl(
+        "https://mc.example.com:8443/sign-in",
+        "https://mc.example.com:8443",
+      ),
+    ).toBeNull();
+  });
+
+  it("rewrites other origins onto the canonical host", async () => {
+    const { betterAuthCanonicalContinueUrl } = await import("@/auth/redirects");
+    expect(
+      betterAuthCanonicalContinueUrl(
+        "http://localhost:3100/boards?x=1",
+        "https://mc.example.com:8443",
+      ),
+    ).toBe("https://mc.example.com:8443/boards?x=1");
+  });
+});
+
+describe("describeAuthQueryError", () => {
+  it("maps known oauth failure codes", async () => {
+    const { describeAuthQueryError } = await import("@/auth/redirects");
+    expect(describeAuthQueryError(null)).toBeNull();
+    expect(describeAuthQueryError("UNKNOWN")).toMatch(/did not complete/i);
+    expect(describeAuthQueryError("state_not_found")).toMatch(/different URL/i);
   });
 });

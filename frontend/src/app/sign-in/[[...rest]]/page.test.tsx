@@ -3,13 +3,17 @@ import { render, screen } from "@testing-library/react";
 
 import SignInPage from "./page";
 
+const replaceMock = vi.fn();
+
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ replace: replaceMock }),
 }));
 
 describe("/sign-in", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    replaceMock.mockReset();
   });
 
   it("shows the local token screen in local mode", () => {

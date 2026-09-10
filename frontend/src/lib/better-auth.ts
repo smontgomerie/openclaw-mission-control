@@ -249,6 +249,10 @@ export function buildBetterAuthOptions(
   return {
     secret: config.secret,
     baseURL: config.baseUrl,
+    // Google callback + CSRF checks require the public app origin. Include it
+    // explicitly so reverse-proxied HTTPS deployments (Tailscale, Caddy) are
+    // trusted even when the Next process sees an internal Host header.
+    trustedOrigins: [config.baseUrl],
     database,
     // No email/password: Google is the only way in.
     emailAndPassword: { enabled: false },
