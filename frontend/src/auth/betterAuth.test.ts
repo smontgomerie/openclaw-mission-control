@@ -85,7 +85,6 @@ describe("getBetterAuthClient", () => {
       /^https?:\/\//,
     );
   });
-
 });
 
 describe("betterAuthClientBaseUrl", () => {
