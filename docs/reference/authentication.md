@@ -172,8 +172,7 @@ are gone. What that means for an existing Clerk deployment:
 - **To keep a Clerk user's data, remap the identity manually.**
   `users.external_auth_id` has a **unique index**, so two rows can never
   carry the same Better Auth subject; the remap moves the Better Auth
-  subject onto the *old* row and retires the freshly created one:
-
+  subject onto the _old_ row and retires the freshly created one:
   1. Get the person's Better Auth user id (the JWT `sub`). The easiest way:
      have them sign in once via Google, which provisions a new `users` row
      carrying that `external_auth_id`; read it from `users`. (You can also
@@ -185,6 +184,7 @@ are gone. What that means for an existing Clerk deployment:
      ```sql
      DELETE FROM users WHERE external_auth_id = '<better auth user id>';
      ```
+
   3. Point the old (Clerk) row at the Better Auth identity:
 
      ```sql
