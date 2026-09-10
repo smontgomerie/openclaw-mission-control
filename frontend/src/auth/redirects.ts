@@ -29,3 +29,20 @@ export function resolveSignInRedirectUrl(rawRedirect: string | null): string {
     return fallback;
   }
 }
+
+/**
+ * "Where the user is" for client-side sign-in surfaces (the Better Auth
+ * sign-in gate): an explicit `?redirect_url=` param wins, otherwise the
+ * current page URL. Pure over the location fields so it tests without
+ * `window`; the result is validated by `resolveSignInRedirectUrl`.
+ */
+export function currentSignInRedirectUrl(
+  pathname: string,
+  search: string,
+): string {
+  const paramRedirect = new URLSearchParams(search).get("redirect_url");
+  if (paramRedirect) {
+    return paramRedirect;
+  }
+  return pathname + search;
+}

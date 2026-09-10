@@ -14,6 +14,7 @@ import {
   isLocalAuthMode,
 } from "@/auth/localAuth";
 import { isBetterAuthMode } from "@/auth/betterAuth";
+import { currentSignInRedirectUrl } from "@/auth/redirects";
 import { BetterAuthLogin } from "@/components/organisms/BetterAuthLogin";
 import { LocalAuthLogin } from "@/components/organisms/LocalAuthLogin";
 
@@ -44,7 +45,20 @@ function BetterAuthGate({ children }: { children: ReactNode }) {
     return <>{children}</>;
   }
 
-  return <BetterAuthLogin />;
+  // Keep the user on the page they were on when they signed out (local mode
+  // just reloads that URL; Clerk middleware preserves it via redirect_url),
+  // instead of the /onboarding fallback. An explicit ?redirect_url= param
+  // (e.g. /sign-in?redirect_url=/boards) wins; the value is validated in
+  // BetterAuthLogin via resolveSignInRedirectUrl.
+  const redirectUrl =
+    typeof window === "undefined"
+      ? null
+      : currentSignInRedirectUrl(
+          window.location.pathname,
+          window.location.search,
+        );
+
+  return <BetterAuthLogin redirectUrl={redirectUrl} />;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

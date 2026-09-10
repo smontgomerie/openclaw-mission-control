@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { resolveSignInRedirectUrl } from "@/auth/redirects";
+import {
+  currentSignInRedirectUrl,
+  resolveSignInRedirectUrl,
+} from "@/auth/redirects";
 
 describe("resolveSignInRedirectUrl", () => {
   afterEach(() => {
@@ -42,5 +45,26 @@ describe("resolveSignInRedirectUrl", () => {
   it("accepts same-origin absolute urls and normalizes to path", () => {
     const url = `${window.location.origin}/boards/new?src=invite#top`;
     expect(resolveSignInRedirectUrl(url)).toBe("/boards/new?src=invite#top");
+  });
+});
+
+describe("currentSignInRedirectUrl", () => {
+  it("prefers an explicit redirect_url param over the current page", () => {
+    expect(
+      currentSignInRedirectUrl("/sign-in", "?redirect_url=%2Fboards"),
+    ).toBe("/boards");
+  });
+
+  it("falls back to the current page when no param is present", () => {
+    expect(currentSignInRedirectUrl("/boards", "?tab=ops")).toBe(
+      "/boards?tab=ops",
+    );
+    expect(currentSignInRedirectUrl("/boards", "")).toBe("/boards");
+  });
+
+  it("ignores an empty redirect_url param and keeps the current page", () => {
+    expect(currentSignInRedirectUrl("/sign-in", "?redirect_url=")).toBe(
+      "/sign-in?redirect_url=",
+    );
   });
 });
