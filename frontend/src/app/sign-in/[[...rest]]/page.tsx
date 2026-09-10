@@ -3,9 +3,11 @@
 import { useSearchParams } from "next/navigation";
 import { SignIn } from "@clerk/nextjs";
 
+import { isBetterAuthMode } from "@/auth/betterAuth";
 import { isClerkEnabled } from "@/auth/clerk";
 import { isLocalAuthMode } from "@/auth/localAuth";
 import { resolveSignInRedirectUrl } from "@/auth/redirects";
+import { BetterAuthLogin } from "@/components/organisms/BetterAuthLogin";
 import { LocalAuthLogin } from "@/components/organisms/LocalAuthLogin";
 
 export default function SignInPage() {
@@ -13,6 +15,13 @@ export default function SignInPage() {
 
   if (isLocalAuthMode()) {
     return <LocalAuthLogin />;
+  }
+
+  if (isBetterAuthMode()) {
+    const redirectUrl = resolveSignInRedirectUrl(
+      searchParams.get("redirect_url"),
+    );
+    return <BetterAuthLogin redirectUrl={redirectUrl} />;
   }
 
   if (!isClerkEnabled()) {

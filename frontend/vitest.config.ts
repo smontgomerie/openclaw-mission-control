@@ -21,6 +21,10 @@ export default defineConfig({
       include: [
         "src/lib/backoff.ts",
         "src/components/activity/ActivityFeed.tsx",
+        "src/auth/betterAuth.ts",
+        "src/auth/betterAuthSession.tsx",
+        "src/auth/tokenSource.ts",
+        "src/components/organisms/BetterAuthLogin.tsx",
       ],
       exclude: ["**/*.d.ts", "src/**/__generated__/**", "src/**/generated/**"],
       thresholds: {

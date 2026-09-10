@@ -2,10 +2,32 @@ import { NextResponse } from "next/server";
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 import { isLikelyValidClerkPublishableKey } from "@/auth/clerkKey";
-import { AuthMode } from "@/auth/mode";
+import { AuthMode, isBetterAuthMode } from "@/auth/mode";
 
+/**
+ * Route protection by mode:
+ *
+ * - clerk: real middleware (clerkMiddleware) — unauthenticated requests are
+ *   redirected to Clerk sign-in before any page/API work.
+ * - local: passthrough — the token screen gates the UI client-side and the
+ *   backend validates the pasted token.
+ * - betterauth: passthrough, deliberately. Better Auth sessions live in
+ *   cookies on this app's origin and the Python backend is the security
+ *   boundary: it verifies the Better Auth JWT statelessly against the JWKS
+ *   and refuses bad credentials. Route protection in this mode stays
+ *   client-side (the SignedIn/SignedOut gates in `@/auth/clerk` plus the
+ *   AuthProvider gate), so we do not add a second, server-side middleware
+ *   piece here. Note: a configured Clerk key must not leak its redirect
+ *   behaviour into a betterauth deployment — hence the explicit mode check.
+ *
+ * (Next.js 16 renamed `middleware.ts` to `proxy.ts`; this file is the live
+ * middleware slot, not dead code.)
+ */
+// Unchanged clerk semantics (enabled when mode is not local AND a valid key
+// exists); betterauth mode must not inherit the Clerk redirect behaviour.
 const isClerkEnabled = () =>
   process.env.NEXT_PUBLIC_AUTH_MODE !== AuthMode.Local &&
+  !isBetterAuthMode() &&
   isLikelyValidClerkPublishableKey(
     process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
   );
