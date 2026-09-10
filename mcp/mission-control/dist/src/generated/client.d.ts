@@ -4,7 +4,7 @@
  * Mission Control API
  * OpenAPI spec version: 0.1.0
  */
-import type { AgentCreate, AgentHealthStatusResponse, AgentHeartbeat, AgentHeartbeatCreate, AgentNudge, AgentRead, AgentUpdate, ApprovalCreate, ApprovalRead, ApprovalUpdate, BlockedTaskError, BoardCreate, BoardFilesystemMemoryContentRead, BoardFilesystemMemoryOverviewRead, BoardGroupCreate, BoardGroupHeartbeatApply, BoardGroupHeartbeatApplyResult, BoardGroupMemoryCreate, BoardGroupMemoryRead, BoardGroupRead, BoardGroupSnapshot, BoardGroupUpdate, BoardMemoryCreate, BoardMemoryRead, BoardOnboardingAgentComplete, BoardOnboardingAgentQuestion, BoardOnboardingAnswer, BoardOnboardingConfirm, BoardOnboardingRead, BoardOnboardingStart, BoardRead, BoardSnapshot, BoardUpdate, BoardWebhookCreate, BoardWebhookIngestResponse, BoardWebhookPayloadRead, BoardWebhookRead, BoardWebhookUpdate, DashboardMetrics, DashboardMetricsApiV1MetricsDashboardGetParams, GatewayBrandRead, GatewayCommandsResponse, GatewayCreate, GatewayFilesystemMemoryContentRead, GatewayFilesystemMemoryOverviewRead, GatewayLeadBroadcastRequest, GatewayLeadBroadcastResponse, GatewayLeadMessageRequest, GatewayLeadMessageResponse, GatewayMainAskUserRequest, GatewayMainAskUserResponse, GatewayRead, GatewaySessionHistoryResponse, GatewaySessionMessageRequest, GatewaySessionResponse, GatewaySessionsResponse, GatewayTemplatesSyncResult, GatewayUpdate, GatewaysStatusApiV1GatewaysStatusGetParams, GatewaysStatusResponse, GetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetParams, GetBoardGroupSnapshotApiV1BoardGroupsGroupIdSnapshotGetParams, GetBoardGroupSnapshotApiV1BoardsBoardIdGroupSnapshotGetParams, GetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetParams, GetGatewaySessionApiV1GatewaysSessionsSessionIdGetParams, GetSessionHistoryApiV1GatewaysSessionsSessionIdHistoryGetParams, GetWebhookPayloadApiV1AgentBoardsBoardIdWebhooksWebhookIdPayloadsPayloadIdGetParams, HTTPValidationError, HealthStatusResponse, InstallMarketplaceSkillApiV1SkillsMarketplaceSkillIdInstallPostParams, LLMErrorResponse, LimitOffsetPageTypeVarCustomizedActivityEventRead, LimitOffsetPageTypeVarCustomizedActivityTaskCommentFeedItemRead, LimitOffsetPageTypeVarCustomizedAgentRead, LimitOffsetPageTypeVarCustomizedApprovalRead, LimitOffsetPageTypeVarCustomizedBoardGroupMemoryRead, LimitOffsetPageTypeVarCustomizedBoardGroupRead, LimitOffsetPageTypeVarCustomizedBoardMemoryRead, LimitOffsetPageTypeVarCustomizedBoardRead, LimitOffsetPageTypeVarCustomizedBoardWebhookPayloadRead, LimitOffsetPageTypeVarCustomizedBoardWebhookRead, LimitOffsetPageTypeVarCustomizedGatewayRead, LimitOffsetPageTypeVarCustomizedOrganizationInviteRead, LimitOffsetPageTypeVarCustomizedOrganizationMemberRead, LimitOffsetPageTypeVarCustomizedTagRead, LimitOffsetPageTypeVarCustomizedTaskCommentRead, LimitOffsetPageTypeVarCustomizedTaskRead, ListActivityApiV1ActivityGetParams, ListAgentsApiV1AgentAgentsGetParams, ListAgentsApiV1AgentsGetParams, ListApprovalsApiV1AgentBoardsBoardIdApprovalsGetParams, ListApprovalsApiV1BoardsBoardIdApprovalsGetParams, ListBoardGroupMemoryApiV1BoardGroupsGroupIdMemoryGetParams, ListBoardGroupMemoryForBoardApiV1BoardsBoardIdGroupMemoryGetParams, ListBoardGroupsApiV1BoardGroupsGetParams, ListBoardMemoryApiV1AgentBoardsBoardIdMemoryGetParams, ListBoardMemoryApiV1BoardsBoardIdMemoryGetParams, ListBoardWebhookPayloadsApiV1BoardsBoardIdWebhooksWebhookIdPayloadsGetParams, ListBoardWebhooksApiV1BoardsBoardIdWebhooksGetParams, ListBoardsApiV1AgentBoardsGetParams, ListBoardsApiV1BoardsGetParams, ListGatewaySessionsApiV1GatewaysSessionsGetParams, ListGatewaysApiV1GatewaysGetParams, ListMarketplaceSkillsApiV1SkillsMarketplaceGetParams, ListOrgInvitesApiV1OrganizationsMeInvitesGetParams, ListOrgMembersApiV1OrganizationsMeMembersGetParams, ListPortfolioRollEventsApiV1PortfolioRollEventsGetParams, ListTagsApiV1TagsGetParams, ListTaskCommentFeedApiV1ActivityTaskCommentsGetParams, ListTaskCommentsApiV1AgentBoardsBoardIdTasksTaskIdCommentsGetParams, ListTaskCommentsApiV1BoardsBoardIdTasksTaskIdCommentsGetParams, ListTasksApiV1AgentBoardsBoardIdTasksGetParams, ListTasksApiV1BoardsBoardIdTasksGetParams, MarketplaceSkillActionResponse, MarketplaceSkillCardRead, MarketplaceSkillCreate, MarketplaceSkillRead, OkResponse, OrganizationActiveUpdate, OrganizationCreate, OrganizationInviteAccept, OrganizationInviteCreate, OrganizationInviteRead, OrganizationListItem, OrganizationMemberAccessUpdate, OrganizationMemberRead, OrganizationMemberUpdate, OrganizationRead, PortfolioPositionDetailRead, PortfolioPositionRead, PortfolioRationaleUpdate, PortfolioReviewRead, PortfolioReviewRunRequest, PortfolioReviewRunResult, PortfolioRollEventRead, PortfolioSyncRead, SearchApiV1SoulsDirectorySearchGetParams, SendGatewaySessionMessageApiV1GatewaysSessionsSessionIdMessagePostParams, SkillPackCreate, SkillPackRead, SkillPackSyncResponse, SoulUpdateRequest, SoulsDirectoryMarkdownResponse, SoulsDirectorySearchResponse, StreamAgentsApiV1AgentsStreamGetParams, StreamApprovalsApiV1BoardsBoardIdApprovalsStreamGetParams, StreamBoardGroupMemoryApiV1BoardGroupsGroupIdMemoryStreamGetParams, StreamBoardGroupMemoryForBoardApiV1BoardsBoardIdGroupMemoryStreamGetParams, StreamBoardMemoryApiV1BoardsBoardIdMemoryStreamGetParams, StreamTaskCommentFeedApiV1ActivityTaskCommentsStreamGetParams, StreamTasksApiV1BoardsBoardIdTasksStreamGetParams, SyncGatewayTemplatesApiV1GatewaysGatewayIdTemplatesSyncPostParams, TagCreate, TagRead, TagRef, TagUpdate, TaskCommentCreate, TaskCommentRead, TaskCreate, TaskCustomFieldDefinitionCreate, TaskCustomFieldDefinitionRead, TaskCustomFieldDefinitionUpdate, TaskRead, TaskUpdate, TranscriptionDetailRead, TranscriptionEntryRead, TranscriptionSpeakerRenameRequest, TranscriptionSyncRead, UninstallMarketplaceSkillApiV1SkillsMarketplaceSkillIdUninstallPostParams, UpdateAgentApiV1AgentsAgentIdPatchParams, UserRead, UserUpdate } from "./model";
+import type { AgentCreate, AgentHealthStatusResponse, AgentHeartbeat, AgentHeartbeatCreate, AgentNudge, AgentRead, AgentUpdate, ApprovalCreate, ApprovalRead, ApprovalUpdate, BlockedTaskError, BoardCreate, BoardFilesystemMemoryContentRead, BoardFilesystemMemoryOverviewRead, BoardGroupCreate, BoardGroupHeartbeatApply, BoardGroupHeartbeatApplyResult, BoardGroupMemoryCreate, BoardGroupMemoryRead, BoardGroupRead, BoardGroupSnapshot, BoardGroupUpdate, BoardMemoryCreate, BoardMemoryRead, BoardOnboardingAgentComplete, BoardOnboardingAgentQuestion, BoardOnboardingAnswer, BoardOnboardingConfirm, BoardOnboardingRead, BoardOnboardingStart, BoardRead, BoardSnapshot, BoardUpdate, BoardWebhookCreate, BoardWebhookIngestResponse, BoardWebhookPayloadRead, BoardWebhookRead, BoardWebhookUpdate, DashboardMetrics, DashboardMetricsApiV1MetricsDashboardGetParams, GatewayBrandRead, GatewayCommandsResponse, GatewayCreate, GatewayFilesystemMemoryContentRead, GatewayFilesystemMemoryOverviewRead, GatewayLeadBroadcastRequest, GatewayLeadBroadcastResponse, GatewayLeadMessageRequest, GatewayLeadMessageResponse, GatewayMainAskUserRequest, GatewayMainAskUserResponse, GatewayRead, GatewaySessionHistoryResponse, GatewaySessionMessageRequest, GatewaySessionResponse, GatewaySessionsResponse, GatewayTemplatesSyncResult, GatewayUpdate, GatewaysStatusApiV1GatewaysStatusGetParams, GatewaysStatusResponse, GetBoardFilesystemMemoryFileApiV1BoardsBoardIdFilesystemMemoryFileGetParams, GetBoardGroupSnapshotApiV1BoardGroupsGroupIdSnapshotGetParams, GetBoardGroupSnapshotApiV1BoardsBoardIdGroupSnapshotGetParams, GetGatewayFilesystemMemoryFileApiV1GatewaysGatewayIdFilesystemMemoryFileGetParams, GetGatewaySessionApiV1GatewaysSessionsSessionIdGetParams, GetSessionHistoryApiV1GatewaysSessionsSessionIdHistoryGetParams, GetWebhookPayloadApiV1AgentBoardsBoardIdWebhooksWebhookIdPayloadsPayloadIdGetParams, HTTPValidationError, HealthStatusResponse, InstallMarketplaceSkillApiV1SkillsMarketplaceSkillIdInstallPostParams, LLMErrorResponse, LimitOffsetPageTypeVarCustomizedActivityEventRead, LimitOffsetPageTypeVarCustomizedActivityTaskCommentFeedItemRead, LimitOffsetPageTypeVarCustomizedAgentRead, LimitOffsetPageTypeVarCustomizedApprovalRead, LimitOffsetPageTypeVarCustomizedBoardGroupMemoryRead, LimitOffsetPageTypeVarCustomizedBoardGroupRead, LimitOffsetPageTypeVarCustomizedBoardMemoryRead, LimitOffsetPageTypeVarCustomizedBoardRead, LimitOffsetPageTypeVarCustomizedBoardWebhookPayloadRead, LimitOffsetPageTypeVarCustomizedBoardWebhookRead, LimitOffsetPageTypeVarCustomizedGatewayRead, LimitOffsetPageTypeVarCustomizedOrganizationInviteRead, LimitOffsetPageTypeVarCustomizedOrganizationMemberRead, LimitOffsetPageTypeVarCustomizedTagRead, LimitOffsetPageTypeVarCustomizedTaskCommentRead, LimitOffsetPageTypeVarCustomizedTaskRead, ListActivityApiV1ActivityGetParams, ListAgentsApiV1AgentAgentsGetParams, ListAgentsApiV1AgentsGetParams, ListApprovalsApiV1AgentBoardsBoardIdApprovalsGetParams, ListApprovalsApiV1BoardsBoardIdApprovalsGetParams, ListBoardGroupMemoryApiV1BoardGroupsGroupIdMemoryGetParams, ListBoardGroupMemoryForBoardApiV1BoardsBoardIdGroupMemoryGetParams, ListBoardGroupsApiV1BoardGroupsGetParams, ListBoardMemoryApiV1AgentBoardsBoardIdMemoryGetParams, ListBoardMemoryApiV1BoardsBoardIdMemoryGetParams, ListBoardWebhookPayloadsApiV1BoardsBoardIdWebhooksWebhookIdPayloadsGetParams, ListBoardWebhooksApiV1BoardsBoardIdWebhooksGetParams, ListBoardsApiV1AgentBoardsGetParams, ListBoardsApiV1BoardsGetParams, ListGatewaySessionsApiV1GatewaysSessionsGetParams, ListGatewaysApiV1GatewaysGetParams, ListMarketplaceSkillsApiV1SkillsMarketplaceGetParams, ListOrgInvitesApiV1OrganizationsMeInvitesGetParams, ListOrgMembersApiV1OrganizationsMeMembersGetParams, ListPortfolioRollEventsApiV1PortfolioRollEventsGetParams, ListTagsApiV1TagsGetParams, ListTaskCommentFeedApiV1ActivityTaskCommentsGetParams, ListTaskCommentsApiV1AgentBoardsBoardIdTasksTaskIdCommentsGetParams, ListTaskCommentsApiV1BoardsBoardIdTasksTaskIdCommentsGetParams, ListTasksApiV1AgentBoardsBoardIdTasksGetParams, ListTasksApiV1BoardsBoardIdTasksGetParams, ListTranscriptionsApiV1TranscriptionsGetParams, MarketplaceSkillActionResponse, MarketplaceSkillCardRead, MarketplaceSkillCreate, MarketplaceSkillRead, OkResponse, OrganizationActiveUpdate, OrganizationCreate, OrganizationInviteAccept, OrganizationInviteCreate, OrganizationInviteRead, OrganizationListItem, OrganizationMemberAccessUpdate, OrganizationMemberRead, OrganizationMemberUpdate, OrganizationRead, PortfolioPositionDetailRead, PortfolioPositionRead, PortfolioRationaleUpdate, PortfolioReviewRead, PortfolioReviewRunRequest, PortfolioReviewRunResult, PortfolioRollEventRead, PortfolioSyncRead, SearchApiV1SoulsDirectorySearchGetParams, SendGatewaySessionMessageApiV1GatewaysSessionsSessionIdMessagePostParams, SkillPackCreate, SkillPackRead, SkillPackSyncResponse, SoulUpdateRequest, SoulsDirectoryMarkdownResponse, SoulsDirectorySearchResponse, SpeakerBackfillPreviewRead, SpeakerBackfillRunRead, SpeakerBackfillStartRequest, SpeakerDirectoryRead, SpeakerProfileMergeRequest, SpeakerProfileRead, SpeakerProfileRenameRequest, SpeakerSampleConfirmRequest, StreamAgentsApiV1AgentsStreamGetParams, StreamApprovalsApiV1BoardsBoardIdApprovalsStreamGetParams, StreamBoardGroupMemoryApiV1BoardGroupsGroupIdMemoryStreamGetParams, StreamBoardGroupMemoryForBoardApiV1BoardsBoardIdGroupMemoryStreamGetParams, StreamBoardMemoryApiV1BoardsBoardIdMemoryStreamGetParams, StreamTaskCommentFeedApiV1ActivityTaskCommentsStreamGetParams, StreamTasksApiV1BoardsBoardIdTasksStreamGetParams, SyncGatewayTemplatesApiV1GatewaysGatewayIdTemplatesSyncPostParams, TagCreate, TagRead, TagRef, TagUpdate, TaskCommentCreate, TaskCommentRead, TaskCreate, TaskCustomFieldDefinitionCreate, TaskCustomFieldDefinitionRead, TaskCustomFieldDefinitionUpdate, TaskRead, TaskUpdate, TranscriptionDetailRead, TranscriptionEntryRead, TranscriptionSpeakerRenameRequest, TranscriptionSyncRead, UninstallMarketplaceSkillApiV1SkillsMarketplaceSkillIdUninstallPostParams, UpdateAgentApiV1AgentsAgentIdPatchParams, UserRead, UserUpdate } from "./model";
 /**
  * List activity events visible to the calling actor.
  * @summary List Activity
@@ -3248,12 +3248,19 @@ export type listTranscriptionsApiV1TranscriptionsGetResponse200 = {
     data: TranscriptionEntryRead[];
     status: 200;
 };
+export type listTranscriptionsApiV1TranscriptionsGetResponse422 = {
+    data: HTTPValidationError;
+    status: 422;
+};
 export type listTranscriptionsApiV1TranscriptionsGetResponseSuccess = listTranscriptionsApiV1TranscriptionsGetResponse200 & {
     headers: Headers;
 };
-export type listTranscriptionsApiV1TranscriptionsGetResponse = listTranscriptionsApiV1TranscriptionsGetResponseSuccess;
-export declare const getListTranscriptionsApiV1TranscriptionsGetUrl: () => string;
-export declare const listTranscriptionsApiV1TranscriptionsGet: (options?: RequestInit) => Promise<listTranscriptionsApiV1TranscriptionsGetResponse>;
+export type listTranscriptionsApiV1TranscriptionsGetResponseError = listTranscriptionsApiV1TranscriptionsGetResponse422 & {
+    headers: Headers;
+};
+export type listTranscriptionsApiV1TranscriptionsGetResponse = listTranscriptionsApiV1TranscriptionsGetResponseSuccess | listTranscriptionsApiV1TranscriptionsGetResponseError;
+export declare const getListTranscriptionsApiV1TranscriptionsGetUrl: (params?: ListTranscriptionsApiV1TranscriptionsGetParams) => string;
+export declare const listTranscriptionsApiV1TranscriptionsGet: (params?: ListTranscriptionsApiV1TranscriptionsGetParams, options?: RequestInit) => Promise<listTranscriptionsApiV1TranscriptionsGetResponse>;
 /**
  * Enqueue a gateway job to re-run calendar match, titles, and speaker annotation for all processed entries.
  * @summary Reprocess Transcriptions Metadata
@@ -3268,6 +3275,185 @@ export type reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataP
 export type reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostResponse = reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostResponseSuccess;
 export declare const getReprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostUrl: () => string;
 export declare const reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPost: (options?: RequestInit) => Promise<reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostResponse>;
+/**
+ * @summary Get Speaker Directory
+ */
+export type getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponse200 = {
+    data: SpeakerDirectoryRead;
+    status: 200;
+};
+export type getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponseSuccess = getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponse200 & {
+    headers: Headers;
+};
+export type getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponse = getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponseSuccess;
+export declare const getGetSpeakerDirectoryApiV1TranscriptionsSpeakersGetUrl: () => string;
+export declare const getSpeakerDirectoryApiV1TranscriptionsSpeakersGet: (options?: RequestInit) => Promise<getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponse>;
+/**
+ * @summary Preview Speaker Annotation Import
+ */
+export type previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponse200 = {
+    data: SpeakerBackfillPreviewRead;
+    status: 200;
+};
+export type previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponseSuccess = previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponse200 & {
+    headers: Headers;
+};
+export type previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponse = previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponseSuccess;
+export declare const getPreviewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetUrl: () => string;
+export declare const previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet: (options?: RequestInit) => Promise<previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponse>;
+/**
+ * @summary Start Speaker Annotation Import
+ */
+export type startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse202 = {
+    data: SpeakerBackfillRunRead;
+    status: 202;
+};
+export type startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse422 = {
+    data: HTTPValidationError;
+    status: 422;
+};
+export type startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponseSuccess = startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse202 & {
+    headers: Headers;
+};
+export type startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponseError = startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse422 & {
+    headers: Headers;
+};
+export type startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse = startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponseSuccess | startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponseError;
+export declare const getStartSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostUrl: () => string;
+export declare const startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPost: (speakerBackfillStartRequest: SpeakerBackfillStartRequest, options?: RequestInit) => Promise<startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse>;
+/**
+ * @summary Get Speaker Annotation Import
+ */
+export type getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse200 = {
+    data: SpeakerBackfillRunRead;
+    status: 200;
+};
+export type getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse422 = {
+    data: HTTPValidationError;
+    status: 422;
+};
+export type getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponseSuccess = getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse200 & {
+    headers: Headers;
+};
+export type getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponseError = getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse422 & {
+    headers: Headers;
+};
+export type getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse = getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponseSuccess | getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponseError;
+export declare const getGetSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetUrl: (runId: string) => string;
+export declare const getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet: (runId: string, options?: RequestInit) => Promise<getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse>;
+/**
+ * @summary Import Legacy Speakers
+ */
+export type importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponse200 = {
+    data: SpeakerDirectoryRead;
+    status: 200;
+};
+export type importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponseSuccess = importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponse200 & {
+    headers: Headers;
+};
+export type importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponse = importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponseSuccess;
+export declare const getImportLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostUrl: () => string;
+export declare const importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPost: (options?: RequestInit) => Promise<importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponse>;
+/**
+ * @summary Confirm Speaker Sample
+ */
+export type confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse200 = {
+    data: SpeakerProfileRead;
+    status: 200;
+};
+export type confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse422 = {
+    data: HTTPValidationError;
+    status: 422;
+};
+export type confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponseSuccess = confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse200 & {
+    headers: Headers;
+};
+export type confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponseError = confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse422 & {
+    headers: Headers;
+};
+export type confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse = confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponseSuccess | confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponseError;
+export declare const getConfirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostUrl: (sampleId: string) => string;
+export declare const confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPost: (sampleId: string, speakerSampleConfirmRequest: SpeakerSampleConfirmRequest, options?: RequestInit) => Promise<confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse>;
+/**
+ * @summary Reject Speaker Sample
+ */
+export type rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse200 = {
+    data: OkResponse;
+    status: 200;
+};
+export type rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse422 = {
+    data: HTTPValidationError;
+    status: 422;
+};
+export type rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponseSuccess = rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse200 & {
+    headers: Headers;
+};
+export type rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponseError = rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse422 & {
+    headers: Headers;
+};
+export type rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse = rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponseSuccess | rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponseError;
+export declare const getRejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostUrl: (sampleId: string) => string;
+export declare const rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPost: (sampleId: string, options?: RequestInit) => Promise<rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse>;
+/**
+ * @summary Delete Speaker Profile
+ */
+export type deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse200 = {
+    data: OkResponse;
+    status: 200;
+};
+export type deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse422 = {
+    data: HTTPValidationError;
+    status: 422;
+};
+export type deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponseSuccess = deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse200 & {
+    headers: Headers;
+};
+export type deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponseError = deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse422 & {
+    headers: Headers;
+};
+export type deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse = deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponseSuccess | deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponseError;
+export declare const getDeleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteUrl: (profileId: string) => string;
+export declare const deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDelete: (profileId: string, options?: RequestInit) => Promise<deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse>;
+/**
+ * @summary Rename Speaker Profile
+ */
+export type renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse200 = {
+    data: SpeakerProfileRead;
+    status: 200;
+};
+export type renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse422 = {
+    data: HTTPValidationError;
+    status: 422;
+};
+export type renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponseSuccess = renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse200 & {
+    headers: Headers;
+};
+export type renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponseError = renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse422 & {
+    headers: Headers;
+};
+export type renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse = renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponseSuccess | renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponseError;
+export declare const getRenameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchUrl: (profileId: string) => string;
+export declare const renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatch: (profileId: string, speakerProfileRenameRequest: SpeakerProfileRenameRequest, options?: RequestInit) => Promise<renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse>;
+/**
+ * @summary Merge Speaker Profiles
+ */
+export type mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse200 = {
+    data: SpeakerProfileRead;
+    status: 200;
+};
+export type mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse422 = {
+    data: HTTPValidationError;
+    status: 422;
+};
+export type mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponseSuccess = mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse200 & {
+    headers: Headers;
+};
+export type mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponseError = mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse422 & {
+    headers: Headers;
+};
+export type mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse = mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponseSuccess | mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponseError;
+export declare const getMergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostUrl: (profileId: string) => string;
+export declare const mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePost: (profileId: string, speakerProfileMergeRequest: SpeakerProfileMergeRequest, options?: RequestInit) => Promise<mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse>;
 /**
  * Enqueue the configured transcription cron job immediately.
  * @summary Sync Transcriptions Now

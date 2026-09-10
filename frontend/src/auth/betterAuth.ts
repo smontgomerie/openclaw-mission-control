@@ -24,6 +24,63 @@ export { isBetterAuthMode };
 /** Refresh the JWT this long before its `exp` so in-flight calls never 401. */
 const TOKEN_REFRESH_MARGIN_MS = 30_000;
 
+/**
+ * sessionStorage key where a non-interactive client (Cypress, embedded tools)
+ * seeds a Better Auth API key. The app exchanges that key for the same
+ * short-lived session JWT humans get, so one auth code path serves both.
+ */
+export const API_KEY_STORAGE_KEY = "mc_api_key";
+
+export function setSeededApiKey(key: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.sessionStorage.setItem(API_KEY_STORAGE_KEY, key);
+}
+
+export function removeSeededApiKey(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.sessionStorage.removeItem(API_KEY_STORAGE_KEY);
+}
+
+function readSeededApiKey(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return window.sessionStorage.getItem(API_KEY_STORAGE_KEY);
+}
+
+/**
+ * Exchange a seeded API key for a session JWT by hitting the session-gated
+ * `GET /api/auth/token` with the `x-api-key` header (the apiKey plugin's
+ * `enableSessionForAPIKeys` resolves the key to the owner's session context).
+ * No cookie is sent or set; a refused key (revoked / expired / unknown)
+ * simply yields null.
+ */
+export async function exchangeSeededApiKeyForJwt(
+  fetchImpl?: typeof fetch,
+): Promise<string | null> {
+  const impl = fetchImpl ?? fetch;
+  const key = readSeededApiKey();
+  if (!key) {
+    return null;
+  }
+  try {
+    const res = await impl(`${betterAuthClientBaseUrl()}/token`, {
+      headers: { "x-api-key": key },
+    });
+    if (!res.ok) {
+      return null;
+    }
+    const body = (await res.json()) as { token?: string };
+    return body.token ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Response envelope of the Better Auth client (no `throw` configured). */
 type AuthClientResult<T> = {
   data: T | null;
@@ -124,15 +181,23 @@ export async function getBetterAuthToken(options?: {
       const result = await getBetterAuthClient().$fetch<{ token: string }>(
         "/token",
       );
-      if (result.error) {
+      const token = result?.data?.token;
+      if (token) {
+        cached = { token, expiresAtMs: jwtExpiresAtMs(token) };
+        return token;
+      }
+      // No session JWT (signed out — the machine-client case — or a session
+      // error): fall back to the seeded API key exchange. A machine client
+      // has no cookie session, so /token 401s; the exchange mints the same
+      // short-lived JWT from the key instead. This also keeps the 401-retry
+      // in tokenSource.ts working for key-authenticated sessions: a force
+      // refresh re-runs the exchange.
+      const keyToken = await exchangeSeededApiKeyForJwt();
+      if (!keyToken) {
         return null;
       }
-      const token = result.data?.token;
-      if (!token) {
-        return null;
-      }
-      cached = { token, expiresAtMs: jwtExpiresAtMs(token) };
-      return token;
+      cached = { token: keyToken, expiresAtMs: jwtExpiresAtMs(keyToken) };
+      return keyToken;
     } catch {
       // No session / network failure: callers surface the missing credential
       // instead of looping.
@@ -157,7 +222,24 @@ export async function fetchBetterAuthSession(): Promise<BetterAuthSessionData | 
     const result = (await getBetterAuthClient().getSession(
       undefined,
     )) as unknown as AuthClientResult<BetterAuthSessionData>;
-    return result?.data ?? null;
+    const session = result?.data ?? null;
+    if (session) {
+      return session;
+    }
+    // Machine-client mode: no cookie session, but a seeded API key still
+    // resolves to the key owner's session context (x-api-key on
+    // GET /get-session returns the session directly).
+    const key = readSeededApiKey();
+    if (!key) {
+      return null;
+    }
+    const res = await fetch(`${betterAuthClientBaseUrl()}/get-session`, {
+      headers: { "x-api-key": key },
+    });
+    if (!res.ok) {
+      return null;
+    }
+    return (await res.json()) as BetterAuthSessionData;
   } catch {
     return null;
   }

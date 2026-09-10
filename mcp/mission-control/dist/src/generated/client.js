@@ -3064,11 +3064,20 @@ export const updateTagApiV1TagsTagIdPatch = async (tagId, tagUpdate, options) =>
         headers: res.headers,
     };
 };
-export const getListTranscriptionsApiV1TranscriptionsGetUrl = () => {
-    return `/api/v1/transcriptions`;
+export const getListTranscriptionsApiV1TranscriptionsGetUrl = (params) => {
+    const normalizedParams = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+        if (value !== undefined) {
+            normalizedParams.append(key, value === null ? "null" : value.toString());
+        }
+    });
+    const stringifiedParams = normalizedParams.toString();
+    return stringifiedParams.length > 0
+        ? `/api/v1/transcriptions?${stringifiedParams}`
+        : `/api/v1/transcriptions`;
 };
-export const listTranscriptionsApiV1TranscriptionsGet = async (options) => {
-    const res = await fetch(getListTranscriptionsApiV1TranscriptionsGetUrl(), {
+export const listTranscriptionsApiV1TranscriptionsGet = async (params, options) => {
+    const res = await fetch(getListTranscriptionsApiV1TranscriptionsGetUrl(params), {
         ...options,
         method: "GET",
     });
@@ -3089,6 +3098,174 @@ export const reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadata
     const res = await fetch(getReprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostUrl(), {
         ...options,
         method: "POST",
+    });
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+    const data = body ? JSON.parse(body) : {};
+    return {
+        data,
+        status: res.status,
+        headers: res.headers,
+    };
+};
+export const getGetSpeakerDirectoryApiV1TranscriptionsSpeakersGetUrl = () => {
+    return `/api/v1/transcriptions/speakers`;
+};
+export const getSpeakerDirectoryApiV1TranscriptionsSpeakersGet = async (options) => {
+    const res = await fetch(getGetSpeakerDirectoryApiV1TranscriptionsSpeakersGetUrl(), {
+        ...options,
+        method: "GET",
+    });
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+    const data = body ? JSON.parse(body) : {};
+    return {
+        data,
+        status: res.status,
+        headers: res.headers,
+    };
+};
+export const getPreviewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetUrl = () => {
+    return `/api/v1/transcriptions/speakers/annotation-import/preview`;
+};
+export const previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet = async (options) => {
+    const res = await fetch(getPreviewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetUrl(), {
+        ...options,
+        method: "GET",
+    });
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+    const data = body ? JSON.parse(body) : {};
+    return {
+        data,
+        status: res.status,
+        headers: res.headers,
+    };
+};
+export const getStartSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostUrl = () => {
+    return `/api/v1/transcriptions/speakers/annotation-imports`;
+};
+export const startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPost = async (speakerBackfillStartRequest, options) => {
+    const res = await fetch(getStartSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostUrl(), {
+        ...options,
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...options?.headers },
+        body: JSON.stringify(speakerBackfillStartRequest),
+    });
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+    const data = body ? JSON.parse(body) : {};
+    return {
+        data,
+        status: res.status,
+        headers: res.headers,
+    };
+};
+export const getGetSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetUrl = (runId) => {
+    return `/api/v1/transcriptions/speakers/annotation-imports/${runId}`;
+};
+export const getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet = async (runId, options) => {
+    const res = await fetch(getGetSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetUrl(runId), {
+        ...options,
+        method: "GET",
+    });
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+    const data = body ? JSON.parse(body) : {};
+    return {
+        data,
+        status: res.status,
+        headers: res.headers,
+    };
+};
+export const getImportLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostUrl = () => {
+    return `/api/v1/transcriptions/speakers/import-legacy`;
+};
+export const importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPost = async (options) => {
+    const res = await fetch(getImportLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostUrl(), {
+        ...options,
+        method: "POST",
+    });
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+    const data = body ? JSON.parse(body) : {};
+    return {
+        data,
+        status: res.status,
+        headers: res.headers,
+    };
+};
+export const getConfirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostUrl = (sampleId) => {
+    return `/api/v1/transcriptions/speakers/samples/${sampleId}/confirm`;
+};
+export const confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPost = async (sampleId, speakerSampleConfirmRequest, options) => {
+    const res = await fetch(getConfirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostUrl(sampleId), {
+        ...options,
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...options?.headers },
+        body: JSON.stringify(speakerSampleConfirmRequest),
+    });
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+    const data = body ? JSON.parse(body) : {};
+    return {
+        data,
+        status: res.status,
+        headers: res.headers,
+    };
+};
+export const getRejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostUrl = (sampleId) => {
+    return `/api/v1/transcriptions/speakers/samples/${sampleId}/reject`;
+};
+export const rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPost = async (sampleId, options) => {
+    const res = await fetch(getRejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostUrl(sampleId), {
+        ...options,
+        method: "POST",
+    });
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+    const data = body ? JSON.parse(body) : {};
+    return {
+        data,
+        status: res.status,
+        headers: res.headers,
+    };
+};
+export const getDeleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteUrl = (profileId) => {
+    return `/api/v1/transcriptions/speakers/${profileId}`;
+};
+export const deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDelete = async (profileId, options) => {
+    const res = await fetch(getDeleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteUrl(profileId), {
+        ...options,
+        method: "DELETE",
+    });
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+    const data = body ? JSON.parse(body) : {};
+    return {
+        data,
+        status: res.status,
+        headers: res.headers,
+    };
+};
+export const getRenameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchUrl = (profileId) => {
+    return `/api/v1/transcriptions/speakers/${profileId}`;
+};
+export const renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatch = async (profileId, speakerProfileRenameRequest, options) => {
+    const res = await fetch(getRenameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchUrl(profileId), {
+        ...options,
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...options?.headers },
+        body: JSON.stringify(speakerProfileRenameRequest),
+    });
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+    const data = body ? JSON.parse(body) : {};
+    return {
+        data,
+        status: res.status,
+        headers: res.headers,
+    };
+};
+export const getMergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostUrl = (profileId) => {
+    return `/api/v1/transcriptions/speakers/${profileId}/merge`;
+};
+export const mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePost = async (profileId, speakerProfileMergeRequest, options) => {
+    const res = await fetch(getMergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostUrl(profileId), {
+        ...options,
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...options?.headers },
+        body: JSON.stringify(speakerProfileMergeRequest),
     });
     const body = [204, 205, 304].includes(res.status) ? null : await res.text();
     const data = body ? JSON.parse(body) : {};

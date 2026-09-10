@@ -18,6 +18,18 @@ See `.env.example` for defaults and required values.
 - **When required:** `AUTH_MODE=local`
 - **Policy:** Must be non-placeholder and at least 50 characters.
 
+### `MISSION_CONTROL_TOKEN` / `MISSION_CONTROL_API_KEY` (machine clients)
+
+- **Where set:** the environment of each machine client process (MCP
+  server, portfolio-sync cron, Cypress) — not the compose `.env`.
+- **When required:** at least one credential per client: either
+  `MISSION_CONTROL_TOKEN` (legacy shared local token) **or**
+  `MISSION_CONTROL_API_KEY` (`mc_` Better Auth API key) together with
+  `MISSION_CONTROL_BETTER_AUTH_URL` (the app origin).
+- **Policy:** prefer per-client API keys; see
+  [Authentication — Machine clients](authentication.md#machine-clients-better-auth-api-keys)
+  for issue / scope / revoke.
+
 ### `WEBHOOK_MAX_PAYLOAD_BYTES`
 
 - **Default:** `1048576` (1 MiB)

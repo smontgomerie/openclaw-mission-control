@@ -1,6 +1,26 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { resetApiKeyJwtCache } from "../src/apiKeyJwt.js";
+import { MissionControlApiError } from "../src/http.js";
 import { portfolioListPositions, portfolioListReviews, portfolioSaveRationale } from "../src/tools/portfolio.js";
+/** Unverified structural JWT with a real `exp` claim, good enough for the cache. */
+function makeJwt(expSeconds) {
+    const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString("base64url");
+    return `${b64({ alg: "none", typ: "JWT" })}.${b64({ sub: "u1", exp: expSeconds })}.sig`;
+}
+function json(body, status = 200) {
+    return new Response(JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json" },
+    });
+}
+const KEY_CONFIG = {
+    baseUrl: "http://mission-control.test",
+    apiKey: "mc_test-key",
+    betterAuthUrl: "http://auth.test",
+    timeoutMs: 10_000,
+};
+const futureExp = () => Math.floor(Date.now() / 1000) + 15 * 60;
 const config = {
     baseUrl: "http://mission-control.test",
     token: "secret-token",
@@ -81,6 +101,81 @@ test("portfolioSaveRationale sends the expected payload", async () => {
         assert.equal(detail.rationale?.why, "Support");
     }
     finally {
+        restore();
+    }
+});
+test("key mode exchanges the API key for a JWT and attaches it as bearer", async () => {
+    resetApiKeyJwtCache();
+    const jwt = makeJwt(futureExp());
+    const seen = [];
+    const restore = installFetchStub(async (input, init) => {
+        const url = String(input);
+        seen.push(url);
+        if (url.startsWith("http://auth.test")) {
+            assert.equal(new Headers(init?.headers).get("x-api-key"), "mc_test-key");
+            return json({ token: jwt });
+        }
+        assert.equal(new Headers(init?.headers).get("Authorization"), `Bearer ${jwt}`);
+        return json([{ position_key: "aapl-1", ticker: "AAPL", latest_flags: [], needs_rationale: false }]);
+    });
+    try {
+        const positions = await portfolioListPositions(KEY_CONFIG, {});
+        assert.equal(positions.length, 1);
+        // Exactly one exchange (cached for the JWT lifetime) plus the API call.
+        assert.deepEqual(seen, ["http://auth.test/api/auth/token", "http://mission-control.test/api/v1/portfolio/positions"]);
+    }
+    finally {
+        resetApiKeyJwtCache();
+        restore();
+    }
+});
+test("key mode: a 401 forces one re-exchange and retries the call once", async () => {
+    resetApiKeyJwtCache();
+    const stale = makeJwt(futureExp());
+    const fresh = makeJwt(futureExp());
+    let exchanges = 0;
+    let apiCalls = 0;
+    const restore = installFetchStub(async (input, init) => {
+        const url = String(input);
+        if (url.startsWith("http://auth.test")) {
+            exchanges += 1;
+            return json({ token: exchanges === 1 ? stale : fresh });
+        }
+        apiCalls += 1;
+        if (apiCalls === 1) {
+            assert.equal(new Headers(init?.headers).get("Authorization"), `Bearer ${stale}`);
+            return json({ detail: "token expired" }, 401);
+        }
+        assert.equal(new Headers(init?.headers).get("Authorization"), `Bearer ${fresh}`);
+        return json([]);
+    });
+    try {
+        const positions = await portfolioListPositions(KEY_CONFIG, {});
+        assert.deepEqual(positions, []);
+        assert.equal(exchanges, 2);
+        assert.equal(apiCalls, 2);
+    }
+    finally {
+        resetApiKeyJwtCache();
+        restore();
+    }
+});
+test("key mode: a refused exchange surfaces as an error and never reaches the backend", async () => {
+    resetApiKeyJwtCache();
+    let backendCalls = 0;
+    const restore = installFetchStub(async (input) => {
+        if (String(input).startsWith("http://auth.test")) {
+            return json({ error: "Invalid API key" }, 401);
+        }
+        backendCalls += 1;
+        return json([]);
+    });
+    try {
+        await assert.rejects(portfolioListPositions(KEY_CONFIG, {}), (err) => err instanceof MissionControlApiError && err.status === 0);
+        assert.equal(backendCalls, 0);
+    }
+    finally {
+        resetApiKeyJwtCache();
         restore();
     }
 });

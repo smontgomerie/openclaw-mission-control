@@ -199,6 +199,68 @@ are gone. What that means for an existing Clerk deployment:
   know the Better Auth user id up front you can skip step 1 and run only the
   `UPDATE`.
 
+## Machine clients (Better Auth API keys)
+
+Non-interactive clients — the [MCP server](../../mcp/mission-control),
+the portfolio-sync cron (`scripts/openclaw-portfolio-sync.mjs`), and the
+Cypress e2e harness — authenticate **as a user** without a Google consent
+screen. They do not share the `LOCAL_AUTH_TOKEN` bearer anymore; each
+client carries its own **Better Auth API key** (`mc_...`), which is
+individually scoped and revocable.
+
+### How the key reaches the backend
+
+Keys are verified by Better Auth in the **Next.js app**; the machine clients
+talk to the **FastAPI backend**. The two are bridged client-side, so no new
+trust relationship exists between backend and frontend:
+
+1. The client sends its key to `GET {BETTER_AUTH_BASE_URL}/api/auth/token`
+   in an `x-api-key` header. With `enableSessionForAPIKeys`, Better Auth
+   resolves the key to its owner's session context and mints the same
+   15-minute session JWT a human browser gets.
+2. The client calls the FastAPI backend with `Authorization: Bearer <jwt>`,
+   which the backend verifies statelessly against `GET /api/auth/jwks`
+   (the existing `AUTH_MODE=betterauth` path). A raw `mc_` key sent
+   straight to the backend is **not** a credential there — it 401s.
+
+Consequences:
+
+- **Revocation window:** a deleted/disabled key is refused at the *exchange*
+  instantly, but a JWT already in a client's hands keeps working until it
+  expires (≤15 minutes). Clients cache the exchanged JWT for its lifetime
+  (minus a 30 s refresh margin) and, on a 401, force one re-exchange and
+  retry once — so revocation takes effect on the client's next call after
+  the cached JWT has aged past its margin or the 401-retry fires.
+- **Abuse control:** the global per-key rate limit (10 req/day) is
+  disabled because machine clients re-exchange their JWT about 96 times a
+  day; operators cap individual keys instead (`rateLimitMax` /
+  `rateLimitTimeWindow` at create time) or disable/delete them.
+
+### Client configuration
+
+| Client | Env | Notes |
+| ------ | --- | ----- |
+| MCP (`mcp/mission-control`) | `MISSION_CONTROL_API_KEY` + `MISSION_CONTROL_BETTER_AUTH_URL` | `MISSION_CONTROL_BETTER_AUTH_URL` is the app origin (e.g. `http://localhost:3000`), **not** the backend URL. Set both for key mode; when a key is present it takes precedence over `MISSION_CONTROL_TOKEN`, which stays as the local-mode fallback. |
+| Portfolio sync cron | `MISSION_CONTROL_API_KEY` + `MISSION_CONTROL_BETTER_AUTH_URL` | One-shot: exchanges once per run, no in-process cache; a 401 triggers one re-exchange + one retry. `MISSION_CONTROL_TOKEN` still works for local mode. |
+| Cypress e2e | `CYPRESS_BETTER_AUTH_API_KEY=mc_...` | `betterauth_api_key.cy.ts` seeds the key into the app's sessionStorage and skips when unset. The app exchanges the key itself, exactly like a browser with a session. |
+
+### Operator runbook: issue, scope, revoke
+
+All of this is done as a signed-in Better Auth user (the app's session
+cookie), against the app origin:
+
+1. **Issue** — `POST /api/auth/api-key/create` with
+   `{ "key": "mc_<64+ random chars>", "name": "mcp-scott", "expiresIn": 2592000 }`
+   (seconds; the plugin enforces a minimum of 1 day). The **full key is
+   returned only in this response** — store it; later reads show a prefix.
+2. **List / scope** — `GET /api/auth/api-key/list`; narrow a key with
+   `POST /api/auth/api-key/update` (`keyId` + `expiresIn`, `rateLimitMax`,
+   `rateLimitTimeWindow`, `disabled`).
+3. **Revoke** — disable or delete immediately:
+   `POST /api/auth/api-key/delete` with `{ "keyId": "..." }` (delete also
+   clears the row's expiry). Existing exchanged JWTs die with their 15 m
+   `exp`; the exchange itself is refused from the moment of revocation.
+
 ## Agent authentication
 
 Autonomous agents primarily authenticate via an `X-Agent-Token` header. On shared user/agent routes, the backend also accepts `Authorization: Bearer <agent-token>` after user auth does not resolve. See [API reference](api.md) for details.
