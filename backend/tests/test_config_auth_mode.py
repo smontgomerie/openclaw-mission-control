@@ -134,3 +134,75 @@ def test_base_url_is_normalized_without_trailing_slash() -> None:
     )
 
     assert settings.base_url == BASE_URL
+
+
+BETTER_AUTH_ISSUER = "http://localhost:3000"
+BETTER_AUTH_JWKS_URL = "http://localhost:3000/api/auth/jwks"
+
+
+def test_betterauth_mode_requires_jwks_url() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="BETTER_AUTH_JWKS_URL must be an absolute http\\(s\\) URL when AUTH_MODE=betterauth",
+    ):
+        Settings(
+            _env_file=None,
+            auth_mode=AuthMode.BETTER_AUTH,
+            betterauth_jwks_url="",
+            betterauth_issuer=BETTER_AUTH_ISSUER,
+            base_url=BASE_URL,
+        )
+
+
+def test_betterauth_mode_rejects_relative_jwks_url() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="BETTER_AUTH_JWKS_URL must be an absolute http\\(s\\) URL when AUTH_MODE=betterauth",
+    ):
+        Settings(
+            _env_file=None,
+            auth_mode=AuthMode.BETTER_AUTH,
+            betterauth_jwks_url="/api/auth/jwks",
+            betterauth_issuer=BETTER_AUTH_ISSUER,
+            base_url=BASE_URL,
+        )
+
+
+def test_betterauth_mode_requires_issuer() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="BETTER_AUTH_ISSUER must be set and non-empty when AUTH_MODE=betterauth",
+    ):
+        Settings(
+            _env_file=None,
+            auth_mode=AuthMode.BETTER_AUTH,
+            betterauth_jwks_url=BETTER_AUTH_JWKS_URL,
+            betterauth_issuer="",
+            base_url=BASE_URL,
+        )
+
+
+def test_betterauth_mode_accepts_config_and_defaults_audience_to_issuer() -> None:
+    settings = Settings(
+        _env_file=None,
+        auth_mode=AuthMode.BETTER_AUTH,
+        betterauth_jwks_url=BETTER_AUTH_JWKS_URL,
+        betterauth_issuer=BETTER_AUTH_ISSUER,
+        base_url=BASE_URL,
+    )
+    assert settings.auth_mode == AuthMode.BETTER_AUTH
+    assert settings.betterauth_jwks_url == BETTER_AUTH_JWKS_URL
+    # Audience defaults to the issuer (Better Auth sets iss = aud).
+    assert settings.betterauth_audience == BETTER_AUTH_ISSUER
+
+
+def test_betterauth_mode_keeps_explicit_audience() -> None:
+    settings = Settings(
+        _env_file=None,
+        auth_mode=AuthMode.BETTER_AUTH,
+        betterauth_jwks_url=BETTER_AUTH_JWKS_URL,
+        betterauth_issuer=BETTER_AUTH_ISSUER,
+        betterauth_audience="https://mc.example.com",
+        base_url=BASE_URL,
+    )
+    assert settings.betterauth_audience == "https://mc.example.com"
