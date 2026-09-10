@@ -12,7 +12,7 @@ export interface UserRead {
     context?: string | null;
     /** Primary email address for the user. */
     email?: string | null;
-    /** External auth provider user identifier (Clerk, local auth, or other). */
+    /** External auth provider user identifier (Better Auth, local auth, or other). */
     external_auth_id: string;
     /** Internal user UUID. */
     id: string;

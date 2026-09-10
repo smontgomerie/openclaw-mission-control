@@ -122,7 +122,7 @@ export function parseAllowedGoogleDomains(raw: string | undefined): string[] {
 /**
  * The env vars that must be valid for the app to boot with Better Auth at all.
  * Used by `instrumentation.ts` at server start (loud log, not crash): the
- * local/clerk flows keep working while these are unset; only the
+ * the local flow keeps working while these are unset; only the
  * `/api/auth/*` routes fail.
  */
 export function requireCoreBetterAuthEnv(

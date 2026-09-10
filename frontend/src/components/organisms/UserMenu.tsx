@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
-import { SignOutButton, useUser } from "@/auth/clerk";
+import { SignOutButton, useUser } from "@/auth/session";
 import { clearLocalAuthToken, isLocalAuthMode } from "@/auth/localAuth";
 import {
   Activity,

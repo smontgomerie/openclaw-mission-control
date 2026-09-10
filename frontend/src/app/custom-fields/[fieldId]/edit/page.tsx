@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import { useAuth } from "@/auth/clerk";
+import { useAuth } from "@/auth/session";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "@/api/mutator";
@@ -120,7 +120,6 @@ export default function EditCustomFieldPage() {
       signedOut={{
         message: "Sign in to manage custom fields.",
         forceRedirectUrl: "/custom-fields",
-        signUpForceRedirectUrl: "/custom-fields",
       }}
       title="Edit custom field"
       description="Update custom-field metadata and board bindings."

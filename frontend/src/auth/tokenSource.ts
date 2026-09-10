@@ -9,32 +9,8 @@
 //   retry, so streams and long-running calls outliving the 15-minute JWT
 //   lifetime reconnect with a fresh credential instead of surfacing a 401.
 // - local: the pasted token from sessionStorage (unchanged).
-// - clerk: the Clerk session token (unchanged).
 import { getBetterAuthToken, isBetterAuthMode } from "@/auth/betterAuth";
 import { getLocalAuthToken, isLocalAuthMode } from "@/auth/localAuth";
-
-type ClerkSession = {
-  getToken: () => Promise<string>;
-};
-
-type ClerkGlobal = {
-  session?: ClerkSession | null;
-};
-
-const resolveClerkToken = async (): Promise<string | null> => {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  const clerk = (window as unknown as { Clerk?: ClerkGlobal }).Clerk;
-  if (!clerk?.session) {
-    return null;
-  }
-  try {
-    return await clerk.session.getToken();
-  } catch {
-    return null;
-  }
-};
 
 /** Pick the bearer token for the active auth mode (null when none available). */
 export async function resolveBearerToken(): Promise<string | null> {
@@ -44,7 +20,8 @@ export async function resolveBearerToken(): Promise<string | null> {
   if (isLocalAuthMode()) {
     return getLocalAuthToken();
   }
-  return resolveClerkToken();
+  // No known mode: nothing to attach.
+  return null;
 }
 
 /**

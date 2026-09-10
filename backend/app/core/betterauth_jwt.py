@@ -50,10 +50,10 @@ JWKS_FETCH_TIMEOUT_SECONDS = 5.0
 #: After re-fetching for a kid that is still missing, do not re-fetch
 #: again for this long (keeps rejected tokens from hammering the endpoint).
 MISSING_KID_REFETCH_LIMIT_SECONDS = 60.0
-#: Clock leeway when validating `exp`, matching the repo's Clerk pattern
-#: (`clerk_leeway`): the JWKS issuer (the Next.js app's origin) and this
-#: backend can skew by a few seconds, and a valid 15-minute session token
-#: must not be refused in its final seconds because of clock drift.
+#: Clock leeway when validating `exp`: the JWKS issuer (the Next.js app's
+#: origin) and this backend can skew by a few seconds, and a valid 15-minute
+#: session token must not be refused in its final seconds because of clock
+#: drift.
 CLOCK_LEEWAY_SECONDS = 10.0
 
 _RSA_ALGORITHMS = frozenset({"RS256", "RS384", "RS512", "PS256", "PS384", "PS512"})

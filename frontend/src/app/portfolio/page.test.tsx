@@ -13,7 +13,7 @@ const fetchPortfolioRollEventsMock = vi.hoisted(() => vi.fn());
 const syncPortfolioNowMock = vi.hoisted(() => vi.fn());
 const updatePortfolioRationaleMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/auth/clerk", () => ({
+vi.mock("@/auth/session", () => ({
   useAuth: () => ({ isSignedIn: true }),
 }));
 
@@ -66,7 +66,14 @@ vi.mock("@/components/ui/input", () => ({
     value: string;
     onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
     placeholder?: string;
-  }) => <input id={id} value={value} onChange={onChange} placeholder={placeholder} />,
+  }) => (
+    <input
+      id={id}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+    />
+  ),
 }));
 
 vi.mock("@/components/ui/textarea", () => ({
@@ -116,7 +123,9 @@ describe("PortfolioPage", () => {
         unrealized_pnl_pct: 52.3,
         dte: 28,
         needs_rationale: true,
-        latest_flags: [{ code: "profit_target_hit", headline: "50% premium captured" }],
+        latest_flags: [
+          { code: "profit_target_hit", headline: "50% premium captured" },
+        ],
       },
     ]);
     fetchPortfolioReviewsMock.mockResolvedValue([
@@ -135,7 +144,9 @@ describe("PortfolioPage", () => {
       unrealized_pnl_pct: 52.3,
       dte: 28,
       needs_rationale: true,
-      latest_flags: [{ code: "profit_target_hit", headline: "50% premium captured" }],
+      latest_flags: [
+        { code: "profit_target_hit", headline: "50% premium captured" },
+      ],
       rationale_history: [],
       latest_review_id: "2026-03-20",
       latest_review_summary_markdown: "# Action now\n\n- Close early.",
@@ -201,12 +212,18 @@ describe("PortfolioPage", () => {
       expect(screen.getByText("Save rationale")).toBeTruthy();
     });
 
-    fireEvent.change(screen.getByPlaceholderText("wheel / csp / covered_call"), {
-      target: { value: "wheel" },
-    });
-    fireEvent.change(screen.getByPlaceholderText("income, wheel, high-conviction"), {
-      target: { value: "wheel" },
-    });
+    fireEvent.change(
+      screen.getByPlaceholderText("wheel / csp / covered_call"),
+      {
+        target: { value: "wheel" },
+      },
+    );
+    fireEvent.change(
+      screen.getByPlaceholderText("income, wheel, high-conviction"),
+      {
+        target: { value: "wheel" },
+      },
+    );
     fireEvent.change(screen.getByLabelText("Why this trade"), {
       target: { value: "Support held" },
     });
@@ -294,7 +311,11 @@ describe("PortfolioPage", () => {
       expect(fetchPortfolioPositionsMock).toHaveBeenCalledTimes(2);
     });
 
-    expect(screen.getByText("Sync queued. Latest data may take a few seconds to appear.")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Sync queued. Latest data may take a few seconds to appear.",
+      ),
+    ).toBeTruthy();
   });
 
   it("shows the gateway error when sync fails", async () => {

@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 
-import { useAuth } from "@/auth/clerk";
+import { useAuth } from "@/auth/session";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "@/api/mutator";
@@ -83,7 +83,6 @@ export default function CustomFieldsPage() {
         signedOut={{
           message: "Sign in to manage custom fields.",
           forceRedirectUrl: "/custom-fields",
-          signUpForceRedirectUrl: "/custom-fields",
         }}
         title="Custom fields"
         description={`${customFields.length} custom field${customFields.length === 1 ? "" : "s"} configured for this organization.`}

@@ -65,7 +65,7 @@ export function BetterAuthLogin({
     try {
       // `resolveSignInRedirectUrl` validates the callback (relative, same-
       // origin) and is SSR-safe; the default lands on the shared sign-in
-      // fallback (/onboarding or NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL).
+      // fallback (/onboarding or NEXT_PUBLIC_SIGN_IN_FALLBACK_REDIRECT_URL).
       await signInWithGoogle(resolveSignInRedirectUrl(redirectUrl ?? null));
       // The social flow normally ends in a full-page redirect to Google and
       // back; when it completes in-page, re-run the gate.

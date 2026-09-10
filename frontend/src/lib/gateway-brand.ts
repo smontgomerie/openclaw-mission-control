@@ -7,8 +7,11 @@ export type GatewayBrand = {
 };
 
 export const fetchGatewayBrand = async (): Promise<GatewayBrand> => {
-  const response = await customFetch<{ data: GatewayBrand }>("/api/v1/gateways/brand", {
-    method: "GET",
-  });
+  const response = await customFetch<{ data: GatewayBrand }>(
+    "/api/v1/gateways/brand",
+    {
+      method: "GET",
+    },
+  );
   return response.data;
 };

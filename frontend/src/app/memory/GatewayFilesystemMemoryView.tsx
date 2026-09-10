@@ -38,9 +38,8 @@ export function GatewayFilesystemMemoryView({
   gatewayId,
 }: GatewayFilesystemMemoryViewProps) {
   const [reloadToken, setReloadToken] = useState(0);
-  const [overview, setOverview] = useState<GatewayFilesystemMemoryOverview | null>(
-    null,
-  );
+  const [overview, setOverview] =
+    useState<GatewayFilesystemMemoryOverview | null>(null);
   const [overviewError, setOverviewError] = useState<string | null>(null);
   const [isOverviewLoading, setIsOverviewLoading] = useState(false);
 
@@ -79,7 +78,8 @@ export function GatewayFilesystemMemoryView({
         if (cancelled) return;
         setOverview(data);
         setSelectedPath(
-          (current) => current ?? selectInitialGatewayFilesystemMemoryPath(data),
+          (current) =>
+            current ?? selectInitialGatewayFilesystemMemoryPath(data),
         );
       })
       .catch((error: unknown) => {
@@ -102,7 +102,8 @@ export function GatewayFilesystemMemoryView({
   }, [active, gatewayId, overview, reloadToken]);
 
   useEffect(() => {
-    if (!active || !gatewayId || !selectedPath || fileCache[selectedPath]) return;
+    if (!active || !gatewayId || !selectedPath || fileCache[selectedPath])
+      return;
 
     let cancelled = false;
     setIsSelectedLoading(true);
@@ -132,7 +133,7 @@ export function GatewayFilesystemMemoryView({
     };
   }, [active, fileCache, gatewayId, selectedPath]);
 
-  const selectedFile = selectedPath ? fileCache[selectedPath] ?? null : null;
+  const selectedFile = selectedPath ? (fileCache[selectedPath] ?? null) : null;
 
   const filteredDailyFiles = useMemo(() => {
     return dailyFiles.filter((file) =>
@@ -258,7 +259,8 @@ export function GatewayFilesystemMemoryView({
               <div className="px-5 py-4">
                 {!longTermMemory ? (
                   <p className="text-sm text-slate-500">
-                    `MEMORY.md` is not available in the gateway main workspace yet.
+                    `MEMORY.md` is not available in the gateway main workspace
+                    yet.
                   </p>
                 ) : !longTermMatches ? (
                   <p className="text-sm text-slate-500">
@@ -266,7 +268,10 @@ export function GatewayFilesystemMemoryView({
                   </p>
                 ) : (
                   <div className="select-text cursor-text break-words text-sm leading-relaxed text-slate-900">
-                    <Markdown content={longTermMemory.content} variant="basic" />
+                    <Markdown
+                      content={longTermMemory.content}
+                      variant="basic"
+                    />
                   </div>
                 )}
               </div>
@@ -281,7 +286,9 @@ export function GatewayFilesystemMemoryView({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => quickPaths.today && setSelectedPath(quickPaths.today)}
+                  onClick={() =>
+                    quickPaths.today && setSelectedPath(quickPaths.today)
+                  }
                   disabled={!quickPaths.today}
                 >
                   Today
@@ -290,7 +297,8 @@ export function GatewayFilesystemMemoryView({
                   variant="outline"
                   size="sm"
                   onClick={() =>
-                    quickPaths.yesterday && setSelectedPath(quickPaths.yesterday)
+                    quickPaths.yesterday &&
+                    setSelectedPath(quickPaths.yesterday)
                   }
                   disabled={!quickPaths.yesterday}
                 >
@@ -299,7 +307,9 @@ export function GatewayFilesystemMemoryView({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => quickPaths.latest && setSelectedPath(quickPaths.latest)}
+                  onClick={() =>
+                    quickPaths.latest && setSelectedPath(quickPaths.latest)
+                  }
                   disabled={!quickPaths.latest}
                 >
                   Latest
@@ -317,9 +327,12 @@ export function GatewayFilesystemMemoryView({
           <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
             <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 px-5 py-4">
-                <p className="text-sm font-semibold text-slate-900">Daily memory</p>
+                <p className="text-sm font-semibold text-slate-900">
+                  Daily memory
+                </p>
                 <p className="mt-1 text-xs text-slate-500">
-                  {filteredDailyFiles.length} of {dailyFiles.length} files visible
+                  {filteredDailyFiles.length} of {dailyFiles.length} files
+                  visible
                 </p>
               </div>
               <div className="max-h-[720px] overflow-y-auto p-3">
@@ -331,31 +344,33 @@ export function GatewayFilesystemMemoryView({
                   </p>
                 ) : (
                   <div className="space-y-1.5">
-                    {filteredDailyFiles.map((file: GatewayFilesystemMemoryFile) => (
-                      <button
-                        key={file.path}
-                        type="button"
-                        onClick={() => setSelectedPath(file.path)}
-                        className={cn(
-                          "w-full rounded-xl border px-3 py-2.5 text-left transition",
-                          selectedPath === file.path
-                            ? "border-slate-900 bg-slate-900 text-white"
-                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50",
-                        )}
-                      >
-                        <p className="text-sm font-semibold">{file.label}</p>
-                        <p
+                    {filteredDailyFiles.map(
+                      (file: GatewayFilesystemMemoryFile) => (
+                        <button
+                          key={file.path}
+                          type="button"
+                          onClick={() => setSelectedPath(file.path)}
                           className={cn(
-                            "mt-1 text-[11px]",
+                            "w-full rounded-xl border px-3 py-2.5 text-left transition",
                             selectedPath === file.path
-                              ? "text-slate-200"
-                              : "text-slate-500",
+                              ? "border-slate-900 bg-slate-900 text-white"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50",
                           )}
                         >
-                          {file.path}
-                        </p>
-                      </button>
-                    ))}
+                          <p className="text-sm font-semibold">{file.label}</p>
+                          <p
+                            className={cn(
+                              "mt-1 text-[11px]",
+                              selectedPath === file.path
+                                ? "text-slate-200"
+                                : "text-slate-500",
+                            )}
+                          >
+                            {file.path}
+                          </p>
+                        </button>
+                      ),
+                    )}
                   </div>
                 )}
               </div>

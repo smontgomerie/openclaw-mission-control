@@ -14,7 +14,7 @@ class UserBase(SQLModel):
     """Common user profile fields shared across user payload schemas."""
 
     external_auth_id: str = Field(
-        description="External auth provider user identifier (Clerk, local auth, or other).",
+        description="External auth provider user identifier (Better Auth, local auth, or other).",
         examples=["user_2abcXYZ"],
     )
     email: str | None = Field(

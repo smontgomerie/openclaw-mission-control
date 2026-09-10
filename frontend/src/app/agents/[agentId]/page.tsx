@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
-import { SignInButton, SignedIn, SignedOut, useAuth } from "@/auth/clerk";
+import { SignInButton, SignedIn, SignedOut, useAuth } from "@/auth/session";
 
 import { ApiError } from "@/api/mutator";
 import {
@@ -150,11 +150,7 @@ export default function AgentDetailPage() {
       <SignedOut>
         <div className="flex h-full flex-col items-center justify-center gap-4 rounded-2xl surface-panel p-10 text-center">
           <p className="text-sm text-muted">Sign in to view agents.</p>
-          <SignInButton
-            mode="modal"
-            forceRedirectUrl="/agents"
-            signUpForceRedirectUrl="/agents"
-          >
+          <SignInButton forceRedirectUrl="/agents">
             <Button>Sign in</Button>
           </SignInButton>
         </div>

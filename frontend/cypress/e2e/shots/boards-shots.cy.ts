@@ -37,7 +37,7 @@ describe("Boards flow-capture shots", () => {
       statusCode: 200,
       body: {
         id: "u1",
-        external_auth_id: "clerk_u1",
+        external_auth_id: "ext_u1",
         email,
         name: "Jane Test",
         preferred_name: "Jane",

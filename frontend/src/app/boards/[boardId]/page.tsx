@@ -10,7 +10,7 @@ import {
   useSearchParams,
 } from "next/navigation";
 
-import { SignInButton, SignedIn, SignedOut, useAuth } from "@/auth/clerk";
+import { SignInButton, SignedIn, SignedOut, useAuth } from "@/auth/session";
 import {
   Activity,
   ArrowUpRight,
@@ -870,7 +870,9 @@ export default function BoardDetailPage() {
   const openedTaskIdFromUrlRef = useRef<string | null>(null);
   const openedPanelFromUrlRef = useRef<string | null>(null);
   const [comments, setComments] = useState<TaskComment[]>([]);
-  const [highlightedCommentId, setHighlightedCommentId] = useState<string | null>(null);
+  const [highlightedCommentId, setHighlightedCommentId] = useState<
+    string | null
+  >(null);
   const [liveFeed, setLiveFeed] = useState<LiveFeedItem[]>([]);
   const liveFeedRef = useRef<LiveFeedItem[]>([]);
   const liveFeedFlashTimersRef = useRef<Record<string, number>>({});
@@ -2434,9 +2436,12 @@ export default function BoardDetailPage() {
         currentTaskIdFromUrl !== fullTask.id ||
         currentCommentIdFromUrl !== targetCommentId
       ) {
-        router.replace(buildUrlWithTaskAndComment(fullTask.id, targetCommentId), {
-          scroll: false,
-        });
+        router.replace(
+          buildUrlWithTaskAndComment(fullTask.id, targetCommentId),
+          {
+            scroll: false,
+          },
+        );
       }
       selectedTaskIdRef.current = fullTask.id;
       setSelectedTask(fullTask);
@@ -3110,11 +3115,7 @@ export default function BoardDetailPage() {
       <SignedOut>
         <div className="flex h-full flex-col items-center justify-center gap-4 rounded-2xl surface-panel p-10 text-center">
           <p className="text-sm text-muted">Sign in to view boards.</p>
-          <SignInButton
-            mode="modal"
-            forceRedirectUrl="/boards"
-            signUpForceRedirectUrl="/boards"
-          >
+          <SignInButton forceRedirectUrl="/boards">
             <Button>Sign in</Button>
           </SignInButton>
         </div>

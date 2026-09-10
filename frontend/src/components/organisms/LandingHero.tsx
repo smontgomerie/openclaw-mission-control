@@ -2,12 +2,7 @@
 
 import Link from "next/link";
 
-import {
-  SignInButton,
-  SignedIn,
-  SignedOut,
-  isClerkEnabled,
-} from "@/auth/clerk";
+import { SignedIn, SignedOut } from "@/auth/session";
 
 const ArrowIcon = () => (
   <svg
@@ -28,8 +23,6 @@ const ArrowIcon = () => (
 );
 
 export function LandingHero() {
-  const clerkEnabled = isClerkEnabled();
-
   return (
     <>
       <section className="hero">
@@ -48,37 +41,14 @@ export function LandingHero() {
 
           <div className="hero-actions">
             <SignedOut>
-              {clerkEnabled ? (
-                <>
-                  <SignInButton
-                    mode="modal"
-                    forceRedirectUrl="/boards"
-                    signUpForceRedirectUrl="/boards"
-                  >
-                    <button type="button" className="btn-large primary">
-                      Open Boards <ArrowIcon />
-                    </button>
-                  </SignInButton>
-                  <SignInButton
-                    mode="modal"
-                    forceRedirectUrl="/boards/new"
-                    signUpForceRedirectUrl="/boards/new"
-                  >
-                    <button type="button" className="btn-large secondary">
-                      Create Board
-                    </button>
-                  </SignInButton>
-                </>
-              ) : (
-                <>
-                  <Link href="/boards" className="btn-large primary">
-                    Open Boards <ArrowIcon />
-                  </Link>
-                  <Link href="/boards/new" className="btn-large secondary">
-                    Create Board
-                  </Link>
-                </>
-              )}
+              <>
+                <Link href="/boards" className="btn-large primary">
+                  Open Boards <ArrowIcon />
+                </Link>
+                <Link href="/boards/new" className="btn-large secondary">
+                  Create Board
+                </Link>
+              </>
             </SignedOut>
 
             <SignedIn>
@@ -230,37 +200,14 @@ export function LandingHero() {
           </p>
           <div className="cta-actions">
             <SignedOut>
-              {clerkEnabled ? (
-                <>
-                  <SignInButton
-                    mode="modal"
-                    forceRedirectUrl="/boards/new"
-                    signUpForceRedirectUrl="/boards/new"
-                  >
-                    <button type="button" className="btn-large white">
-                      Create Board
-                    </button>
-                  </SignInButton>
-                  <SignInButton
-                    mode="modal"
-                    forceRedirectUrl="/boards"
-                    signUpForceRedirectUrl="/boards"
-                  >
-                    <button type="button" className="btn-large outline">
-                      View Boards
-                    </button>
-                  </SignInButton>
-                </>
-              ) : (
-                <>
-                  <Link href="/boards/new" className="btn-large white">
-                    Create Board
-                  </Link>
-                  <Link href="/boards" className="btn-large outline">
-                    View Boards
-                  </Link>
-                </>
-              )}
+              <>
+                <Link href="/boards/new" className="btn-large white">
+                  Create Board
+                </Link>
+                <Link href="/boards" className="btn-large outline">
+                  View Boards
+                </Link>
+              </>
             </SignedOut>
 
             <SignedIn>

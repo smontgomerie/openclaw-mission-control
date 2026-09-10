@@ -151,8 +151,13 @@ docker compose -f compose.yml --env-file .env down
 
 Mission Control supports two authentication modes:
 
-- `local`: shared bearer token mode (default for self-hosted use)
-- `clerk`: Clerk JWT mode
+- `local`: shared bearer token mode (default for offline / air-gapped
+  self-hosting)
+- `betterauth`: Google sign-in via Better Auth; the backend verifies the
+  app's JWTs statelessly against its JWKS
+
+See [docs/reference/authentication.md](./docs/reference/authentication.md)
+for setup and mode choice.
 
 Environment templates:
 

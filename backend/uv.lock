@@ -252,22 +252,6 @@ wheels = [
 ]
 
 [[package]]
-name = "clerk-backend-api"
-version = "4.2.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "cryptography" },
-    { name = "httpcore" },
-    { name = "httpx" },
-    { name = "pydantic" },
-    { name = "pyjwt" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/58/60/c08464d19b849a38860dd1adb5acc54bf5047e9fc740a6e85d84af14a39f/clerk_backend_api-4.2.0.tar.gz", hash = "sha256:e253f4dcde2fd62280e8f04d76db256be76e7142312d85ac2142cced7b8919e6", size = 216448, upload-time = "2025-12-11T20:20:39.079Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/82/1b/9444f4d406b0076d5a12a347fdfd5832f0f743e927391f35177e593ecfc6/clerk_backend_api-4.2.0-py3-none-any.whl", hash = "sha256:777a63a2821cb8965db81003b9d23a34443eaeb4cbedb4f6d98eb0037b934164", size = 441620, upload-time = "2025-12-11T20:20:37.916Z" },
-]
-
-[[package]]
 name = "click"
 version = "8.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -926,7 +910,6 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "alembic" },
-    { name = "clerk-backend-api" },
     { name = "cryptography" },
     { name = "fastapi" },
     { name = "fastapi-pagination" },
@@ -965,7 +948,6 @@ requires-dist = [
     { name = "aiosqlite", marker = "extra == 'dev'", specifier = "==0.22.1" },
     { name = "alembic", specifier = "==1.18.3" },
     { name = "black", marker = "extra == 'dev'", specifier = "==26.1.0" },
-    { name = "clerk-backend-api", specifier = "==4.2.0" },
     { name = "coverage", extras = ["toml"], marker = "extra == 'dev'", specifier = "==7.13.4" },
     { name = "cryptography", specifier = "==45.0.7" },
     { name = "fastapi", specifier = "==0.131.0" },

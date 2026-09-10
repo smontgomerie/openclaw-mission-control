@@ -1,13 +1,11 @@
 "use client";
 
-import { ClerkProvider } from "@clerk/nextjs";
 import { useEffect, type ReactNode } from "react";
 
 import {
   BetterAuthSessionProvider,
   useBetterAuthSession,
 } from "@/auth/betterAuthSession";
-import { isLikelyValidClerkPublishableKey } from "@/auth/clerkKey";
 import {
   clearLocalAuthToken,
   getLocalAuthToken,
@@ -45,11 +43,11 @@ function BetterAuthGate({ children }: { children: ReactNode }) {
     return <>{children}</>;
   }
 
-  // Keep the user on the page they were on when they signed out (local mode
-  // just reloads that URL; Clerk middleware preserves it via redirect_url),
-  // instead of the /onboarding fallback. An explicit ?redirect_url= param
-  // (e.g. /sign-in?redirect_url=/boards) wins; the value is validated in
-  // BetterAuthLogin via resolveSignInRedirectUrl.
+  // Keep the user on the page they were on when they signed out (local
+  // mode just reloads that URL), instead of the /onboarding fallback.
+  // An explicit ?redirect_url= param (e.g. /sign-in?redirect_url=/boards)
+  // wins; the value is validated in BetterAuthLogin via
+  // resolveSignInRedirectUrl.
   const redirectUrl =
     typeof window === "undefined"
       ? null
@@ -86,20 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return <>{children}</>;
   }
 
-  const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-  const afterSignOutUrl =
-    process.env.NEXT_PUBLIC_CLERK_AFTER_SIGN_OUT_URL ?? "/";
-
-  if (!isLikelyValidClerkPublishableKey(publishableKey)) {
-    return <>{children}</>;
-  }
-
-  return (
-    <ClerkProvider
-      publishableKey={publishableKey}
-      afterSignOutUrl={afterSignOutUrl}
-    >
-      {children}
-    </ClerkProvider>
-  );
+  // No auth mode configured: render the app with the client-side
+  // signed-out fallbacks (see `@/auth/session`).
+  return <>{children}</>;
 }

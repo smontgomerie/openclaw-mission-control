@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { useParams } from "next/navigation";
 
-import { SignInButton, SignedIn, SignedOut } from "@/auth/clerk";
+import { SignInButton, SignedIn, SignedOut } from "@/auth/session";
 
 import { BoardApprovalsPanel } from "@/components/BoardApprovalsPanel";
 import { DashboardSidebar } from "@/components/organisms/DashboardSidebar";
@@ -21,11 +21,7 @@ export default function BoardApprovalsPage() {
       <SignedOut>
         <div className="flex h-full flex-col items-center justify-center gap-4 rounded-2xl surface-panel p-10 text-center">
           <p className="text-sm text-muted">Sign in to view approvals.</p>
-          <SignInButton
-            mode="modal"
-            forceRedirectUrl="/boards"
-            signUpForceRedirectUrl="/boards"
-          >
+          <SignInButton forceRedirectUrl="/boards">
             <Button>Sign in</Button>
           </SignInButton>
         </div>

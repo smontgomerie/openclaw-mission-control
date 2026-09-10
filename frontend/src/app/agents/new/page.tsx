@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { useAuth } from "@/auth/clerk";
+import { useAuth } from "@/auth/session";
 
 import { ApiError } from "@/api/mutator";
 import {
@@ -133,7 +133,6 @@ export default function NewAgentPage() {
       signedOut={{
         message: "Sign in to create an agent.",
         forceRedirectUrl: "/agents/new",
-        signUpForceRedirectUrl: "/agents/new",
       }}
       title="Create agent"
       description="Agents start in provisioning until they check in."

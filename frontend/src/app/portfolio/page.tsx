@@ -3,9 +3,15 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Bookmark, RefreshCcw, Search, Sigma } from "lucide-react";
+import {
+  AlertTriangle,
+  Bookmark,
+  RefreshCcw,
+  Search,
+  Sigma,
+} from "lucide-react";
 
-import { useAuth } from "@/auth/clerk";
+import { useAuth } from "@/auth/session";
 import { ApiError } from "@/api/mutator";
 import { Markdown } from "@/components/atoms/Markdown";
 import { DashboardPageLayout } from "@/components/templates/DashboardPageLayout";
@@ -60,7 +66,9 @@ type RationaleFormState = PortfolioRationaleUpdate & {
   tagsInput: string;
 };
 
-function buildFormState(detail: PortfolioPositionDetail | null): RationaleFormState {
+function buildFormState(
+  detail: PortfolioPositionDetail | null,
+): RationaleFormState {
   const rationale = detail?.rationale;
   return {
     strategy: rationale?.strategy ?? detail?.strategy ?? "",
@@ -78,8 +86,12 @@ function PositionStats({ position }: { position: PortfolioPosition }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Mark</p>
-        <p className="mt-2 text-lg font-semibold text-slate-900">{formatNumber(position.mark)}</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Mark
+        </p>
+        <p className="mt-2 text-lg font-semibold text-slate-900">
+          {formatNumber(position.mark)}
+        </p>
       </div>
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
         <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -90,13 +102,17 @@ function PositionStats({ position }: { position: PortfolioPosition }) {
         </p>
       </div>
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">P&L %</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          P&L %
+        </p>
         <p className="mt-2 text-lg font-semibold text-slate-900">
           {formatPercent(position.unrealized_pnl_pct)}
         </p>
       </div>
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">DTE</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          DTE
+        </p>
         <p className="mt-2 text-lg font-semibold text-slate-900">
           {typeof position.dte === "number" ? position.dte : "—"}
         </p>
@@ -124,11 +140,15 @@ export default function PortfolioPage() {
   const [savePending, setSavePending] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [formState, setFormState] = useState<RationaleFormState>(buildFormState(null));
+  const [formState, setFormState] = useState<RationaleFormState>(
+    buildFormState(null),
+  );
   const [reloadToken, setReloadToken] = useState(0);
   const [rollEvents, setRollEvents] = useState<PortfolioRollEvent[]>([]);
   const [rollEventsError, setRollEventsError] = useState<string | null>(null);
-  const [rollUndoPendingId, setRollUndoPendingId] = useState<string | null>(null);
+  const [rollUndoPendingId, setRollUndoPendingId] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -149,7 +169,12 @@ export default function PortfolioPage() {
           setRollEvents(Array.isArray(nextRolls) ? nextRolls : []);
           setRollEventsError(null);
           setSelectedKey((current) => {
-            if (current && nextPositions.some((position) => position.position_key === current)) {
+            if (
+              current &&
+              nextPositions.some(
+                (position) => position.position_key === current,
+              )
+            ) {
               return current;
             }
             return nextPositions[0]?.position_key ?? null;
@@ -215,12 +240,19 @@ export default function PortfolioPage() {
   }, [reloadToken, selectedKey]);
 
   const filteredPositions = useMemo(
-    () => positions.filter((position) => matchesPortfolioPositionSearch(position, searchTerm)),
+    () =>
+      positions.filter((position) =>
+        matchesPortfolioPositionSearch(position, searchTerm),
+      ),
     [positions, searchTerm],
   );
 
-  const flaggedCount = positions.filter((position) => position.latest_flags.length > 0).length;
-  const missingRationaleCount = positions.filter((position) => position.needs_rationale).length;
+  const flaggedCount = positions.filter(
+    (position) => position.latest_flags.length > 0,
+  ).length;
+  const missingRationaleCount = positions.filter(
+    (position) => position.needs_rationale,
+  ).length;
 
   const handleSave = () => {
     if (!selectedKey) return;
@@ -292,7 +324,9 @@ export default function PortfolioPage() {
 
     void syncPortfolioNow()
       .then(() => {
-        setSyncMessage("Sync queued. Latest data may take a few seconds to appear.");
+        setSyncMessage(
+          "Sync queued. Latest data may take a few seconds to appear.",
+        );
         setReloadToken((current) => current + 1);
       })
       .catch((error: unknown) => {
@@ -312,7 +346,6 @@ export default function PortfolioPage() {
       signedOut={{
         message: "Sign in to inspect portfolio reviews.",
         forceRedirectUrl: "/portfolio",
-        signUpForceRedirectUrl: "/portfolio",
       }}
       title="Portfolio"
       description="Review current positions, morning recommendations, and durable trade rationale from the shared OpenClaw workspace."
@@ -331,8 +364,9 @@ export default function PortfolioPage() {
                 Portfolio review
               </h2>
               <p className="mt-2 max-w-3xl text-sm text-slate-600">
-                Browse normalized positions from `portfolio/latest.json`, inspect the latest
-                morning review, and keep your trade thesis attached to each open position.
+                Browse normalized positions from `portfolio/latest.json`,
+                inspect the latest morning review, and keep your trade thesis
+                attached to each open position.
               </p>
             </div>
             <div className="flex w-full flex-col gap-3 lg:max-w-md">
@@ -401,10 +435,13 @@ export default function PortfolioPage() {
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             Option rolls
           </p>
-          <h3 className="mt-2 text-lg font-semibold text-slate-900">Rolls detected (last 7 days)</h3>
+          <h3 className="mt-2 text-lg font-semibold text-slate-900">
+            Rolls detected (last 7 days)
+          </h3>
           <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            Auto-detected rolls from your Trades sheet with rationale carry-over. Undo removes the
-            copied rationale on the new leg and dismisses the match.
+            Auto-detected rolls from your Trades sheet with rationale
+            carry-over. Undo removes the copied rationale on the new leg and
+            dismisses the match.
           </p>
           {rollEventsError ? (
             <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -413,7 +450,9 @@ export default function PortfolioPage() {
           ) : null}
           <div className="mt-4 space-y-3">
             {rollEvents.length === 0 ? (
-              <p className="text-sm text-slate-500">No roll events in the last week.</p>
+              <p className="text-sm text-slate-500">
+                No roll events in the last week.
+              </p>
             ) : (
               rollEvents.map((ev) => (
                 <div
@@ -422,11 +461,12 @@ export default function PortfolioPage() {
                 >
                   <div className="min-w-0 text-sm text-slate-700">
                     <p className="font-medium text-slate-900">
-                      {ev.rolled_from_position_key} → {ev.rolled_to_position_key}
+                      {ev.rolled_from_position_key} →{" "}
+                      {ev.rolled_to_position_key}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
-                      {formatTimestamp(ev.rolled_at)} · net credit {(ev.net_credit_cents / 100).toFixed(2)}{" "}
-                      · {ev.status}
+                      {formatTimestamp(ev.rolled_at)} · net credit{" "}
+                      {(ev.net_credit_cents / 100).toFixed(2)} · {ev.status}
                     </p>
                   </div>
                   {ev.status !== "dismissed" ? (
@@ -451,14 +491,19 @@ export default function PortfolioPage() {
         <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
           <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">
-              <p className="text-sm font-semibold text-slate-900">Open positions</p>
+              <p className="text-sm font-semibold text-slate-900">
+                Open positions
+              </p>
               <p className="mt-1 text-xs text-slate-500">
-                {filteredPositions.length} of {positions.length} positions visible
+                {filteredPositions.length} of {positions.length} positions
+                visible
               </p>
             </div>
             <div className="max-h-[760px] overflow-y-auto p-3">
               {isPositionsLoading ? (
-                <p className="px-2 py-3 text-sm text-slate-500">Loading portfolio…</p>
+                <p className="px-2 py-3 text-sm text-slate-500">
+                  Loading portfolio…
+                </p>
               ) : filteredPositions.length === 0 ? (
                 <p className="px-2 py-3 text-sm text-slate-500">
                   {positions.length === 0
@@ -483,8 +528,12 @@ export default function PortfolioPage() {
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold">
                             {position.ticker}
-                            {position.option_side ? ` ${position.option_side.toUpperCase()}` : ""}
-                            {typeof position.strike === "number" ? ` ${position.strike}` : ""}
+                            {position.option_side
+                              ? ` ${position.option_side.toUpperCase()}`
+                              : ""}
+                            {typeof position.strike === "number"
+                              ? ` ${position.strike}`
+                              : ""}
                           </p>
                           <p
                             className={cn(
@@ -494,13 +543,16 @@ export default function PortfolioPage() {
                                 : "text-slate-500",
                             )}
                           >
-                            {position.strategy ?? "unclassified"} · {position.expiration ?? "no expiry"}
+                            {position.strategy ?? "unclassified"} ·{" "}
+                            {position.expiration ?? "no expiry"}
                           </p>
                         </div>
                         {position.needs_rationale ? (
                           <Badge variant="warning">Needs why</Badge>
                         ) : position.latest_flags.length > 0 ? (
-                          <Badge variant="outline">{position.latest_flags.length} flag(s)</Badge>
+                          <Badge variant="outline">
+                            {position.latest_flags.length} flag(s)
+                          </Badge>
                         ) : (
                           <Badge variant="success">Tracked</Badge>
                         )}
@@ -508,11 +560,20 @@ export default function PortfolioPage() {
                       <div
                         className={cn(
                           "mt-3 flex flex-wrap gap-1 text-[11px]",
-                          selectedKey === position.position_key ? "text-slate-200" : "text-slate-500",
+                          selectedKey === position.position_key
+                            ? "text-slate-200"
+                            : "text-slate-500",
                         )}
                       >
-                        <span>P&L {formatPercent(position.unrealized_pnl_pct)}</span>
-                        <span>DTE {typeof position.dte === "number" ? position.dte : "—"}</span>
+                        <span>
+                          P&L {formatPercent(position.unrealized_pnl_pct)}
+                        </span>
+                        <span>
+                          DTE{" "}
+                          {typeof position.dte === "number"
+                            ? position.dte
+                            : "—"}
+                        </span>
                       </div>
                       {position.latest_flags[0]?.headline ? (
                         <p
@@ -541,7 +602,9 @@ export default function PortfolioPage() {
                     {detail?.ticker ?? "Position detail"}
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    {detail ? detail.position_key : "Select a position to inspect its review context."}
+                    {detail
+                      ? detail.position_key
+                      : "Select a position to inspect its review context."}
                   </p>
                 </div>
                 {detail ? (
@@ -549,9 +612,15 @@ export default function PortfolioPage() {
                     {detail.needs_rationale ? (
                       <Badge variant="warning">Missing rationale</Badge>
                     ) : null}
-                    <Badge variant="outline">{detail.strategy ?? "unclassified"}</Badge>
-                    <Badge variant="outline">{detail.status ?? "unknown"}</Badge>
-                    <Badge variant="outline">Updated {formatTimestamp(detail.as_of)}</Badge>
+                    <Badge variant="outline">
+                      {detail.strategy ?? "unclassified"}
+                    </Badge>
+                    <Badge variant="outline">
+                      {detail.status ?? "unknown"}
+                    </Badge>
+                    <Badge variant="outline">
+                      Updated {formatTimestamp(detail.as_of)}
+                    </Badge>
                   </div>
                 ) : null}
               </div>
@@ -566,12 +635,17 @@ export default function PortfolioPage() {
 
               {!selectedKey ? (
                 <p className="text-sm text-slate-500">
-                  Select a position to inspect the latest review and save rationale.
+                  Select a position to inspect the latest review and save
+                  rationale.
                 </p>
               ) : isDetailLoading && !detail ? (
-                <p className="text-sm text-slate-500">Loading portfolio detail…</p>
+                <p className="text-sm text-slate-500">
+                  Loading portfolio detail…
+                </p>
               ) : !detail ? (
-                <p className="text-sm text-slate-500">This portfolio position is unavailable.</p>
+                <p className="text-sm text-slate-500">
+                  This portfolio position is unavailable.
+                </p>
               ) : (
                 <>
                   <PositionStats position={detail} />
@@ -586,7 +660,9 @@ export default function PortfolioPage() {
                       </div>
                       <div className="mt-3 space-y-3">
                         {detail.latest_flags.length === 0 ? (
-                          <p className="text-sm text-slate-500">No active review flags.</p>
+                          <p className="text-sm text-slate-500">
+                            No active review flags.
+                          </p>
                         ) : (
                           detail.latest_flags.map((flag) => (
                             <div
@@ -600,7 +676,9 @@ export default function PortfolioPage() {
                                 </span>
                               </div>
                               {flag.summary ? (
-                                <p className="mt-2 text-sm text-slate-600">{flag.summary}</p>
+                                <p className="mt-2 text-sm text-slate-600">
+                                  {flag.summary}
+                                </p>
                               ) : null}
                               {flag.recommendation ? (
                                 <p className="mt-2 text-sm text-slate-800">
@@ -620,7 +698,7 @@ export default function PortfolioPage() {
                           Morning review
                         </p>
                       </div>
-                        <div className="mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
                         {detail.latest_review_summary_markdown ? (
                           <Markdown
                             content={detail.latest_review_summary_markdown}
@@ -639,10 +717,12 @@ export default function PortfolioPage() {
                     <div className="flex items-center gap-2">
                       <Sigma className="h-4 w-4 text-slate-600" />
                       <div>
-                        <p className="text-sm font-semibold text-slate-900">Trade rationale</p>
+                        <p className="text-sm font-semibold text-slate-900">
+                          Trade rationale
+                        </p>
                         <p className="mt-1 text-xs text-slate-500">
-                          Save why this trade exists so future morning reviews can reason from
-                          your actual thesis.
+                          Save why this trade exists so future morning reviews
+                          can reason from your actual thesis.
                         </p>
                       </div>
                     </div>
@@ -650,15 +730,24 @@ export default function PortfolioPage() {
                     <div className="mt-4 grid gap-4">
                       {detail.rationale?.rolled_from_position_key ? (
                         <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
-                          <span className="font-medium">Rationale inherited from </span>
+                          <span className="font-medium">
+                            Rationale inherited from{" "}
+                          </span>
                           <button
                             type="button"
                             className="font-mono text-sky-800 underline"
-                            onClick={() => setSelectedKey(detail.rationale!.rolled_from_position_key!)}
+                            onClick={() =>
+                              setSelectedKey(
+                                detail.rationale!.rolled_from_position_key!,
+                              )
+                            }
                           >
                             {detail.rationale.rolled_from_position_key}
                           </button>
-                          <span className="text-sky-800"> (open prior leg)</span>
+                          <span className="text-sky-800">
+                            {" "}
+                            (open prior leg)
+                          </span>
                         </div>
                       ) : null}
                       <div className="grid gap-4 md:grid-cols-2">
@@ -805,11 +894,18 @@ export default function PortfolioPage() {
                       <Button onClick={handleSave} disabled={savePending}>
                         {savePending ? "Saving…" : "Save rationale"}
                       </Button>
-                      {saveMessage ? <p className="text-sm text-emerald-700">{saveMessage}</p> : null}
-                      {saveError ? <p className="text-sm text-red-700">{saveError}</p> : null}
+                      {saveMessage ? (
+                        <p className="text-sm text-emerald-700">
+                          {saveMessage}
+                        </p>
+                      ) : null}
+                      {saveError ? (
+                        <p className="text-sm text-red-700">{saveError}</p>
+                      ) : null}
                       {detail.rationale?.updated_at ? (
                         <p className="text-xs text-slate-500">
-                          Last saved {formatTimestamp(detail.rationale.updated_at)}
+                          Last saved{" "}
+                          {formatTimestamp(detail.rationale.updated_at)}
                         </p>
                       ) : null}
                     </div>

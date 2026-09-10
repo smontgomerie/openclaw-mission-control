@@ -61,7 +61,7 @@ services:
       LOCAL_AUTH_TOKEN: ${LOCAL_AUTH_TOKEN}
       # Better Auth backend mode (AUTH_MODE=betterauth): verify the Next.js
       # app's JWKS/JWTs statelessly. Left unset, the backend fails to start
-      # in betterauth mode with a clear error (local/clerk are unaffected).
+      # in betterauth mode with a clear error (the local flow is unaffected).
       BETTER_AUTH_JWKS_URL: ${BETTER_AUTH_JWKS_URL:-}
       BETTER_AUTH_ISSUER: ${BETTER_AUTH_ISSUER:-}
       BETTER_AUTH_AUDIENCE: ${BETTER_AUTH_AUDIENCE:-}
@@ -94,8 +94,9 @@ services:
         NEXT_PUBLIC_AUTH_MODE: ${AUTH_MODE}
     restart: unless-stopped
     # Optional, user-managed env file.
-    # IMPORTANT: do NOT load `.env.example` here because it contains non-empty
-    # placeholder Clerk keys, which can accidentally flip Clerk "on".
+    # IMPORTANT: do NOT load `.env.example` here — it is a template whose
+    # values (e.g. NEXT_PUBLIC_AUTH_MODE=local) would silently override the
+    # mode you intend to run in.
     env_file:
       - path: ./frontend/.env
         required: false
@@ -104,8 +105,8 @@ services:
       NEXT_PUBLIC_AUTH_MODE: ${AUTH_MODE}
       # Better Auth server at /api/auth/* (Google sign-in, JWKS/JWT for the
       # backend, API keys). All optional at compose level: unset -> the
-      # /api/auth/* routes fail fast with a clear error and the local/clerk
-      # flows keep working. Required (non-placeholder) once you want
+      # /api/auth/* routes fail fast with a clear error and the local
+      # flow keeps working. Required (non-placeholder) once you want
       # /api/auth/* to function. See docs/reference/authentication.md.
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
       BETTER_AUTH_GOOGLE_CLIENT_ID: ${BETTER_AUTH_GOOGLE_CLIENT_ID:-}
@@ -157,7 +158,7 @@ services:
       LOCAL_AUTH_TOKEN: ${LOCAL_AUTH_TOKEN}
       # Better Auth backend mode (AUTH_MODE=betterauth): verify the Next.js
       # app's JWKS/JWTs statelessly. Left unset, the backend fails to start
-      # in betterauth mode with a clear error (local/clerk are unaffected).
+      # in betterauth mode with a clear error (the local flow is unaffected).
       BETTER_AUTH_JWKS_URL: ${BETTER_AUTH_JWKS_URL:-}
       BETTER_AUTH_ISSUER: ${BETTER_AUTH_ISSUER:-}
       BETTER_AUTH_AUDIENCE: ${BETTER_AUTH_AUDIENCE:-}

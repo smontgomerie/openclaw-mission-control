@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import { useAuth } from "@/auth/clerk";
+import { useAuth } from "@/auth/session";
 
 import { ApiError } from "@/api/mutator";
 import {
@@ -104,7 +104,6 @@ export default function WebhookPayloadsPage() {
       signedOut={{
         message: "Sign in to view webhook payloads.",
         forceRedirectUrl: `/boards/${boardId}/webhooks/${webhookId}/payloads`,
-        signUpForceRedirectUrl: `/boards/${boardId}/webhooks/${webhookId}/payloads`,
       }}
       title="Webhook payloads"
       description="Review payloads received by this webhook."

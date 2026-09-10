@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { SignInButton, SignedIn, SignedOut, useAuth } from "@/auth/clerk";
+import { SignInButton, SignedIn, SignedOut, useAuth } from "@/auth/session";
 
 import { ApiError } from "@/api/mutator";
 import { useAcceptOrgInviteApiV1OrganizationsInvitesAcceptPost } from "@/api/generated/organizations/organizations";
@@ -107,7 +107,13 @@ function InviteContent() {
             <SignedOut>
               <div className="flex flex-col gap-3 rounded-xl border border-dashed border-[color:var(--border)] bg-[color:var(--surface-muted)] p-4 text-sm text-muted">
                 <p>Sign in to accept your invite.</p>
-                <SignInButton mode="modal">
+                <SignInButton
+                  forceRedirectUrl={
+                    searchParams.toString()
+                      ? `/invite?${searchParams.toString()}`
+                      : "/invite"
+                  }
+                >
                   <Button size="md">Sign in</Button>
                 </SignInButton>
               </div>

@@ -9,7 +9,7 @@ Key ideas:
 - To reduce write-amplification, we only touch `Agent.last_seen_at` at a fixed
   interval and we avoid touching it for safe/read-only HTTP methods.
 
-This is intentionally separate from user authentication (Clerk/local bearer token)
+This is intentionally separate from user authentication (local bearer token / Better Auth JWTs)
 so we can evolve agent policy independently.
 """
 

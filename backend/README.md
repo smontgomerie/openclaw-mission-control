@@ -74,15 +74,18 @@ Security response headers added to every API response. Set any variable to blank
 - `SECURITY_HEADER_REFERRER_POLICY` (default: `strict-origin-when-cross-origin`)
 - `SECURITY_HEADER_PERMISSIONS_POLICY` (default: blank — disabled)
 
-### Auth (Clerk)
+### Auth modes
 
-Clerk is used for user authentication (optional for local/self-host in many setups).
+`AUTH_MODE` selects the user auth mode:
 
-- `CLERK_SECRET_KEY` (required)
-  - Used to fetch user profile fields (email/name) from Clerk when JWT claims are minimal.
-- `CLERK_API_URL` (default: `https://api.clerk.com`)
-- `CLERK_VERIFY_IAT` (default: `true`)
-- `CLERK_LEEWAY` (default: `10.0`)
+- `local`: shared bearer token; requires `LOCAL_AUTH_TOKEN` (non-placeholder,
+  at least 50 chars).
+- `betterauth`: Better Auth JWTs verified statelessly against the app's JWKS.
+  - `BETTER_AUTH_JWKS_URL` (e.g. `http://localhost:3000/api/auth/jwks`)
+  - `BETTER_AUTH_ISSUER` (the app origin; `iss` to expect)
+  - `BETTER_AUTH_AUDIENCE` (optional; defaults to `BETTER_AUTH_ISSUER`)
+
+Retired AUTH_MODE values are refused at startup with a message naming the working modes.
 
 ## Database migrations (Alembic)
 

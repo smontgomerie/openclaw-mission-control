@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { useCallback, useMemo } from "react";
 
-import { SignedIn, SignedOut, SignInButton, useAuth } from "@/auth/clerk";
+import { SignedIn, SignedOut, SignInButton, useAuth } from "@/auth/session";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { ApiError } from "@/api/mutator";
@@ -190,11 +190,7 @@ export default function GlobalApprovalsPage() {
       <SignedOut>
         <div className="flex h-full flex-col items-center justify-center gap-4 rounded-2xl surface-panel p-10 text-center">
           <p className="text-sm text-muted">Sign in to view approvals.</p>
-          <SignInButton
-            mode="modal"
-            forceRedirectUrl="/approvals"
-            signUpForceRedirectUrl="/approvals"
-          >
+          <SignInButton forceRedirectUrl="/approvals">
             <Button>Sign in</Button>
           </SignInButton>
         </div>

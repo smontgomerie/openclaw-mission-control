@@ -1,5 +1,4 @@
 export enum AuthMode {
-  Clerk = "clerk",
   Local = "local",
   BetterAuth = "betterauth",
 }

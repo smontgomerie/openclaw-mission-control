@@ -1,10 +1,8 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { SignIn } from "@clerk/nextjs";
 
 import { isBetterAuthMode } from "@/auth/betterAuth";
-import { isClerkEnabled } from "@/auth/clerk";
 import { isLocalAuthMode } from "@/auth/localAuth";
 import { resolveSignInRedirectUrl } from "@/auth/redirects";
 import { BetterAuthLogin } from "@/components/organisms/BetterAuthLogin";
@@ -24,36 +22,19 @@ export default function SignInPage() {
     return <BetterAuthLogin redirectUrl={redirectUrl} />;
   }
 
-  if (!isClerkEnabled()) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
-        <div className="max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h1 className="text-xl font-semibold text-slate-900">
-            Authentication is unavailable
-          </h1>
-          <p className="mt-2 text-sm text-slate-600">
-            This environment is set to use Clerk, but no valid Clerk publishable
-            key is configured. Set <code>NEXT_PUBLIC_AUTH_MODE=local</code> for
-            token-based local access or provide a real Clerk publishable key.
-          </p>
-        </div>
-      </main>
-    );
-  }
-
-  const forceRedirectUrl = resolveSignInRedirectUrl(
-    searchParams.get("redirect_url"),
-  );
-
-  // Dedicated sign-in route for Cypress E2E.
-  // Avoids modal/iframe auth flows and gives Cypress a stable top-level page.
+  // NEXT_PUBLIC_AUTH_MODE must be "local" or "betterauth".
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
-      <SignIn
-        routing="path"
-        path="/sign-in"
-        forceRedirectUrl={forceRedirectUrl}
-      />
+      <div className="max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h1 className="text-xl font-semibold text-slate-900">
+          Authentication is unavailable
+        </h1>
+        <p className="mt-2 text-sm text-slate-600">
+          No auth mode is configured for this deployment. Set{" "}
+          <code>NEXT_PUBLIC_AUTH_MODE=betterauth</code> for Google sign-in or{" "}
+          <code>NEXT_PUBLIC_AUTH_MODE=local</code> for token-based local access.
+        </p>
+      </div>
     </main>
   );
 }
