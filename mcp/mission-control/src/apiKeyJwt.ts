@@ -57,7 +57,10 @@ function jwtExpiresAtMs(token: string): number | null {
   }
   try {
     const json = JSON.parse(
-      Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"),
+      Buffer.from(
+        payload.replace(/-/g, "+").replace(/_/g, "/"),
+        "base64",
+      ).toString("utf8"),
     );
     return typeof json.exp === "number" ? json.exp * 1000 : null;
   } catch {

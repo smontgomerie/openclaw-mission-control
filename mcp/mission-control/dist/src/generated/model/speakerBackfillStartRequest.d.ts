@@ -5,5 +5,5 @@
  * OpenAPI spec version: 0.1.0
  */
 export interface SpeakerBackfillStartRequest {
-    snapshot_hash: string;
+  snapshot_hash: string;
 }

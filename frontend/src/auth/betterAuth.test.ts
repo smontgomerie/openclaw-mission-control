@@ -439,9 +439,10 @@ describe("exchangeSeededApiKeyForJwt", () => {
 
   it("uses an explicitly provided fetch implementation", async () => {
     setSeededApiKey("mc_123");
-    const explicit = vi.fn(
-      async () => ({ ok: true, json: async () => ({ token: keyJwt }) }),
-    );
+    const explicit = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ token: keyJwt }),
+    }));
     await expect(
       exchangeSeededApiKeyForJwt(explicit as unknown as typeof fetch),
     ).resolves.toBe(keyJwt);
@@ -470,9 +471,10 @@ describe("getBetterAuthToken — machine-client key fallback", () => {
       data: null,
     });
     window.sessionStorage.setItem(API_KEY_STORAGE_KEY, "mc_123");
-    const exchange = vi.fn(
-      async () => ({ ok: true, json: async () => ({ token: keyJwt }) }),
-    );
+    const exchange = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ token: keyJwt }),
+    }));
     vi.stubGlobal("fetch", exchange);
 
     await expect(getBetterAuthToken()).resolves.toBe(keyJwt);
@@ -487,9 +489,10 @@ describe("getBetterAuthToken — machine-client key fallback", () => {
     const keyJwt = makeJwt(Math.floor(Date.now() / 1000) + 15 * 60);
     fetchMock.mockResolvedValue({ error: { status: 401 }, data: null });
     window.sessionStorage.setItem(API_KEY_STORAGE_KEY, "mc_123");
-    const exchange = vi.fn(
-      async () => ({ ok: true, json: async () => ({ token: keyJwt }) }),
-    );
+    const exchange = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ token: keyJwt }),
+    }));
     vi.stubGlobal("fetch", exchange);
 
     await getBetterAuthToken();

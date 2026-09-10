@@ -31,7 +31,7 @@ const inflight = new Map();
 let generation = 0;
 /** Two configs with the same key pointed at different origins get different exchanges. */
 function storageKey(apiKey, betterAuthUrl) {
-    return `${betterAuthUrl.replace(/\/+$/, "")}\u0000${apiKey}`;
+  return `${betterAuthUrl.replace(/\/+$/, "")}\u0000${apiKey}`;
 }
 /**
  * Read `exp` from the JWT payload without verifying the signature: the
@@ -39,17 +39,21 @@ function storageKey(apiKey, betterAuthUrl) {
  * the signature against JWKS.
  */
 function jwtExpiresAtMs(token) {
-    const payload = token.split(".")[1];
-    if (!payload) {
-        return null;
-    }
-    try {
-        const json = JSON.parse(Buffer.from(payload.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
-        return typeof json.exp === "number" ? json.exp * 1000 : null;
-    }
-    catch {
-        return null;
-    }
+  const payload = token.split(".")[1];
+  if (!payload) {
+    return null;
+  }
+  try {
+    const json = JSON.parse(
+      Buffer.from(
+        payload.replace(/-/g, "+").replace(/_/g, "/"),
+        "base64",
+      ).toString("utf8"),
+    );
+    return typeof json.exp === "number" ? json.exp * 1000 : null;
+  } catch {
+    return null;
+  }
 }
 /**
  * Drop every cached JWT and in-flight exchange. A 401 on a
@@ -62,9 +66,9 @@ function jwtExpiresAtMs(token) {
  * the in-flight map (generation guard).
  */
 export function resetApiKeyJwtCache() {
-    cached.clear();
-    inflight.clear();
-    generation += 1;
+  cached.clear();
+  inflight.clear();
+  generation += 1;
 }
 /**
  * Return a valid exchanged JWT for this config's API key, exchanging
@@ -75,53 +79,53 @@ export function resetApiKeyJwtCache() {
  * or it is unreachable.
  */
 export async function getApiKeyJwt(config, options) {
-    const apiKey = config.apiKey;
-    const betterAuthUrl = config.betterAuthUrl;
-    if (!apiKey || !betterAuthUrl) {
+  const apiKey = config.apiKey;
+  const betterAuthUrl = config.betterAuthUrl;
+  if (!apiKey || !betterAuthUrl) {
+    return null;
+  }
+  const key = storageKey(apiKey, betterAuthUrl);
+  if (!options?.force) {
+    const entry = cached.get(key);
+    if (
+      entry &&
+      (entry.expiresAtMs === null ||
+        entry.expiresAtMs - Date.now() > EXCHANGE_REFRESH_MARGIN_MS)
+    ) {
+      return entry.token;
+    }
+  }
+  const existing = inflight.get(key);
+  if (existing) {
+    return existing;
+  }
+  const startedGeneration = generation;
+  const exchange = (async () => {
+    try {
+      const url = `${betterAuthUrl.replace(/\/+$/, "")}/api/auth/token`;
+      const res = await fetch(url, { headers: { "x-api-key": apiKey } });
+      if (!res.ok) {
         return null;
+      }
+      const body = await res.json();
+      const token = body.token;
+      if (token) {
+        // Only the current generation owns the maps: a reset that happened
+        // mid-flight has already started (or will start) its own exchange.
+        if (generation === startedGeneration) {
+          cached.set(key, { token, expiresAtMs: jwtExpiresAtMs(token) });
+        }
+        return token;
+      }
+      return null;
+    } catch {
+      return null;
+    } finally {
+      if (generation === startedGeneration) {
+        inflight.delete(key);
+      }
     }
-    const key = storageKey(apiKey, betterAuthUrl);
-    if (!options?.force) {
-        const entry = cached.get(key);
-        if (entry &&
-            (entry.expiresAtMs === null ||
-                entry.expiresAtMs - Date.now() > EXCHANGE_REFRESH_MARGIN_MS)) {
-            return entry.token;
-        }
-    }
-    const existing = inflight.get(key);
-    if (existing) {
-        return existing;
-    }
-    const startedGeneration = generation;
-    const exchange = (async () => {
-        try {
-            const url = `${betterAuthUrl.replace(/\/+$/, "")}/api/auth/token`;
-            const res = await fetch(url, { headers: { "x-api-key": apiKey } });
-            if (!res.ok) {
-                return null;
-            }
-            const body = (await res.json());
-            const token = body.token;
-            if (token) {
-                // Only the current generation owns the maps: a reset that happened
-                // mid-flight has already started (or will start) its own exchange.
-                if (generation === startedGeneration) {
-                    cached.set(key, { token, expiresAtMs: jwtExpiresAtMs(token) });
-                }
-                return token;
-            }
-            return null;
-        }
-        catch {
-            return null;
-        }
-        finally {
-            if (generation === startedGeneration) {
-                inflight.delete(key);
-            }
-        }
-    })();
-    inflight.set(key, exchange);
-    return exchange;
+  })();
+  inflight.set(key, exchange);
+  return exchange;
 }

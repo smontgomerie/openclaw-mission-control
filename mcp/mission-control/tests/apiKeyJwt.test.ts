@@ -6,7 +6,8 @@ import { getApiKeyJwt, resetApiKeyJwtCache } from "../src/apiKeyJwt.js";
 
 /** Unverified structural JWT with a real `exp` claim, good enough for the cache. */
 function makeJwt(expSeconds: number, sub: string): string {
-  const b64 = (obj: unknown) => Buffer.from(JSON.stringify(obj)).toString("base64url");
+  const b64 = (obj: unknown) =>
+    Buffer.from(JSON.stringify(obj)).toString("base64url");
   return `${b64({ alg: "none", typ: "JWT" })}.${b64({ sub, exp: expSeconds })}.sig`;
 }
 
@@ -28,7 +29,12 @@ function keyConfig(apiKey: string): MissionControlConfig {
   return { ...KEY_CONFIG, apiKey };
 }
 
-function installFetchStub(handler: (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>) {
+function installFetchStub(
+  handler: (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => Response | Promise<Response>,
+) {
   const originalFetch = global.fetch;
   global.fetch = handler as typeof fetch;
   return () => {
@@ -71,7 +77,7 @@ test("racing callers with the same key share one exchange", async () => {
   const jwt = makeJwt(Math.floor(Date.now() / 1000) + 15 * 60, "user-a");
   let exchangeStarts = 0;
   let release: (() => void) | undefined;
-  const gate = new Promise<void>(resolve => {
+  const gate = new Promise<void>((resolve) => {
     release = () => resolve();
   });
   const restore = installFetchStub(async () => {
@@ -84,7 +90,7 @@ test("racing callers with the same key share one exchange", async () => {
     const first = getApiKeyJwt(KEY_CONFIG);
     const second = getApiKeyJwt(KEY_CONFIG);
     // Both callers started while the first exchange is in flight.
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(exchangeStarts, 1);
     release!();
     const [token1, token2] = await Promise.all([first, second]);
@@ -104,10 +110,10 @@ test("a reset racing an in-flight exchange cannot overwrite a newer exchange", a
   let exchangeStarts = 0;
   let releaseStale: (() => void) | undefined;
   let releaseFresh: (() => void) | undefined;
-  const gateStale = new Promise<void>(resolve => {
+  const gateStale = new Promise<void>((resolve) => {
     releaseStale = () => resolve();
   });
-  const gateFresh = new Promise<void>(resolve => {
+  const gateFresh = new Promise<void>((resolve) => {
     releaseFresh = () => resolve();
   });
   const restore = installFetchStub(async () => {
@@ -123,7 +129,7 @@ test("a reset racing an in-flight exchange cannot overwrite a newer exchange", a
   try {
     // Exchange #1 in flight when the cache is reset (e.g. a 401 path).
     const staleCall = getApiKeyJwt(KEY_CONFIG);
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     assert.equal(exchangeStarts, 1);
     resetApiKeyJwtCache();
     // Exchange #2 runs after the reset and mints the fresh JWT.

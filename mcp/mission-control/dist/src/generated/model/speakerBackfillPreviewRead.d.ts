@@ -7,12 +7,12 @@
 import type { SpeakerBackfillPreviewReadSkippedItem } from "./speakerBackfillPreviewReadSkippedItem";
 import type { SpeakerBackfillPreviewReadSpeakerNames } from "./speakerBackfillPreviewReadSpeakerNames";
 export interface SpeakerBackfillPreviewRead {
-    annotated_recording_count: number;
-    recording_count: number;
-    skipped?: SpeakerBackfillPreviewReadSkippedItem[];
-    snapshot_hash: string;
-    speaker_names?: SpeakerBackfillPreviewReadSpeakerNames;
-    tentative_annotation_count?: number;
-    transcript_count: number;
-    unannotated_recording_count: number;
+  annotated_recording_count: number;
+  recording_count: number;
+  skipped?: SpeakerBackfillPreviewReadSkippedItem[];
+  snapshot_hash: string;
+  speaker_names?: SpeakerBackfillPreviewReadSpeakerNames;
+  tentative_annotation_count?: number;
+  transcript_count: number;
+  unannotated_recording_count: number;
 }

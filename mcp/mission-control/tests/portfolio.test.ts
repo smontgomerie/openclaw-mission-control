@@ -4,11 +4,16 @@ import assert from "node:assert/strict";
 import type { MissionControlConfig } from "../src/config.js";
 import { resetApiKeyJwtCache } from "../src/apiKeyJwt.js";
 import { MissionControlApiError } from "../src/http.js";
-import { portfolioListPositions, portfolioListReviews, portfolioSaveRationale } from "../src/tools/portfolio.js";
+import {
+  portfolioListPositions,
+  portfolioListReviews,
+  portfolioSaveRationale,
+} from "../src/tools/portfolio.js";
 
 /** Unverified structural JWT with a real `exp` claim, good enough for the cache. */
 function makeJwt(expSeconds: number): string {
-  const b64 = (obj: unknown) => Buffer.from(JSON.stringify(obj)).toString("base64url");
+  const b64 = (obj: unknown) =>
+    Buffer.from(JSON.stringify(obj)).toString("base64url");
   return `${b64({ alg: "none", typ: "JWT" })}.${b64({ sub: "u1", exp: expSeconds })}.sig`;
 }
 
@@ -34,7 +39,12 @@ const config: MissionControlConfig = {
   timeoutMs: 10_000,
 };
 
-function installFetchStub(handler: (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>) {
+function installFetchStub(
+  handler: (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => Response | Promise<Response>,
+) {
   const originalFetch = global.fetch;
   global.fetch = handler as typeof fetch;
   return () => {
@@ -47,8 +57,18 @@ test("portfolioListPositions applies client-side filters", async () => {
     assert.equal(init?.method, "GET");
     return new Response(
       JSON.stringify([
-        { position_key: "aapl-1", ticker: "AAPL", latest_flags: [], needs_rationale: true },
-        { position_key: "msft-1", ticker: "MSFT", latest_flags: [{ code: "flag", headline: "Flag" }], needs_rationale: false }
+        {
+          position_key: "aapl-1",
+          ticker: "AAPL",
+          latest_flags: [],
+          needs_rationale: true,
+        },
+        {
+          position_key: "msft-1",
+          ticker: "MSFT",
+          latest_flags: [{ code: "flag", headline: "Flag" }],
+          needs_rationale: false,
+        },
       ]),
       { status: 200, headers: { "content-type": "application/json" } },
     );
@@ -71,8 +91,12 @@ test("portfolioListReviews filters by position key and limit", async () => {
     return new Response(
       JSON.stringify([
         { id: "2026-03-25", position_keys: ["aapl-1"], summary_markdown: "A" },
-        { id: "2026-03-24", position_keys: ["aapl-1", "msft-1"], summary_markdown: "B" },
-        { id: "2026-03-23", position_keys: ["msft-1"], summary_markdown: "C" }
+        {
+          id: "2026-03-24",
+          position_keys: ["aapl-1", "msft-1"],
+          summary_markdown: "B",
+        },
+        { id: "2026-03-23", position_keys: ["msft-1"], summary_markdown: "C" },
       ]),
       { status: 200, headers: { "content-type": "application/json" } },
     );
@@ -92,9 +116,15 @@ test("portfolioListReviews filters by position key and limit", async () => {
 
 test("portfolioSaveRationale sends the expected payload", async () => {
   const restore = installFetchStub(async (input, init) => {
-    assert.equal(String(input), "http://mission-control.test/api/v1/portfolio/positions/aapl-1/rationale");
+    assert.equal(
+      String(input),
+      "http://mission-control.test/api/v1/portfolio/positions/aapl-1/rationale",
+    );
     assert.equal(init?.method, "PUT");
-    assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer secret-token");
+    assert.equal(
+      new Headers(init?.headers).get("Authorization"),
+      "Bearer secret-token",
+    );
     assert.deepEqual(JSON.parse(String(init?.body)), {
       strategy: "wheel",
       why: "Support",
@@ -136,18 +166,28 @@ test("key mode exchanges the API key for a JWT and attaches it as bearer", async
       assert.equal(new Headers(init?.headers).get("x-api-key"), "mc_test-key");
       return json({ token: jwt });
     }
-    assert.equal(new Headers(init?.headers).get("Authorization"), `Bearer ${jwt}`);
-    return json([{ position_key: "aapl-1", ticker: "AAPL", latest_flags: [], needs_rationale: false }]);
+    assert.equal(
+      new Headers(init?.headers).get("Authorization"),
+      `Bearer ${jwt}`,
+    );
+    return json([
+      {
+        position_key: "aapl-1",
+        ticker: "AAPL",
+        latest_flags: [],
+        needs_rationale: false,
+      },
+    ]);
   });
 
   try {
     const positions = await portfolioListPositions(KEY_CONFIG, {});
     assert.equal(positions.length, 1);
     // Exactly one exchange (cached for the JWT lifetime) plus the API call.
-    assert.deepEqual(
-      seen,
-      ["http://auth.test/api/auth/token", "http://mission-control.test/api/v1/portfolio/positions"],
-    );
+    assert.deepEqual(seen, [
+      "http://auth.test/api/auth/token",
+      "http://mission-control.test/api/v1/portfolio/positions",
+    ]);
   } finally {
     resetApiKeyJwtCache();
     restore();
@@ -168,10 +208,16 @@ test("key mode: a 401 forces one re-exchange and retries the call once", async (
     }
     apiCalls += 1;
     if (apiCalls === 1) {
-      assert.equal(new Headers(init?.headers).get("Authorization"), `Bearer ${stale}`);
+      assert.equal(
+        new Headers(init?.headers).get("Authorization"),
+        `Bearer ${stale}`,
+      );
       return json({ detail: "token expired" }, 401);
     }
-    assert.equal(new Headers(init?.headers).get("Authorization"), `Bearer ${fresh}`);
+    assert.equal(
+      new Headers(init?.headers).get("Authorization"),
+      `Bearer ${fresh}`,
+    );
     return json([]);
   });
 
@@ -200,7 +246,8 @@ test("key mode: a refused exchange surfaces as an error and never reaches the ba
   try {
     await assert.rejects(
       portfolioListPositions(KEY_CONFIG, {}),
-      (err: unknown) => err instanceof MissionControlApiError && err.status === 0,
+      (err: unknown) =>
+        err instanceof MissionControlApiError && err.status === 0,
     );
     assert.equal(backendCalls, 0);
   } finally {

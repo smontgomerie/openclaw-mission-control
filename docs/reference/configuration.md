@@ -10,7 +10,7 @@ See `.env.example` for defaults and required values.
 
 - **Where set:** `.env` (frontend container environment)
 - **Purpose:** Public URL the browser uses to call the backend.
-- **Gotcha:** Must be reachable from the *browser* (host), not a Docker network alias.
+- **Gotcha:** Must be reachable from the _browser_ (host), not a Docker network alias.
 
 ### `LOCAL_AUTH_TOKEN`
 

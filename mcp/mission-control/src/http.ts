@@ -43,7 +43,11 @@ export function createAuthenticatedFetch(
 
     const headers = new Headers(init?.headers);
     headers.set("Authorization", `Bearer ${credential}`);
-    if (init?.body !== undefined && init.body !== null && !headers.has("Content-Type")) {
+    if (
+      init?.body !== undefined &&
+      init.body !== null &&
+      !headers.has("Content-Type")
+    ) {
       headers.set("Content-Type", "application/json");
     }
 
@@ -85,7 +89,10 @@ export async function readApiResponse<T>(response: Response): Promise<T> {
     } else {
       detail = await response.text().catch(() => "");
     }
-    let message = typeof detail === "string" && detail ? detail : "Mission Control request failed.";
+    let message =
+      typeof detail === "string" && detail
+        ? detail
+        : "Mission Control request failed.";
     if (detail && typeof detail === "object") {
       const payloadDetail = (detail as { detail?: unknown }).detail;
       if (typeof payloadDetail === "string" && payloadDetail) {

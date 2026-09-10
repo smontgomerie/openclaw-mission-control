@@ -5,5 +5,5 @@
  * OpenAPI spec version: 0.1.0
  */
 export interface SpeakerProfileRenameRequest {
-    display_name: string;
+  display_name: string;
 }

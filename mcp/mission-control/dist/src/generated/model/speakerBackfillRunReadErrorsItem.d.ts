@@ -5,5 +5,5 @@
  * OpenAPI spec version: 0.1.0
  */
 export type SpeakerBackfillRunReadErrorsItem = {
-    [key: string]: unknown;
+  [key: string]: unknown;
 };

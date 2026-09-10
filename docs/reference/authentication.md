@@ -225,7 +225,7 @@ trust relationship exists between backend and frontend:
 
 Consequences:
 
-- **Revocation window:** a deleted/disabled key is refused at the *exchange*
+- **Revocation window:** a deleted/disabled key is refused at the _exchange_
   instantly, but a JWT already in a client's hands keeps working until it
   expires (≤15 minutes). Clients cache the exchanged JWT for its lifetime
   (minus a 30 s refresh margin) and, on a 401, force one re-exchange and
@@ -238,11 +238,11 @@ Consequences:
 
 ### Client configuration
 
-| Client | Env | Notes |
-| ------ | --- | ----- |
+| Client                      | Env                                                           | Notes                                                                                                                                                                                                                                               |
+| --------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | MCP (`mcp/mission-control`) | `MISSION_CONTROL_API_KEY` + `MISSION_CONTROL_BETTER_AUTH_URL` | `MISSION_CONTROL_BETTER_AUTH_URL` is the app origin (e.g. `http://localhost:3000`), **not** the backend URL. Set both for key mode; when a key is present it takes precedence over `MISSION_CONTROL_TOKEN`, which stays as the local-mode fallback. |
-| Portfolio sync cron | `MISSION_CONTROL_API_KEY` + `MISSION_CONTROL_BETTER_AUTH_URL` | One-shot: exchanges once per run, no in-process cache; a 401 triggers one re-exchange + one retry. `MISSION_CONTROL_TOKEN` still works for local mode. |
-| Cypress e2e | `CYPRESS_BETTER_AUTH_API_KEY=mc_...` | `betterauth_api_key.cy.ts` seeds the key into the app's sessionStorage and skips when unset. The app exchanges the key itself, exactly like a browser with a session. |
+| Portfolio sync cron         | `MISSION_CONTROL_API_KEY` + `MISSION_CONTROL_BETTER_AUTH_URL` | One-shot: exchanges once per run, no in-process cache; a 401 triggers one re-exchange + one retry. `MISSION_CONTROL_TOKEN` still works for local mode.                                                                                              |
+| Cypress e2e                 | `CYPRESS_BETTER_AUTH_API_KEY=mc_...`                          | `betterauth_api_key.cy.ts` seeds the key into the app's sessionStorage and skips when unset. The app exchanges the key itself, exactly like a browser with a session.                                                                               |
 
 ### Operator runbook: issue, scope, revoke
 

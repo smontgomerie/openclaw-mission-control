@@ -18,7 +18,9 @@ export type MissionControlConfig = {
   timeoutMs: number;
 };
 
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): MissionControlConfig {
+export function loadConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): MissionControlConfig {
   const baseUrl = env.MISSION_CONTROL_BASE_URL?.trim();
   const token = env.MISSION_CONTROL_TOKEN?.trim();
   const timeoutRaw = env.MISSION_CONTROL_TIMEOUT_MS?.trim();
@@ -29,7 +31,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MissionControl
   const apiKey = env.MISSION_CONTROL_API_KEY?.trim();
   const betterAuthUrl = env.MISSION_CONTROL_BETTER_AUTH_URL?.trim();
   if (apiKey && !betterAuthUrl) {
-    throw new Error("MISSION_CONTROL_BETTER_AUTH_URL is required when MISSION_CONTROL_API_KEY is set.");
+    throw new Error(
+      "MISSION_CONTROL_BETTER_AUTH_URL is required when MISSION_CONTROL_API_KEY is set.",
+    );
   }
   if (!apiKey && !token) {
     throw new Error(
@@ -50,7 +54,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MissionControl
     baseUrl: baseUrl.replace(/\/+$/, ""),
     token: token || undefined,
     apiKey: apiKey || undefined,
-    betterAuthUrl: betterAuthUrl ? betterAuthUrl.replace(/\/+$/, "") : undefined,
+    betterAuthUrl: betterAuthUrl
+      ? betterAuthUrl.replace(/\/+$/, "")
+      : undefined,
     timeoutMs,
   };
 }

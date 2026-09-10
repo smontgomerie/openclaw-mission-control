@@ -416,11 +416,10 @@ describe("Better Auth Google sign-in (in-memory sqlite)", () => {
 
     const jwksRes = await auth.handler(new Request(`${AUTH_BASE}/jwks`));
     const jwks = await jwksRes.json();
-    const { payload } = await jwtVerify(
-      token,
-      await createLocalJWKSet(jwks),
-      { issuer: BASE_URL, audience: BASE_URL },
-    );
+    const { payload } = await jwtVerify(token, await createLocalJWKSet(jwks), {
+      issuer: BASE_URL,
+      audience: BASE_URL,
+    });
     expect(payload.sub).toBe(body.user.id);
     expect(payload.email).toBe("ada@corp.example.com");
 
@@ -585,7 +584,9 @@ describe("Better Auth Google sign-in (in-memory sqlite)", () => {
     );
     expect(tokenRes.status).toBe(200);
     const { token } = await tokenRes.json();
-    const jwks = await (await auth.handler(new Request(`${AUTH_BASE}/jwks`))).json();
+    const jwks = await (
+      await auth.handler(new Request(`${AUTH_BASE}/jwks`))
+    ).json();
     const { payload } = await jwtVerify(token, await createLocalJWKSet(jwks), {
       issuer: BASE_URL,
       audience: BASE_URL,
@@ -616,5 +617,4 @@ describe("Better Auth Google sign-in (in-memory sqlite)", () => {
       .get() as { rateLimitEnabled: number };
     expect(row.rateLimitEnabled).toBeFalsy();
   });
-
 });

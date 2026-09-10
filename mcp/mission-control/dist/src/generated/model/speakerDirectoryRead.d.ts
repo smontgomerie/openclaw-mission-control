@@ -7,6 +7,6 @@
 import type { SpeakerProfileRead } from "./speakerProfileRead";
 import type { SpeakerVoiceSampleRead } from "./speakerVoiceSampleRead";
 export interface SpeakerDirectoryRead {
-    pending_samples?: SpeakerVoiceSampleRead[];
-    profiles?: SpeakerProfileRead[];
+  pending_samples?: SpeakerVoiceSampleRead[];
+  profiles?: SpeakerProfileRead[];
 }

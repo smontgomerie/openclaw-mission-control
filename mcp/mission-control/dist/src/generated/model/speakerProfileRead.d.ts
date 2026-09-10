@@ -5,13 +5,13 @@
  * OpenAPI spec version: 0.1.0
  */
 export interface SpeakerProfileRead {
-    aliases?: string[];
-    confirmed_sample_count: number;
-    created_at: string;
-    display_name: string;
-    encoder: string;
-    id: string;
-    pending_sample_count?: number;
-    represented_sample_count: number;
-    updated_at: string;
+  aliases?: string[];
+  confirmed_sample_count: number;
+  created_at: string;
+  display_name: string;
+  encoder: string;
+  id: string;
+  pending_sample_count?: number;
+  represented_sample_count: number;
+  updated_at: string;
 }

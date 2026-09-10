@@ -5,5 +5,5 @@
  * OpenAPI spec version: 0.1.0
  */
 export type SpeakerBackfillPreviewReadSkippedItem = {
-    [key: string]: string;
+  [key: string]: string;
 };

@@ -18,13 +18,16 @@ Cypress.Commands.add("waitForAppLoaded", () => {
   }).should("have.attr", "aria-hidden", "true");
 });
 
-Cypress.Commands.add("loginWithLocalAuth", (token = DEFAULT_LOCAL_AUTH_TOKEN) => {
-  cy.visit("/", {
-    onBeforeLoad(win) {
-      win.sessionStorage.setItem(LOCAL_AUTH_STORAGE_KEY, token);
-    },
-  });
-});
+Cypress.Commands.add(
+  "loginWithLocalAuth",
+  (token = DEFAULT_LOCAL_AUTH_TOKEN) => {
+    cy.visit("/", {
+      onBeforeLoad(win) {
+        win.sessionStorage.setItem(LOCAL_AUTH_STORAGE_KEY, token);
+      },
+    });
+  },
+);
 
 Cypress.Commands.add("logoutLocalAuth", () => {
   cy.visit("/", {
@@ -41,22 +44,23 @@ Cypress.Commands.add("logoutLocalAuth", () => {
  * itself exchanges it at), then seeds it in sessionStorage so the app's token
  * source exchanges it for a session JWT — no cookie, no Google consent.
  */
-Cypress.Commands.add("loginWithBetterAuthApiKey", (
-  apiKey: string = Cypress.env("betterAuthApiKey") as string,
-) => {
-  cy.request({
-    url: "/api/auth/get-session",
-    headers: { "x-api-key": apiKey },
-  }).then((resp) => {
-    expect(resp.status).to.eq(200);
-    expect(resp.body?.user?.id).to.be.a("string");
-  });
-  cy.visit("/", {
-    onBeforeLoad(win) {
-      win.sessionStorage.setItem(BETTER_AUTH_API_KEY_STORAGE_KEY, apiKey);
-    },
-  });
-});
+Cypress.Commands.add(
+  "loginWithBetterAuthApiKey",
+  (apiKey: string = Cypress.env("betterAuthApiKey") as string) => {
+    cy.request({
+      url: "/api/auth/get-session",
+      headers: { "x-api-key": apiKey },
+    }).then((resp) => {
+      expect(resp.status).to.eq(200);
+      expect(resp.body?.user?.id).to.be.a("string");
+    });
+    cy.visit("/", {
+      onBeforeLoad(win) {
+        win.sessionStorage.setItem(BETTER_AUTH_API_KEY_STORAGE_KEY, apiKey);
+      },
+    });
+  },
+);
 
 Cypress.Commands.add("logoutWithBetterAuthApiKey", () => {
   cy.visit("/", {

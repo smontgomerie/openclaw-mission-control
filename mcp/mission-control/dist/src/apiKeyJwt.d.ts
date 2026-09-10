@@ -18,6 +18,9 @@ export declare function resetApiKeyJwtCache(): void;
  * the key is not configured, the Better Auth origin refuses the key,
  * or it is unreachable.
  */
-export declare function getApiKeyJwt(config: MissionControlConfig, options?: {
+export declare function getApiKeyJwt(
+  config: MissionControlConfig,
+  options?: {
     force?: boolean;
-}): Promise<string | null>;
+  },
+): Promise<string | null>;

@@ -5,9 +5,9 @@
  * OpenAPI spec version: 0.1.0
  */
 export type ListTranscriptionsApiV1TranscriptionsGetParams = {
-    /**
-     * @minimum 0
-     */
-    offset?: number;
-    limit?: number | null;
+  /**
+   * @minimum 0
+   */
+  offset?: number;
+  limit?: number | null;
 };

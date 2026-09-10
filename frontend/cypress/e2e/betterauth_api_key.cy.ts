@@ -7,7 +7,9 @@
  * (CYPRESS_BETTER_AUTH_API_KEY unset) the spec skips.
  */
 
-const describeIfKey = Cypress.env("betterAuthApiKey") ? describe : describe.skip;
+const describeIfKey = Cypress.env("betterAuthApiKey")
+  ? describe
+  : describe.skip;
 
 describeIfKey("Better Auth API key login", () => {
   it("user with a seeded API key passes the sign-in gate and sees the feed", () => {
@@ -43,7 +45,9 @@ describeIfKey("Better Auth API key login", () => {
     cy.intercept("GET", "**/api/v1/boards*", {
       statusCode: 200,
       body: {
-        items: [{ id: "b1", name: "Testing", updated_at: "2026-02-07T00:00:00Z" }],
+        items: [
+          { id: "b1", name: "Testing", updated_at: "2026-02-07T00:00:00Z" },
+        ],
       },
     }).as("boardsList");
 

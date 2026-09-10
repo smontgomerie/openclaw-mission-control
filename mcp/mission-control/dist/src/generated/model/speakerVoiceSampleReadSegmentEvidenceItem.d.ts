@@ -5,5 +5,5 @@
  * OpenAPI spec version: 0.1.0
  */
 export type SpeakerVoiceSampleReadSegmentEvidenceItem = {
-    [key: string]: unknown;
+  [key: string]: unknown;
 };

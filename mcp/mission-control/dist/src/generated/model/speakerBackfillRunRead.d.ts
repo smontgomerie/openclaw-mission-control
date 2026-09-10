@@ -6,17 +6,17 @@
  */
 import type { SpeakerBackfillRunReadErrorsItem } from "./speakerBackfillRunReadErrorsItem";
 export interface SpeakerBackfillRunRead {
-    completed_at?: string | null;
-    confirmed_samples: number;
-    created_at: string;
-    errors?: SpeakerBackfillRunReadErrorsItem[];
-    id: string;
-    pending_samples: number;
-    processed_recordings: number;
-    skipped_recordings: number;
-    snapshot_hash: string;
-    started_at?: string | null;
-    status: string;
-    total_recordings: number;
-    updated_at: string;
+  completed_at?: string | null;
+  confirmed_samples: number;
+  created_at: string;
+  errors?: SpeakerBackfillRunReadErrorsItem[];
+  id: string;
+  pending_samples: number;
+  processed_recordings: number;
+  skipped_recordings: number;
+  snapshot_hash: string;
+  started_at?: string | null;
+  status: string;
+  total_recordings: number;
+  updated_at: string;
 }

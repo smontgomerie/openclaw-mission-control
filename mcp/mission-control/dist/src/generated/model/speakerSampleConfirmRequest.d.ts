@@ -5,7 +5,7 @@
  * OpenAPI spec version: 0.1.0
  */
 export interface SpeakerSampleConfirmRequest {
-    excluded_segment_ids?: string[];
-    new_name?: string | null;
-    profile_id?: string | null;
+  excluded_segment_ids?: string[];
+  new_name?: string | null;
+  profile_id?: string | null;
 }
