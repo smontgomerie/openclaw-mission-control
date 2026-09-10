@@ -26,18 +26,14 @@ vi.mock("next/image", () => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({
-    children,
-    href,
-    ...rest
-  }: LinkProps) => (
+  default: ({ children, href, ...rest }: LinkProps) => (
     <a href={typeof href === "string" ? href : "#"} {...rest}>
       {children}
     </a>
   ),
 }));
 
-vi.mock("@/auth/clerk", () => ({
+vi.mock("@/auth/session", () => ({
   useUser: useUserMock,
   SignOutButton: ({ children }: { children: ReactNode }) => children,
 }));

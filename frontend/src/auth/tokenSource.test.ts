@@ -20,14 +20,6 @@ function response(status: number): Response {
   return new Response(null, { status });
 }
 
-function clerkWindowWith(token: string | null) {
-  vi.stubGlobal("window", {
-    location: { pathname: "/", search: "" },
-    sessionStorage: globalThis.sessionStorage,
-    Clerk: token ? { session: { getToken: async () => token } } : undefined,
-  });
-}
-
 describe("resolveBearerToken", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -55,37 +47,9 @@ describe("resolveBearerToken", () => {
     expect(getBetterAuthTokenMock).not.toHaveBeenCalled();
   });
 
-  it("returns null in betterauth mode when there is no session", async () => {
-    isBetterAuthModeMock.mockReturnValue(true);
-    getBetterAuthTokenMock.mockResolvedValueOnce(null);
-    await expect(resolveBearerToken()).resolves.toBeNull();
-  });
-
-  it("returns the Clerk session token in clerk mode", async () => {
-    clerkWindowWith("clerk-jwt");
-    await expect(resolveBearerToken()).resolves.toBe("clerk-jwt");
-  });
-
-  it("returns null in clerk mode when Clerk is not on the page", async () => {
-    clerkWindowWith(null);
-    await expect(resolveBearerToken()).resolves.toBeNull();
-  });
-
-  it("returns null in clerk mode when getToken throws", async () => {
-    vi.stubGlobal("window", {
-      Clerk: {
-        session: {
-          getToken: () => {
-            throw new Error("no session");
-          },
-        },
-      },
-    });
-    await expect(resolveBearerToken()).resolves.toBeNull();
-  });
-
-  it("returns null in clerk mode on a server (no window)", async () => {
-    vi.stubGlobal("window", undefined);
+  it("returns null when no auth mode is set", async () => {
+    isBetterAuthModeMock.mockReturnValue(false);
+    isLocalAuthModeMock.mockReturnValue(false);
     await expect(resolveBearerToken()).resolves.toBeNull();
   });
 });

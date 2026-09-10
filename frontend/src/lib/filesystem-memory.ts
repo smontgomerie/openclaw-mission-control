@@ -27,7 +27,10 @@ const withFilesystemMemoryTimeout = async <T>(
   request: (signal: AbortSignal) => Promise<{ data: T }>,
 ): Promise<T> => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FILESYSTEM_MEMORY_TIMEOUT_MS);
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    FILESYSTEM_MEMORY_TIMEOUT_MS,
+  );
 
   try {
     const response = await request(controller.signal);

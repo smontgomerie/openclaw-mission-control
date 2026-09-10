@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { useMemo, useState } from "react";
 
-import { useAuth } from "@/auth/clerk";
+import { useAuth } from "@/auth/session";
 import { ApiError } from "@/api/mutator";
 import {
   type listGatewaysApiV1GatewaysGetResponse,
@@ -65,7 +65,6 @@ export default function MemoryPage() {
       signedOut={{
         message: "Sign in to inspect memory.",
         forceRedirectUrl: "/memory",
-        signUpForceRedirectUrl: "/memory",
       }}
       title="Memory"
       description="Inspect gateway-main workspace memory outside the board page."
@@ -86,7 +85,9 @@ export default function MemoryPage() {
                 onValueChange={setSelectedGatewayId}
                 options={gatewayOptions}
                 placeholder={
-                  gatewaysQuery.isLoading ? "Loading gateways..." : "Select gateway"
+                  gatewaysQuery.isLoading
+                    ? "Loading gateways..."
+                    : "Select gateway"
                 }
                 searchPlaceholder="Search gateways..."
                 emptyMessage="No gateways found."

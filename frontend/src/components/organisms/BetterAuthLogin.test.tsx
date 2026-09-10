@@ -67,7 +67,7 @@ describe("BetterAuthLogin", () => {
   });
 
   it("honors the configured fallback redirect env when no redirectUrl is given", async () => {
-    vi.stubEnv("NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL", "/boards");
+    vi.stubEnv("NEXT_PUBLIC_SIGN_IN_FALLBACK_REDIRECT_URL", "/boards");
     const onAuthenticatedMock = vi.fn();
     signInWithGoogleMock.mockResolvedValueOnce({ error: null, data: null });
     const user = userEvent.setup();

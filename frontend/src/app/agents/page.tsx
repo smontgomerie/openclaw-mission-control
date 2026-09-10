@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { useAuth } from "@/auth/clerk";
+import { useAuth } from "@/auth/session";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { AgentsTable } from "@/components/agents/AgentsTable";
@@ -127,7 +127,6 @@ export default function AgentsPage() {
         signedOut={{
           message: "Sign in to view agents.",
           forceRedirectUrl: "/agents",
-          signUpForceRedirectUrl: "/agents",
         }}
         title="Agents"
         description={`${agents.length} agent${agents.length === 1 ? "" : "s"} total.`}

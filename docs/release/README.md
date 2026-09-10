@@ -42,7 +42,7 @@ docker compose -f compose.yml --env-file .env up -d --build
 - [ ] Backend health: `GET /healthz` returns 200
 - [ ] Backend readiness: `GET /readyz` returns 200
 - [ ] Frontend loads (no console spam)
-- [ ] Login works (local/clerk mode)
+- [ ] Login works (local and betterauth modes)
 - [ ] Core flows work end-to-end:
   - [ ] View board
   - [ ] Create/update a task

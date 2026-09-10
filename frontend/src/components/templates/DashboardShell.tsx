@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Menu, X } from "lucide-react";
 
-import { SignedIn, useAuth } from "@/auth/clerk";
+import { SignedIn, useAuth } from "@/auth/session";
 
 import { ApiError } from "@/api/mutator";
 import {
@@ -22,7 +22,10 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { isSignedIn } = useAuth();
   const isOnboardingPath = pathname === "/onboarding";
-  const [sidebarState, setSidebarState] = useState({ open: false, path: pathname });
+  const [sidebarState, setSidebarState] = useState({
+    open: false,
+    path: pathname,
+  });
   // Close sidebar on navigation using React's "store info from previous
   // renders" pattern — conditional setState during render resets immediately
   // without extra commits, avoiding both set-state-in-effect and refs rules.
@@ -86,14 +89,18 @@ export function DashboardShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!sidebarOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSidebarState((prev) => ({ ...prev, open: false }));
+      if (e.key === "Escape")
+        setSidebarState((prev) => ({ ...prev, open: false }));
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [sidebarOpen]);
 
   return (
-    <div className="min-h-screen bg-app text-strong" data-sidebar={sidebarOpen ? "open" : "closed"}>
+    <div
+      className="min-h-screen bg-app text-strong"
+      data-sidebar={sidebarOpen ? "open" : "closed"}
+    >
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white shadow-sm">
         <div className="flex items-center py-3">
           <div className="flex items-center px-4 md:px-6 md:w-[260px]">
@@ -104,7 +111,11 @@ export function DashboardShell({ children }: { children: ReactNode }) {
                 onClick={toggleSidebar}
                 aria-label="Toggle navigation"
               >
-                {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+                {sidebarOpen ? (
+                  <X className="h-5 w-5" />
+                ) : (
+                  <Menu className="h-5 w-5" />
+                )}
               </button>
             ) : null}
             <BrandMark />

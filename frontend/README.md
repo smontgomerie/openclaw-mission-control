@@ -5,8 +5,8 @@ This package is the **Next.js** web UI for OpenClaw Mission Control.
 - Talks to the Mission Control **backend** over HTTP (typically `http://localhost:8000`).
 - Uses **React Query** for data fetching.
 - Supports two auth modes:
-  - **local** shared bearer token mode (self-host default)
-  - **clerk** mode
+  - **local** shared bearer token mode (offline / air-gapped self-hosting)
+  - **betterauth** Google sign-in via the app's Better Auth instance
 
 ## Prerequisites
 
@@ -60,18 +60,18 @@ NEXT_PUBLIC_API_URL=auto
 Set `NEXT_PUBLIC_AUTH_MODE` to one of:
 
 - `local` (default for self-host)
-- `clerk`
+- `betterauth` (Google sign-in; see `docs/reference/authentication.md`)
 
 For `local` mode:
 
 - users enter the token in the local login screen
 - requests use that token as `Authorization: Bearer ...`
 
-For `clerk` mode, configure:
-
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
-- optional `NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL`
-- optional `NEXT_PUBLIC_CLERK_AFTER_SIGN_OUT_URL`
+For `betterauth` mode, configure the `BETTER_AUTH_*` vars on the frontend
+service (Google OAuth client, `BETTER_AUTH_SECRET`, allowed Google domains,
+`BETTER_AUTH_BASE_URL`) and `AUTH_MODE=betterauth` on the backend so it
+verifies the JWTs. The optional `NEXT_PUBLIC_SIGN_IN_FALLBACK_REDIRECT_URL`
+controls where unauthenticated clicks land (default `/onboarding`).
 
 ## How the frontend talks to the backend
 
@@ -99,13 +99,14 @@ Example:
 ORVAL_INPUT=http://localhost:8000/openapi.json npm run api:gen
 ```
 
-### Auth header / Clerk token injection
+### Auth header / token injection
 
 All Orval-generated requests go through the custom mutator (`src/api/mutator.ts`).
 It will:
 
 - set `Content-Type: application/json` when there is a body and you didn’t specify a content type
-- add `Authorization: Bearer <token>` automatically from local mode token or Clerk session
+- add `Authorization: Bearer <token>` automatically (Better Auth JWT in betterauth
+  mode, pasted token in local mode)
 - parse errors into an `ApiError` with status + parsed response body
 
 ## Mobile / responsive UI validation
@@ -163,7 +164,7 @@ cp .env.example .env.local
 
 - Ensure `NEXT_PUBLIC_AUTH_MODE` matches backend `AUTH_MODE`.
 - For local mode, set `NEXT_PUBLIC_AUTH_MODE=local`.
-- For Clerk mode, set `NEXT_PUBLIC_AUTH_MODE=clerk` and a real Clerk publishable key.
+- For betterauth mode, set `NEXT_PUBLIC_AUTH_MODE=betterauth` and configure the `BETTER_AUTH_*` vars (Google OAuth client, secret, allowed domains).
 
 ### Dev server blocked by origin restrictions
 

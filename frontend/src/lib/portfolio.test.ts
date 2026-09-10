@@ -48,11 +48,9 @@ describe("portfolio helpers", () => {
       },
     ];
 
-    expect(sortPortfolioPositions(positions).map((item) => item.position_key)).toEqual([
-      "needs-why",
-      "flagged",
-      "later",
-    ]);
+    expect(
+      sortPortfolioPositions(positions).map((item) => item.position_key),
+    ).toEqual(["needs-why", "flagged", "later"]);
   });
 
   it("parses and formats comma-separated tags", () => {

@@ -14,7 +14,7 @@ const reprocessTranscriptionsMetadataMock = vi.hoisted(() => vi.fn());
 const fetchSpeakerDirectoryMock = vi.hoisted(() => vi.fn());
 const confirmSpeakerSampleMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/auth/clerk", () => ({
+vi.mock("@/auth/session", () => ({
   useAuth: () => ({ isSignedIn: true }),
 }));
 

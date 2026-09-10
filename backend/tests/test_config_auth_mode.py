@@ -10,6 +10,8 @@ from app.core.auth_mode import AuthMode
 from app.core.config import Settings
 
 BASE_URL = "http://localhost:8000"
+BETTER_AUTH_ISSUER = "http://localhost:3000"
+BETTER_AUTH_JWKS_URL = "http://localhost:3000/api/auth/jwks"
 
 
 def test_local_mode_requires_non_empty_token() -> None:
@@ -64,15 +66,14 @@ def test_local_mode_accepts_real_token() -> None:
     assert settings.local_auth_token == token
 
 
-def test_clerk_mode_requires_secret_key() -> None:
+def test_rejects_retired_clerk_auth_mode() -> None:
     with pytest.raises(
         ValidationError,
-        match="CLERK_SECRET_KEY must be set and non-empty when AUTH_MODE=clerk",
+        match=r"AUTH_MODE=clerk is no longer supported",
     ):
         Settings(
             _env_file=None,
-            auth_mode=AuthMode.CLERK,
-            clerk_secret_key="",
+            auth_mode="clerk",
             base_url=BASE_URL,
         )
 
@@ -84,8 +85,9 @@ def test_base_url_required() -> None:
     ):
         Settings(
             _env_file=None,
-            auth_mode=AuthMode.CLERK,
-            clerk_secret_key="sk_test",
+            auth_mode=AuthMode.BETTER_AUTH,
+            betterauth_jwks_url=BETTER_AUTH_JWKS_URL,
+            betterauth_issuer=BETTER_AUTH_ISSUER,
             base_url="  ",
         )
 
@@ -96,8 +98,9 @@ def test_base_url_field_is_required(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(ValidationError) as exc_info:
         Settings(
             _env_file=None,
-            auth_mode=AuthMode.CLERK,
-            clerk_secret_key="sk_test",
+            auth_mode=AuthMode.BETTER_AUTH,
+            betterauth_jwks_url=BETTER_AUTH_JWKS_URL,
+            betterauth_issuer=BETTER_AUTH_ISSUER,
         )
 
     text = str(exc_info.value)
@@ -118,8 +121,9 @@ def test_base_url_requires_absolute_http_url(base_url: str) -> None:
     ):
         Settings(
             _env_file=None,
-            auth_mode=AuthMode.CLERK,
-            clerk_secret_key="sk_test",
+            auth_mode=AuthMode.BETTER_AUTH,
+            betterauth_jwks_url=BETTER_AUTH_JWKS_URL,
+            betterauth_issuer=BETTER_AUTH_ISSUER,
             base_url=base_url,
         )
 
@@ -134,10 +138,6 @@ def test_base_url_is_normalized_without_trailing_slash() -> None:
     )
 
     assert settings.base_url == BASE_URL
-
-
-BETTER_AUTH_ISSUER = "http://localhost:3000"
-BETTER_AUTH_JWKS_URL = "http://localhost:3000/api/auth/jwks"
 
 
 def test_betterauth_mode_requires_jwks_url() -> None:

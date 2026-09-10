@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { useAuth } from "@/auth/clerk";
+import { useAuth } from "@/auth/session";
 
 import { ApiError } from "@/api/mutator";
 import { useCreateBoardApiV1BoardsPost } from "@/api/generated/boards/boards";
@@ -152,7 +152,6 @@ export default function NewBoardPage() {
       signedOut={{
         message: "Sign in to create a board.",
         forceRedirectUrl: "/boards/new",
-        signUpForceRedirectUrl: "/boards/new",
       }}
       title="Create board"
       description="Boards organize tasks and agents by mission context."

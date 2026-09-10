@@ -7,7 +7,7 @@ import {
  * Runs once when the Next.js server starts (nodejs runtime only; not during
  * `next build`). Better Auth config is validated here and logged loudly so a
  * missing/placeholder BETTER_AUTH_* var is visible at boot. We log rather
- * than throw: local/clerk dev flows must keep working without these vars, and
+ * than throw: the local dev flow must keep working without these vars, and
  * the `/api/auth/*` routes fail fast on their own (see `getAuth()` in
  * `src/lib/better-auth.ts`).
  */

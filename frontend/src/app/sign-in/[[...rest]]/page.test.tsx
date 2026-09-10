@@ -7,26 +7,44 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-vi.mock("@clerk/nextjs", () => ({
-  SignIn: () => <div>Clerk sign-in</div>,
-}));
-
 describe("/sign-in", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });
 
-  it("shows a configuration message when Clerk mode is enabled without a valid key", () => {
-    vi.stubEnv("NEXT_PUBLIC_AUTH_MODE", "clerk");
-    vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "placeholder");
+  it("shows the local token screen in local mode", () => {
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MODE", "local");
 
     render(<SignInPage />);
 
     expect(
-      screen.getByRole("heading", { name: "Authentication is unavailable" }),
+      screen.getByRole("heading", { name: /local authentication/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the Google sign-in screen in betterauth mode", () => {
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MODE", "betterauth");
+
+    render(<SignInPage />);
+
+    expect(
+      screen.getByRole("button", { name: /sign in with google/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("explains the missing configuration when no auth mode is set", () => {
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MODE", "");
+
+    render(<SignInPage />);
+
+    expect(
+      screen.getByRole("heading", { name: /authentication is unavailable/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/no valid clerk publishable key is configured/i),
+      screen.getByText(/NEXT_PUBLIC_AUTH_MODE=betterauth/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/NEXT_PUBLIC_AUTH_MODE=local/i),
     ).toBeInTheDocument();
   });
 });

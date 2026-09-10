@@ -11,7 +11,7 @@ import {
   SignedOut,
   useAuth,
   useUser,
-} from "@/auth/clerk";
+} from "@/auth/session";
 import { Globe, Info, RotateCcw, Save, User } from "lucide-react";
 
 import { ApiError } from "@/api/mutator";
@@ -63,11 +63,11 @@ export default function OnboardingPage() {
   const errorMessage = error ?? loadError;
   const profile = meQuery.data?.status === 200 ? meQuery.data.data : null;
 
-  const clerkFallbackName =
+  const fallbackName =
     user?.fullName ?? user?.firstName ?? user?.username ?? "";
   const resolvedName = name.trim()
     ? name
-    : (profile?.preferred_name ?? profile?.name ?? clerkFallbackName ?? "");
+    : (profile?.preferred_name ?? profile?.name ?? fallbackName ?? "");
   const resolvedTimezone = timezone.trim()
     ? timezone
     : (profile?.timezone ?? "");
@@ -125,11 +125,7 @@ export default function OnboardingPage() {
               </p>
             </div>
             <div className="px-6 py-6">
-              <SignInButton
-                mode="modal"
-                forceRedirectUrl="/onboarding"
-                signUpForceRedirectUrl="/onboarding"
-              >
+              <SignInButton forceRedirectUrl="/onboarding">
                 <Button size="lg">Sign in</Button>
               </SignInButton>
             </div>

@@ -2,7 +2,7 @@
 
 // React session state for Better Auth mode: loads the cookie session from
 // `/api/auth/get-session` on mount and exposes sign-out. Consumed by
-// `AuthProvider` (the signed-in gate) and the `@/auth/clerk` shims
+// `AuthProvider` (the signed-in gate) and the `@/auth/session` shims
 // (SignedIn/SignedOut/useUser/useAuth), which delegate to it in betterauth
 // mode so the rest of the app stays mode-agnostic.
 import {
@@ -24,10 +24,9 @@ import {
 
 /**
  * Better Auth's user, adapted to the display fields the app's UI reads
- * (the UI was written against the Clerk user contract: `fullName`,
- * `firstName`, `username`, `imageUrl`, `primaryEmailAddress`). `useUser()`
- * in `@/auth/clerk` exposes this shape in betterauth mode, so app pages stay
- * mode-agnostic.
+ * (the legacy `fullName`, `firstName`, `username`, `imageUrl`,
+ * `primaryEmailAddress` shape). `useUser()` in `@/auth/session` exposes this
+ * shape in betterauth mode, so app pages stay mode-agnostic.
  */
 export interface BetterAuthAppUser {
   id: string;
@@ -133,7 +132,7 @@ export function BetterAuthSessionProvider({
 }
 
 export function useBetterAuthSession(): BetterAuthSessionState {
-  // No provider mounted (e.g. the `@/auth/clerk` shims in clerk/local mode)
+  // No provider mounted (e.g. the `@/auth/session` shims in local mode)
   // falls back to the signed-out default; a mounted provider always reports
   // its real state, so consumers stay mode-agnostic.
   return useContext(BetterAuthSessionContext);

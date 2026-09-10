@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Self
+from typing import Annotated, Self
 from urllib.parse import urlparse
 
-from pydantic import Field, model_validator
+from pydantic import BeforeValidator, Field, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.auth_mode import AuthMode
@@ -25,6 +25,31 @@ LOCAL_AUTH_TOKEN_PLACEHOLDERS = frozenset(
 )
 
 
+def _validate_auth_mode(value: object) -> object:
+    """Reject retired/unknown AUTH_MODE values with actionable guidance.
+
+    Runs before enum coercion so an operator who still sets `AUTH_MODE=clerk`
+    (or any other unknown value) gets a message that names the working modes
+    instead of an opaque validation failure.
+    """
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "clerk":
+            raise ValueError(
+                "AUTH_MODE=clerk is no longer supported (Clerk was retired from "
+                "this codebase). Use AUTH_MODE=betterauth (Google sign-in via "
+                "Better Auth) or AUTH_MODE=local (shared bearer token for "
+                "offline/air-gapped use).",
+            )
+        try:
+            return AuthMode(normalized)
+        except ValueError:
+            raise ValueError(
+                f"Unsupported AUTH_MODE value {value!r}; " "expected 'local' or 'betterauth'.",
+            ) from None
+    return value
+
+
 class Settings(BaseSettings):
     """Typed runtime configuration sourced from environment variables."""
 
@@ -39,16 +64,10 @@ class Settings(BaseSettings):
     environment: str = "dev"
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/openclaw_agency"
 
-    # Auth mode: "clerk" for Clerk JWT auth, "local" for shared bearer token auth,
-    # "betterauth" for Better Auth JWTs verified against the app's JWKS.
-    auth_mode: AuthMode
+    # Auth mode: "local" for shared bearer token auth, "betterauth" for
+    # Better Auth JWTs verified against the app's JWKS.
+    auth_mode: Annotated[AuthMode, BeforeValidator(_validate_auth_mode)]
     local_auth_token: str = ""
-
-    # Clerk auth (auth only; roles stored in DB)
-    clerk_secret_key: str = ""
-    clerk_api_url: str = "https://api.clerk.com"
-    clerk_verify_iat: bool = True
-    clerk_leeway: float = 10.0
 
     # Better Auth (auth only; roles stored in DB). The backend verifies
     # Better Auth JWTs (from the Next.js app's /api/auth/* instance)
@@ -106,12 +125,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _defaults(self) -> Self:
-        if self.auth_mode == AuthMode.CLERK:
-            if not self.clerk_secret_key.strip():
-                raise ValueError(
-                    "CLERK_SECRET_KEY must be set and non-empty when AUTH_MODE=clerk.",
-                )
-        elif self.auth_mode == AuthMode.LOCAL:
+        if self.auth_mode == AuthMode.LOCAL:
             token = self.local_auth_token.strip()
             if (
                 not token
@@ -175,4 +189,15 @@ class Settings(BaseSettings):
         return self
 
 
-settings = Settings()
+try:
+    settings = Settings()
+except ValidationError as _config_error:
+    # Surface configuration problems as a readable operator message at
+    # startup instead of a bare validation traceback.
+    _details = "; ".join(
+        f"{'.'.join(str(loc) for loc in error.get('loc', ()) if loc != 'input')}: "
+        f"{error.get('msg')}"
+        for error in _config_error.errors()
+    )
+    print(f"Configuration error, refusing to start: {_details}")
+    raise SystemExit(1)

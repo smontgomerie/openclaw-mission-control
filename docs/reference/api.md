@@ -31,7 +31,7 @@ Authorization: Bearer <token>
 Auth mode is controlled by `AUTH_MODE`:
 
 - `local`: shared bearer token auth (token is `LOCAL_AUTH_TOKEN`)
-- `clerk`: Clerk JWT auth
+- `betterauth`: Better Auth JWTs, verified statelessly against the app's JWKS
 
 Notes:
 - The frontend uses the same bearer token scheme in local mode (users paste the token into the UI).

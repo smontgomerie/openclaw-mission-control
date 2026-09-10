@@ -102,7 +102,7 @@ When using the in-memory backend in multi-process deployments, also apply rate l
 
 ### Auth mismatch
 
-- Backend: `AUTH_MODE` (`local` or `clerk`)
+- Backend: `AUTH_MODE` (`local` or `betterauth`)
 - Frontend: `NEXT_PUBLIC_AUTH_MODE` should match
 
 ### Webhook signature errors (403)

@@ -1,6 +1,6 @@
 import type { ReactNode, Ref } from "react";
 
-import { SignedIn, SignedOut } from "@/auth/clerk";
+import { SignedIn, SignedOut } from "@/auth/session";
 
 import { AdminOnlyNotice } from "@/components/auth/AdminOnlyNotice";
 import { SignedOutPanel } from "@/components/auth/SignedOutPanel";
@@ -12,8 +12,6 @@ import { DashboardShell } from "./DashboardShell";
 type SignedOutConfig = {
   message: string;
   forceRedirectUrl: string;
-  signUpForceRedirectUrl?: string;
-  mode?: "modal" | "redirect";
   buttonLabel?: string;
   buttonTestId?: string;
 };
@@ -56,8 +54,6 @@ export function DashboardPageLayout({
         <SignedOutPanel
           message={signedOut.message}
           forceRedirectUrl={signedOut.forceRedirectUrl}
-          signUpForceRedirectUrl={signedOut.signUpForceRedirectUrl}
-          mode={signedOut.mode}
           buttonLabel={signedOut.buttonLabel}
           buttonTestId={signedOut.buttonTestId}
         />

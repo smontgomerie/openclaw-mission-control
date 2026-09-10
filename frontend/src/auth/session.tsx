@@ -1,32 +1,21 @@
 "use client";
 
-// NOTE: We intentionally keep this file very small and dependency-free.
-// It provides CI/secretless-build safe fallbacks for Clerk hooks/components.
-// In betterauth mode these shims delegate to the Better Auth session
-// (`@/auth/betterAuthSession`) instead of Clerk; local mode keeps its
-// token-based fallbacks; clerk mode is untouched.
+// Mode-aware auth surface for the app: every consumer imports these
+// components/hooks instead of an auth vendor.
+//
+// - betterauth: delegates to the Better Auth session
+//   (`@/auth/betterAuthSession`).
+// - local: token-based fallbacks from sessionStorage.
+// - unset/unknown mode: everything is treated as signed-out with
+//   client-side fallbacks, matching the previous keyless behavior.
+//
+// Keep this file dependency-free of any auth vendor.
 
-import type {
-  ReactNode,
-  ComponentProps,
-  MouseEvent,
-  ReactElement,
-} from "react";
+import type { ReactNode } from "react";
 import { cloneElement, isValidElement } from "react";
-
-import {
-  ClerkProvider,
-  SignedIn as ClerkSignedIn,
-  SignedOut as ClerkSignedOut,
-  SignInButton as ClerkSignInButton,
-  SignOutButton as ClerkSignOutButton,
-  useAuth as clerkUseAuth,
-  useUser as clerkUseUser,
-} from "@clerk/nextjs";
 
 import { useBetterAuthSession } from "@/auth/betterAuthSession";
 import { getBetterAuthToken, isBetterAuthMode } from "@/auth/betterAuth";
-import { isLikelyValidClerkPublishableKey } from "@/auth/clerkKey";
 import { navigateToFallbackSignIn } from "@/auth/fallbackNavigation";
 import { getLocalAuthToken, isLocalAuthMode } from "@/auth/localAuth";
 
@@ -40,16 +29,6 @@ function hasLocalAuthToken(): boolean {
   return Boolean(getLocalAuthToken());
 }
 
-export function isClerkEnabled(): boolean {
-  // IMPORTANT: keep this in sync with AuthProvider; otherwise components like
-  // <SignedOut/> may render without a <ClerkProvider/> and crash during prerender.
-  if (isBetterAuthMode()) return false;
-  if (isLocalAuthMode()) return false;
-  return isLikelyValidClerkPublishableKey(
-    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
-  );
-}
-
 export function SignedIn(props: { children: ReactNode }) {
   const betterAuth = useBetterAuthSession();
   if (isBetterAuthMode()) {
@@ -58,8 +37,8 @@ export function SignedIn(props: { children: ReactNode }) {
   if (isLocalAuthMode()) {
     return hasLocalAuthToken() ? <>{props.children}</> : null;
   }
-  if (!isClerkEnabled()) return null;
-  return <ClerkSignedIn>{props.children}</ClerkSignedIn>;
+  // No known mode: keep the previous keyless behavior — treat as signed out.
+  return null;
 }
 
 export function SignedOut(props: { children: ReactNode }) {
@@ -70,25 +49,25 @@ export function SignedOut(props: { children: ReactNode }) {
   if (isLocalAuthMode()) {
     return hasLocalAuthToken() ? null : <>{props.children}</>;
   }
-  if (!isClerkEnabled()) return <>{props.children}</>;
-  return <ClerkSignedOut>{props.children}</ClerkSignedOut>;
+  // No known mode: keep the previous keyless behavior — signed-out UI shows.
+  return <>{props.children}</>;
 }
 
 function renderFallbackTrigger(
   children: ReactNode,
   href: string,
-): ReactElement | null {
+): React.ReactElement | null {
   if (!isValidElement(children)) {
     return null;
   }
 
-  const child = children as ReactElement<{
-    onClick?: (event: MouseEvent<HTMLElement>) => void;
+  const child = children as React.ReactElement<{
+    onClick?: (event: React.MouseEvent<HTMLElement>) => void;
   }>;
   const existingOnClick = child.props.onClick;
 
   return cloneElement(child, {
-    onClick: (event: MouseEvent<HTMLElement>) => {
+    onClick: (event: React.MouseEvent<HTMLElement>) => {
       existingOnClick?.(event);
       if (event.defaultPrevented) return;
       navigateToFallbackSignIn(href);
@@ -104,18 +83,18 @@ function renderFallbackTrigger(
 function renderBetterAuthSignOutTrigger(
   children: ReactNode,
   onSignOut: () => Promise<void>,
-): ReactElement | null {
+): React.ReactElement | null {
   if (!isValidElement(children)) {
     return null;
   }
 
-  const child = children as ReactElement<{
-    onClick?: (event: MouseEvent<HTMLElement>) => void;
+  const child = children as React.ReactElement<{
+    onClick?: (event: React.MouseEvent<HTMLElement>) => void;
   }>;
   const existingOnClick = child.props.onClick;
 
   return cloneElement(child, {
-    onClick: (event: MouseEvent<HTMLElement>) => {
+    onClick: (event: React.MouseEvent<HTMLElement>) => {
       existingOnClick?.(event);
       if (event.defaultPrevented) return;
       void onSignOut().then(() => window.location.reload());
@@ -123,26 +102,34 @@ function renderBetterAuthSignOutTrigger(
   });
 }
 
-// Keep the same prop surface as Clerk components so call sites don't need edits.
-export function SignInButton(props: ComponentProps<typeof ClerkSignInButton>) {
-  if (!isClerkEnabled()) {
-    return renderFallbackTrigger(
-      props.children,
-      resolveFallbackSignInUrl(props.forceRedirectUrl),
-    );
-  }
-  return <ClerkSignInButton {...props} />;
+/**
+ * Sign-in trigger. In betterauth mode the gate already shows the Google
+ * sign-in screen, so callers only need this for local mode or an unset
+ * mode: it navigates to /sign-in (optionally with `forceRedirectUrl`).
+ */
+export function SignInButton({
+  children,
+  forceRedirectUrl,
+}: {
+  children: ReactNode;
+  forceRedirectUrl?: string;
+}) {
+  return renderFallbackTrigger(
+    children,
+    resolveFallbackSignInUrl(forceRedirectUrl),
+  );
 }
 
-export function SignOutButton(
-  props: ComponentProps<typeof ClerkSignOutButton>,
-) {
+export function SignOutButton({ children }: { children: ReactNode }) {
   const betterAuth = useBetterAuthSession();
   if (isBetterAuthMode()) {
-    return renderBetterAuthSignOutTrigger(props.children, betterAuth.signOut);
+    return renderBetterAuthSignOutTrigger(children, betterAuth.signOut);
   }
-  if (!isClerkEnabled()) return null;
-  return <ClerkSignOutButton {...props} />;
+  if (isLocalAuthMode()) {
+    if (typeof window !== "undefined") window.location.reload();
+    return null;
+  }
+  return null;
 }
 
 export function useUser() {
@@ -161,10 +148,7 @@ export function useUser() {
       user: null,
     } as const;
   }
-  if (!isClerkEnabled()) {
-    return { isLoaded: true, isSignedIn: false, user: null } as const;
-  }
-  return clerkUseUser();
+  return { isLoaded: true, isSignedIn: false, user: null } as const;
 }
 
 export function useAuth() {
@@ -190,18 +174,11 @@ export function useAuth() {
       getToken: async () => token,
     } as const;
   }
-  if (!isClerkEnabled()) {
-    return {
-      isLoaded: true,
-      isSignedIn: false,
-      userId: null,
-      sessionId: null,
-      getToken: async () => null,
-    } as const;
-  }
-  return clerkUseAuth();
+  return {
+    isLoaded: true,
+    isSignedIn: false,
+    userId: null,
+    sessionId: null,
+    getToken: async () => null,
+  } as const;
 }
-
-// Re-export ClerkProvider for places that want to mount it, but strongly prefer
-// gating via isClerkEnabled() at call sites.
-export { ClerkProvider };

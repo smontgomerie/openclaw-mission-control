@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 
-import { useAuth } from "@/auth/clerk";
+import { useAuth } from "@/auth/session";
 import { ApiError } from "@/api/mutator";
 import { Markdown } from "@/components/atoms/Markdown";
 import { DashboardPageLayout } from "@/components/templates/DashboardPageLayout";
@@ -1753,7 +1753,6 @@ export default function TranscriptionsPage() {
       signedOut={{
         message: "Sign in to inspect transcriptions.",
         forceRedirectUrl: "/transcriptions",
-        signUpForceRedirectUrl: "/transcriptions",
       }}
       title="Transcriptions"
       description="Browse processed transcript artifacts from the shared OpenClaw workspace."

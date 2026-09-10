@@ -1,11 +1,26 @@
 # Authentication
 
-Mission Control supports three auth modes via `AUTH_MODE`:
+Mission Control supports two auth modes via `AUTH_MODE`:
 
-- `local`: shared bearer token auth for self-hosted deployments
-- `clerk`: Clerk JWT auth
-- `betterauth`: Better Auth JWTs, verified statelessly against the JWKS
-  published by the Next.js app's Better Auth instance
+- `local`: shared bearer token auth for offline / air-gapped self-hosting
+- `betterauth`: Google sign-in via Better Auth; the backend verifies the app's
+  JWTs **statelessly** against the JWKS published by the Next.js app's
+  Better Auth instance
+
+`AUTH_MODE=clerk` is no longer accepted — Clerk was retired from this codebase.
+A backend started with `AUTH_MODE=clerk` refuses to boot and names the two
+working modes; see [Migrating from Clerk mode](#migrating-from-clerk-mode)
+below if you are upgrading an existing deployment.
+
+## Choosing a mode
+
+- **`betterauth`** — the default for networked deployments. Real per-user
+  identities via Google OAuth, no paid third-party identity dependency, and
+  the backend stays offline on the request path (stateless JWKS verification).
+- **`local`** — single shared token pasted into the UI. For offline or
+  air-gapped self-hosting where no Google/identity provider is reachable.
+  Everyone who holds `LOCAL_AUTH_TOKEN` is the same user; there is no
+  per-user identity.
 
 ## Local mode
 
@@ -19,24 +34,12 @@ Frontend:
 - `NEXT_PUBLIC_AUTH_MODE=local`
 - Provide the token via the login UI.
 
-## Clerk mode
+## Better Auth mode
 
-Backend:
-
-- `AUTH_MODE=clerk`
-- `CLERK_SECRET_KEY=<secret>`
-
-Frontend:
-
-- `NEXT_PUBLIC_AUTH_MODE=clerk`
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=<key>`
-
-## Better Auth (backend) mode
-
-The backend's third mode verifies Better Auth JWTs **statelessly**: it checks
-the signature against the public keys published at the app's JWKS endpoint
-and never calls Google or Better Auth on the request path. The browser keeps
-sending `Authorization: Bearer <jwt>` to the API exactly as before.
+The backend verifies Better Auth JWTs **statelessly**: it checks the
+signature against the public keys published at the app's JWKS endpoint and
+never calls Google or Better Auth on the request path. The browser keeps
+sending `Authorization: Bearer <jwt>` to the API.
 
 Backend:
 
@@ -65,16 +68,14 @@ Behavior:
 
 See the section below for setting up the Better Auth instance itself.
 
-## Better Auth (Google)
+### Better Auth (Google)
 
-Mission Control can also run a **Better Auth** server inside the Next.js
-frontend at `/api/auth/*`. It owns Google OAuth and the browser session, and
-its JWT plugin publishes a JWKS endpoint that the Python backend verifies
-statelessly — the backend never talks to Google. `local` and `clerk` modes
-keep working unchanged while this is present; Better Auth is an additional
-sign-in path, not a replacement for those.
+Mission Control runs a **Better Auth** server inside the Next.js frontend at
+`/api/auth/*`. It owns Google OAuth and the browser session, and its JWT
+plugin publishes a JWKS endpoint that the Python backend verifies
+statelessly — the backend never talks to Google.
 
-### How it works
+#### How it works
 
 - Google sign-in: the browser completes the Google OAuth flow at
   `/api/auth/*` and gets a Better Auth session (cookie).
@@ -91,7 +92,7 @@ sign-in path, not a replacement for those.
   Postgres schema in the shared `db` service. Alembic manages only the
   `public` schema and does not touch these tables.
 
-### 1. Create the Google OAuth client
+#### 1. Create the Google OAuth client
 
 1. In the [Google Cloud Console](https://console.cloud.google.com/), open your
    project (or create one).
@@ -111,7 +112,7 @@ sign-in path, not a replacement for those.
 
    Record the **Client ID** and **Client secret**.
 
-### 2. Configure the frontend
+#### 2. Configure the frontend
 
 Set these on the `frontend` service (see `frontend/.env.example` and
 `compose.yml`; in compose they are passed through as `BETTER_AUTH_*`):
@@ -126,10 +127,9 @@ Set these on the `frontend` service (see `frontend/.env.example` and
 | `BETTER_AUTH_DATABASE_URL`           | yes                                  | Plain `postgresql://` URL to the shared `db` service (compose derives it from `POSTGRES_*`). |
 
 Missing or placeholder values make the `/api/auth/*` routes fail fast with a
-clear 500 naming the offending variable (the rest of the app — including
-`local`/`clerk` flows — keeps working).
+clear 500 naming the offending variable (the `local` flow keeps working).
 
-### 3. Apply the Better Auth migration
+#### 3. Apply the Better Auth migration
 
 Better Auth's tables are in the `better_auth` schema, managed by the
 `better-auth` CLI tooling, **not** Alembic:
@@ -144,7 +144,7 @@ BETTER_AUTH_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/mission_c
 `make backend-migration-check` must keep passing — Alembic only manages the
 `public` schema and does not manage or trip over the `better_auth` tables.
 
-### 4. Use the JWT / API keys from the backend
+#### 4. Use the JWT / API keys from the backend
 
 - JWKS: `GET /api/auth/jwks` on the frontend origin.
 - Token: the client (holding the Better Auth session cookie) requests a JWT;
@@ -152,6 +152,52 @@ BETTER_AUTH_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/mission_c
 - API keys: issued per user via the `apiKey` plugin (`mc_` prefix); send
   `x-api-key: mc_...` on requests; `GET /api/auth/get-session` with that
   header resolves the owning session.
+
+## Migrating from Clerk mode
+
+Clerk was retired: the SDKs, the `clerk` auth mode, its config, and its docs
+are gone. What that means for an existing Clerk deployment:
+
+- **Clerk login no longer exists.** The old `AUTH_MODE=clerk` /
+  `NEXT_PUBLIC_AUTH_MODE=clerk` values are rejected at startup / render an
+  "unavailable" screen instead of a sign-in. Set both to `betterauth` (or
+  `local`).
+- **Existing Clerk users are not automatically migrated, and their Clerk
+  identities will not match Better Auth ones.** User identity is keyed on
+  `users.external_auth_id`: a Clerk user row carries the Clerk user id, while
+  Better Auth identifies people by its own user id (the JWT `sub`). A Clerk
+  user who signs in with Google through Better Auth provisions a **new**
+  `users` row — the old Clerk row (and any board ACLs, org roles, or history
+  attached to it) is **orphaned** and will not be used.
+- **To keep a Clerk user's data, remap the identity manually.**
+  `users.external_auth_id` has a **unique index**, so two rows can never
+  carry the same Better Auth subject; the remap moves the Better Auth
+  subject onto the *old* row and retires the freshly created one:
+
+  1. Get the person's Better Auth user id (the JWT `sub`). The easiest way:
+     have them sign in once via Google, which provisions a new `users` row
+     carrying that `external_auth_id`; read it from `users`. (You can also
+     look it up in the `better_auth` schema directly.)
+  2. Delete that freshly created row — it holds no user-specific data, and
+     it must not coexist with the remapped old row under the same
+     `external_auth_id`:
+
+     ```sql
+     DELETE FROM users WHERE external_auth_id = '<better auth user id>';
+     ```
+  3. Point the old (Clerk) row at the Better Auth identity:
+
+     ```sql
+     UPDATE users SET external_auth_id = '<better auth user id>'
+     WHERE external_auth_id = '<clerk user id>';
+     ```
+
+  On the person's next sign-in, the existing old row is found by
+  `external_auth_id` and reused, so all existing org memberships and board
+  ACLs (keyed on `users.id`) keep resolving to the Better Auth identity, and
+  the default-org membership is re-guaranteed on first sight. If you already
+  know the Better Auth user id up front you can skip step 1 and run only the
+  `UPDATE`.
 
 ## Agent authentication
 

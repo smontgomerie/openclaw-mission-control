@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 
-import { useAuth } from "@/auth/clerk";
+import { useAuth } from "@/auth/session";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "@/api/mutator";
@@ -115,7 +115,6 @@ export default function BoardsPage() {
         signedOut={{
           message: "Sign in to view boards.",
           forceRedirectUrl: "/boards",
-          signUpForceRedirectUrl: "/boards",
         }}
         title="Boards"
         description={`Manage boards and task workflows. ${boards.length} board${boards.length === 1 ? "" : "s"} total.`}

@@ -7,24 +7,15 @@ import {
   SignedIn,
   SignedOut,
   SignOutButton,
-  isClerkEnabled,
+  SignInButton,
   useAuth,
   useUser,
-} from "@/auth/clerk";
-
-vi.mock("@clerk/nextjs", () => ({
-  ClerkProvider: ({ children }: { children: ReactNode }) => children,
-  SignedIn: ({ children }: { children: ReactNode }) => children,
-  SignedOut: ({ children }: { children: ReactNode }) => children,
-  SignInButton: ({ children }: { children: ReactNode }) => children,
-  SignOutButton: ({ children }: { children: ReactNode }) => children,
-  useAuth: () => ({ isLoaded: true, isSignedIn: false }),
-  useUser: () => ({ isLoaded: true, isSignedIn: false, user: null }),
-}));
+} from "@/auth/session";
 
 const useBetterAuthSessionMock = vi.hoisted(() => vi.fn());
 const isBetterAuthModeMock = vi.hoisted(() => vi.fn());
 const getBetterAuthTokenMock = vi.hoisted(() => vi.fn());
+const navigateToFallbackSignInMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/auth/betterAuthSession", () => ({
   useBetterAuthSession: useBetterAuthSessionMock,
@@ -34,6 +25,9 @@ vi.mock("@/auth/betterAuthSession", () => ({
 vi.mock("@/auth/betterAuth", () => ({
   isBetterAuthMode: isBetterAuthModeMock,
   getBetterAuthToken: getBetterAuthTokenMock,
+}));
+vi.mock("@/auth/fallbackNavigation", () => ({
+  navigateToFallbackSignIn: navigateToFallbackSignInMock,
 }));
 
 const signedInState = {
@@ -62,7 +56,7 @@ const signedOutState = {
   signOut: vi.fn(async () => {}),
 };
 
-describe("clerk shims in betterauth mode", () => {
+describe("auth session in betterauth mode", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     isBetterAuthModeMock.mockReturnValue(true);
@@ -72,12 +66,6 @@ describe("clerk shims in betterauth mode", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
-  });
-
-  it("isClerkEnabled is false in betterauth mode even with a valid key", () => {
-    vi.stubEnv("NEXT_PUBLIC_AUTH_MODE", "betterauth");
-    vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "pk_test_real_key_123");
-    expect(isClerkEnabled()).toBe(false);
   });
 
   it("SignedIn renders children only when the session is signed in", () => {
@@ -189,5 +177,92 @@ describe("clerk shims in betterauth mode", () => {
       configurable: true,
       value: originalLocation,
     });
+  });
+});
+
+describe("auth session sign-in fallback", () => {
+  afterEach(() => {
+    navigateToFallbackSignInMock.mockReset();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("SignInButton navigates to the dedicated sign-in page with the redirect", () => {
+    isBetterAuthModeMock.mockReturnValue(false);
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MODE", "local");
+
+    render(
+      <SignInButton forceRedirectUrl="/boards/abc/edit">
+        <button type="button">Sign in</button>
+      </SignInButton>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(navigateToFallbackSignInMock).toHaveBeenCalledWith(
+      "/sign-in?redirect_url=%2Fboards%2Fabc%2Fedit",
+    );
+  });
+
+  it("SignInButton falls back to /sign-in without a redirect", () => {
+    isBetterAuthModeMock.mockReturnValue(false);
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MODE", "local");
+
+    render(
+      <SignInButton>
+        <button type="button">Sign in</button>
+      </SignInButton>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(navigateToFallbackSignInMock).toHaveBeenCalledWith("/sign-in");
+  });
+});
+
+describe("auth session with no auth mode set", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isBetterAuthModeMock.mockReturnValue(false);
+    vi.stubEnv("NEXT_PUBLIC_AUTH_MODE", "");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("treats the app as signed out with client-side fallbacks", () => {
+    useBetterAuthSessionMock.mockReturnValue(signedOutState);
+    const signedIn = render(
+      <SignedIn>
+        <span>inside</span>
+      </SignedIn>,
+    );
+    expect(screen.queryByText("inside")).toBeNull();
+    signedIn.unmount();
+
+    const signedOut = render(
+      <SignedOut>
+        <span>outside</span>
+      </SignedOut>,
+    );
+    expect(screen.getByText("outside")).toBeInTheDocument();
+    signedOut.unmount();
+
+    function Probe() {
+      const { isSignedIn, user } = useUser();
+      const auth = useAuth();
+      return (
+        <div>
+          <span data-testid="signed">{String(isSignedIn)}</span>
+          <span data-testid="user">{user ? "user" : "none"}</span>
+          <span data-testid="token">{String(auth.sessionId)}</span>
+        </div>
+      );
+    }
+    render(<Probe />);
+    expect(screen.getByTestId("signed")).toHaveTextContent("false");
+    expect(screen.getByTestId("user")).toHaveTextContent("none");
   });
 });

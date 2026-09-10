@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { useAuth } from "@/auth/clerk";
+import { useAuth } from "@/auth/session";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "@/api/mutator";
@@ -82,7 +82,6 @@ export default function TagsPage() {
         signedOut={{
           message: "Sign in to manage tags.",
           forceRedirectUrl: "/tags",
-          signUpForceRedirectUrl: "/tags",
         }}
         title="Tags"
         description={`${tags.length} tag${tags.length === 1 ? "" : "s"} configured.`}

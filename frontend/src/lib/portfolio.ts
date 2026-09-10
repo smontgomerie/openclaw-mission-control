@@ -128,13 +128,18 @@ export async function updatePortfolioRationale(
 }
 
 export async function syncPortfolioNow(): Promise<PortfolioSyncResult> {
-  const response = await customFetch<{ data: PortfolioSyncResult }>("/api/v1/portfolio/sync", {
-    method: "POST",
-  });
+  const response = await customFetch<{ data: PortfolioSyncResult }>(
+    "/api/v1/portfolio/sync",
+    {
+      method: "POST",
+    },
+  );
   return response.data;
 }
 
-export async function fetchPortfolioRollEvents(days = 7): Promise<PortfolioRollEvent[]> {
+export async function fetchPortfolioRollEvents(
+  days = 7,
+): Promise<PortfolioRollEvent[]> {
   const response = await customFetch<{ data: PortfolioRollEvent[] }>(
     `/api/v1/portfolio/roll-events?days=${encodeURIComponent(String(days))}`,
     { method: "GET" },
@@ -161,7 +166,9 @@ export function matchesPortfolioPositionSearch(
     position.strategy ?? "",
     position.option_side ?? "",
     position.status ?? "",
-    ...(position.latest_flags ?? []).map((flag) => `${flag.code} ${flag.headline}`),
+    ...(position.latest_flags ?? []).map(
+      (flag) => `${flag.code} ${flag.headline}`,
+    ),
   ].some((value) => value.toLowerCase().includes(normalized));
 }
 
@@ -169,9 +176,12 @@ export function sortPortfolioPositions(
   positions: PortfolioPosition[],
 ): PortfolioPosition[] {
   return [...positions].sort((left, right) => {
-    const leftScore = Number(Boolean(left.needs_rationale)) * 10 + Number(Boolean(left.latest_flags?.length));
+    const leftScore =
+      Number(Boolean(left.needs_rationale)) * 10 +
+      Number(Boolean(left.latest_flags?.length));
     const rightScore =
-      Number(Boolean(right.needs_rationale)) * 10 + Number(Boolean(right.latest_flags?.length));
+      Number(Boolean(right.needs_rationale)) * 10 +
+      Number(Boolean(right.latest_flags?.length));
     if (leftScore !== rightScore) {
       return rightScore - leftScore;
     }

@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { useRouter } from "next/navigation";
 
-import { useAuth } from "@/auth/clerk";
+import { useAuth } from "@/auth/session";
 
 import { ApiError } from "@/api/mutator";
 import { useCreateTagApiV1TagsPost } from "@/api/generated/tags/tags";
@@ -28,7 +28,6 @@ export default function NewTagPage() {
       signedOut={{
         message: "Sign in to create tags.",
         forceRedirectUrl: "/tags/add",
-        signUpForceRedirectUrl: "/tags/add",
       }}
       title="Create tag"
       description="Define a reusable tag for task grouping."
