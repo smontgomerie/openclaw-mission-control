@@ -70,8 +70,10 @@ function googleIdToken(
 /** In-memory sqlite app wired exactly like the production options, with the
  * Google network verification stubbed out (unit boundary: the domain gate and
  * the row lifecycle are what these tests prove). */
-async function makeApp() {
-  const env = testEnv();
+async function makeApp(
+  envOverrides?: Record<string, string | undefined>,
+) {
+  const env = testEnv(envOverrides);
   const sqlite = new Database(":memory:");
   // Documented `{ dialect, type }` shape (a bare Kysely instance is not
   // auto-detected by better-auth's adapter selection).
@@ -251,6 +253,40 @@ describe("Better Auth Google sign-in (in-memory sqlite)", () => {
     expect(rowCount(sqlite, "user")).toBe(0);
     expect(rowCount(sqlite, "session")).toBe(0);
     expect(rowCount(sqlite, "account")).toBe(0);
+  });
+
+  it("admits each domain of a multi-domain allowlist and still refuses outsiders", async () => {
+    const second = "partner.example.com";
+    const { auth, env, sqlite } = await makeApp({
+      BETTER_AUTH_ALLOWED_GOOGLE_DOMAINS: `${ALLOWED_DOMAIN},${second}`,
+    });
+    const inSecond = await signInViaHandler(auth, env, {
+      email: "user@partner.example.com",
+      hd: second,
+    });
+    expect(inSecond.status).toBe(200);
+    expect(rowCount(sqlite, "user")).toBe(1);
+
+    const outsider = await signInViaHandler(auth, env, {
+      email: "sneak@evil.example.net",
+      hd: "evil.example.net",
+    });
+    expect(outsider.status).toBe(401);
+    expect(rowCount(sqlite, "user")).toBe(1);
+    expect(rowCount(sqlite, "session")).toBe(1);
+  });
+
+  it("admits a second domain case-insensitively", async () => {
+    const second = "Partner.Example.com";
+    const { auth, env, sqlite } = await makeApp({
+      BETTER_AUTH_ALLOWED_GOOGLE_DOMAINS: `corp.example.com,${second}`,
+    });
+    const res = await signInViaHandler(auth, env, {
+      email: "user@partner.example.com",
+      hd: "partner.example.com",
+    });
+    expect(res.status).toBe(200);
+    expect(rowCount(sqlite, "user")).toBe(1);
   });
 
   it("issues a JWT that verifies against the JWKS with the configured iss/aud", async () => {
