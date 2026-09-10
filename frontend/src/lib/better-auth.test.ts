@@ -70,9 +70,7 @@ function googleIdToken(
 /** In-memory sqlite app wired exactly like the production options, with the
  * Google network verification stubbed out (unit boundary: the domain gate and
  * the row lifecycle are what these tests prove). */
-async function makeApp(
-  envOverrides?: Record<string, string | undefined>,
-) {
+async function makeApp(envOverrides?: Record<string, string | undefined>) {
   const env = testEnv(envOverrides);
   const sqlite = new Database(":memory:");
   // Documented `{ dialect, type }` shape (a bare Kysely instance is not
@@ -84,7 +82,9 @@ async function makeApp(
   const base = buildBetterAuthOptions(env, db);
   const google = base.socialProviders?.google;
   if (!google) {
-    throw new Error("test setup: buildBetterAuthOptions omitted the google provider");
+    throw new Error(
+      "test setup: buildBetterAuthOptions omitted the google provider",
+    );
   }
   const options: BetterAuthOptions = {
     ...base,

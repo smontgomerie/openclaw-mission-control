@@ -59,16 +59,16 @@ sign-in path, not a replacement for those.
 
 1. In the [Google Cloud Console](https://console.cloud.google.com/), open your
    project (or create one).
-2. **APIs & Services -> OAuth consent screen**: choose *External*, fill in
+2. **APIs & Services -> OAuth consent screen**: choose _External_, fill in
    app name + support email. No extra scopes are needed — Google sign-in via
    Better Auth only asks for the standard `openid email profile` profile.
 3. **APIs & Services -> Credentials -> Create credentials -> OAuth client ID**:
    type **Web application**, and add exactly this authorized redirect URI:
 
-   | Environment | Authorized redirect URI |
-   | --- | --- |
-   | Local dev | `http://localhost:3000/api/auth/callback/google` |
-   | Production | `https://<your-host>/api/auth/callback/google` |
+   | Environment | Authorized redirect URI                          |
+   | ----------- | ------------------------------------------------ |
+   | Local dev   | `http://localhost:3000/api/auth/callback/google` |
+   | Production  | `https://<your-host>/api/auth/callback/google`   |
 
    (Better Auth's built-in Google provider POSTs to
    `/api/auth/callback/google` under the app's `/api/auth` mount.)
@@ -80,14 +80,14 @@ sign-in path, not a replacement for those.
 Set these on the `frontend` service (see `frontend/.env.example` and
 `compose.yml`; in compose they are passed through as `BETTER_AUTH_*`):
 
-| Variable | Required | Meaning |
-| --- | --- | --- |
-| `BETTER_AUTH_SECRET` | yes | 32+ chars, non-placeholder (`openssl rand -hex 32`). |
-| `BETTER_AUTH_GOOGLE_CLIENT_ID` | yes | OAuth client ID from step 1. |
-| `BETTER_AUTH_GOOGLE_CLIENT_SECRET` | yes | OAuth client secret from step 1. |
-| `BETTER_AUTH_ALLOWED_GOOGLE_DOMAINS` | yes | Comma-separated Google Workspace domains; the `hd` claim must match one. |
-| `BETTER_AUTH_BASE_URL` | no (default `http://localhost:3000`) | App origin; used as the JWT issuer **and** audience. |
-| `BETTER_AUTH_DATABASE_URL` | yes | Plain `postgresql://` URL to the shared `db` service (compose derives it from `POSTGRES_*`). |
+| Variable                             | Required                             | Meaning                                                                                      |
+| ------------------------------------ | ------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `BETTER_AUTH_SECRET`                 | yes                                  | 32+ chars, non-placeholder (`openssl rand -hex 32`).                                         |
+| `BETTER_AUTH_GOOGLE_CLIENT_ID`       | yes                                  | OAuth client ID from step 1.                                                                 |
+| `BETTER_AUTH_GOOGLE_CLIENT_SECRET`   | yes                                  | OAuth client secret from step 1.                                                             |
+| `BETTER_AUTH_ALLOWED_GOOGLE_DOMAINS` | yes                                  | Comma-separated Google Workspace domains; the `hd` claim must match one.                     |
+| `BETTER_AUTH_BASE_URL`               | no (default `http://localhost:3000`) | App origin; used as the JWT issuer **and** audience.                                         |
+| `BETTER_AUTH_DATABASE_URL`           | yes                                  | Plain `postgresql://` URL to the shared `db` service (compose derives it from `POSTGRES_*`). |
 
 Missing or placeholder values make the `/api/auth/*` routes fail fast with a
 clear 500 naming the offending variable (the rest of the app — including
