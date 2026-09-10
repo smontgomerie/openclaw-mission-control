@@ -54,12 +54,38 @@ if (paths.length === 0) {
   process.exit(0);
 }
 
-const prettier = spawnSync(prettierBin, ["--check", ...paths], {
-  cwd: repoRoot,
-  encoding: "utf8",
-});
+// Prettier refuses files it cannot infer a parser for (e.g. .env.example,
+// .npmrc, .sql). The gate only manages files Prettier *can* format, so skip
+// those exactly like .gitignore above — prettier never touches them.
+const unformatted = [];
+const skipped = [];
+for (const p of paths) {
+  const r = spawnSync(prettierBin, ["--check", p], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  if (r.status === 0) continue;
+  const output = `${r.stdout ?? ""}\n${r.stderr ?? ""}`;
+  if (output.includes("No parser could be inferred")) {
+    skipped.push(p);
+    continue;
+  }
+  if (r.status === 1) {
+    unformatted.push(p);
+    continue;
+  }
+  console.error(`prettier errored on ${p}:`);
+  console.error(output.trim());
+  process.exit(1);
+}
 
-if (prettier.status === 0) {
+if (skipped.length > 0) {
+  console.log(
+    `assert-changed-format: skipped (no prettier parser): ${skipped.join(", ")}`,
+  );
+}
+
+if (unformatted.length === 0) {
   console.log(
     `assert-changed-format: ok — prettier --check clean on ${paths.length} changed file(s)`,
   );
@@ -69,6 +95,11 @@ if (prettier.status === 0) {
 console.error(
   "assert-changed-format: REFUSE — changed-files prettier --check refused",
 );
-if (prettier.stdout) console.error(prettier.stdout);
-if (prettier.stderr) console.error(prettier.stderr);
+for (const p of unformatted) {
+  const r = spawnSync(prettierBin, ["--check", p], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  if (r.stdout) console.error(r.stdout);
+}
 process.exit(1);
