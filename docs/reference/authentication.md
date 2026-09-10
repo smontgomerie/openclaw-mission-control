@@ -1,9 +1,11 @@
 # Authentication
 
-Mission Control supports two auth modes via `AUTH_MODE`:
+Mission Control supports three auth modes via `AUTH_MODE`:
 
 - `local`: shared bearer token auth for self-hosted deployments
 - `clerk`: Clerk JWT auth
+- `betterauth`: Better Auth JWTs, verified statelessly against the JWKS
+  published by the Next.js app's Better Auth instance
 
 ## Local mode
 
@@ -28,6 +30,40 @@ Frontend:
 
 - `NEXT_PUBLIC_AUTH_MODE=clerk`
 - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=<key>`
+
+## Better Auth (backend) mode
+
+The backend's third mode verifies Better Auth JWTs **statelessly**: it checks
+the signature against the public keys published at the app's JWKS endpoint
+and never calls Google or Better Auth on the request path. The browser keeps
+sending `Authorization: Bearer <jwt>` to the API exactly as before.
+
+Backend:
+
+- `AUTH_MODE=betterauth`
+- `BETTER_AUTH_JWKS_URL=<origin>/api/auth/jwks` — e.g.
+  `http://localhost:3000/api/auth/jwks`
+- `BETTER_AUTH_ISSUER=<origin>` — the `iss` to expect (the app's origin,
+  i.e. `BETTER_AUTH_BASE_URL`)
+- `BETTER_AUTH_AUDIENCE=<origin>` — optional; defaults to `BETTER_AUTH_ISSUER`
+  (Better Auth sets `aud` = `iss`)
+
+Behavior:
+
+- The JWKS document is fetched lazily and cached for ten minutes; the request
+  path makes no network call per request. A JWKS outage degrades to a 401
+  (with nothing cached) or keeps verifying against the cached keys — it does
+  not turn routes into 500s.
+- Tokens are checked for signature, `iss`, `aud`, and expiry. A token minted
+  by a different Better Auth instance is refused.
+- On first sight of a new subject (`sub` = the Better Auth user id), the
+  backend provisions one `users` row (email/name from the JWT's claims) and
+  one organization membership; later requests reuse it. Org roles, board
+  ACLs, and `is_super_admin` are unchanged — authorization stays DB-backed
+  and orthogonal to the login provider.
+- The `X-Agent-Token` path (`app/core/agent_auth.py`) is untouched.
+
+See the section below for setting up the Better Auth instance itself.
 
 ## Better Auth (Google)
 

@@ -1,4 +1,4 @@
-"""User authentication helpers for Clerk and local-token auth modes.
+"""User authentication helpers for Clerk, local-token, and Better Auth JWT modes.
 
 This module resolves an authenticated *user* from inbound HTTP requests.
 
@@ -6,6 +6,9 @@ Auth modes:
 - `local`: a single shared bearer token (`LOCAL_AUTH_TOKEN`) for self-hosted
   deployments.
 - `clerk`: Clerk JWT authentication for multi-user deployments.
+- `betterauth`: Better Auth JWTs (minted by the Next.js app's Better Auth
+  instance) verified statelessly against its published JWKS — no network
+  call to Google or Better Auth on the request path.
 
 The public surface area is the `get_auth_context*` dependencies, which return an
 `AuthContext` used across API routers.
@@ -32,6 +35,11 @@ from pydantic import BaseModel, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from app.core.auth_mode import AuthMode
+from app.core.betterauth_jwt import (
+    BetterAuthJwksUnavailableError,
+    BetterAuthTokenError,
+    get_better_auth_verifier,
+)
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.db import crud
@@ -447,6 +455,103 @@ async def _resolve_local_auth_context(
     return AuthContext(actor_type="user", user=user)
 
 
+async def _get_or_create_better_auth_user(
+    session: AsyncSession,
+    *,
+    sub: str,
+    claims: dict[str, object],
+) -> User:
+    """Provision the local user row for a Better Auth identity on first sight.
+
+    Mirrors the local-mode sync: claim-derived email/name fill the row, and
+    `ensure_member_for_user` guarantees a membership. The Better Auth JWT
+    already carries the user object, so no profile fetch is needed — the
+    whole path stays offline.
+    """
+    sub_log = sub[-6:] if sub else ""
+    claim_email = _extract_claim_email(claims)
+    claim_name = _extract_claim_name(claims)
+    user, created = await crud.get_or_create(
+        session,
+        User,
+        external_auth_id=sub,
+        defaults={
+            "email": claim_email,
+            "name": claim_name,
+        },
+    )
+    changed = False
+    if claim_email and user.email != claim_email:
+        user.email = claim_email
+        changed = True
+    if not user.name and claim_name:
+        user.name = claim_name
+        changed = True
+    if changed:
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        logger.info(
+            "auth.betterauth.user.sync sub=%s created=%s",
+            sub_log,
+            created,
+        )
+    else:
+        logger.debug("auth.betterauth.user.sync.noop sub=%s", sub_log)
+    if not user.email:
+        logger.warning("auth.betterauth.user.sync.missing_email sub=%s", sub_log)
+
+    from app.services.organizations import ensure_member_for_user
+
+    await ensure_member_for_user(session, user)
+    return user
+
+
+async def _resolve_better_auth_context(
+    *,
+    request: Request,
+    session: AsyncSession,
+    required: bool,
+) -> AuthContext | None:
+    """Resolve a user from a Better Auth JWT, verified offline against the JWKS.
+
+    Refusals (missing token, bad signature, wrong issuer/audience, expiry,
+    unknown key, or JWKS unavailable) map to a 401 on required routes and to
+    `None` on optional ones — a JWKS outage never becomes a 500.
+    """
+    token = _extract_bearer_token(request.headers.get("Authorization"))
+    if token is None:
+        if required:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+        return None
+    verifier = get_better_auth_verifier()
+    try:
+        claims = await verifier.verify(token)
+    except BetterAuthJwksUnavailableError as exc:
+        logger.warning("auth.betterauth.jwks_unavailable %s", exc)
+        if required:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Better Auth key material unavailable",
+            ) from exc
+        return None
+    except BetterAuthTokenError as exc:
+        logger.debug("auth.betterauth.token_refused %s", exc)
+        if required:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid Better Auth token",
+            ) from exc
+        return None
+    sub = claims.get("sub")
+    if not isinstance(sub, str) or not sub:
+        if required:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+        return None
+    user = await _get_or_create_better_auth_user(session, sub=sub, claims=claims)
+    return AuthContext(actor_type="user", user=user)
+
+
 def _parse_subject(claims: dict[str, object]) -> str | None:
     payload = ClerkTokenPayload.model_validate(claims)
     return payload.sub
@@ -467,6 +572,16 @@ async def get_auth_context(
         if local_auth is None:  # pragma: no cover
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
         return local_auth
+
+    if settings.auth_mode == AuthMode.BETTER_AUTH:
+        better_auth = await _resolve_better_auth_context(
+            request=request,
+            session=session,
+            required=True,
+        )
+        if better_auth is None:  # pragma: no cover
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+        return better_auth
 
     request_state = await _authenticate_clerk_request(request)
     if request_state.status != AuthStatus.SIGNED_IN or not isinstance(request_state.payload, dict):
@@ -504,6 +619,12 @@ async def get_auth_context_optional(
         return None
     if settings.auth_mode == AuthMode.LOCAL:
         return await _resolve_local_auth_context(
+            request=request,
+            session=session,
+            required=False,
+        )
+    if settings.auth_mode == AuthMode.BETTER_AUTH:
+        return await _resolve_better_auth_context(
             request=request,
             session=session,
             required=False,

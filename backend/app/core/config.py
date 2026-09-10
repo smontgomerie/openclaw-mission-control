@@ -39,7 +39,8 @@ class Settings(BaseSettings):
     environment: str = "dev"
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/openclaw_agency"
 
-    # Auth mode: "clerk" for Clerk JWT auth, "local" for shared bearer token auth.
+    # Auth mode: "clerk" for Clerk JWT auth, "local" for shared bearer token auth,
+    # "betterauth" for Better Auth JWTs verified against the app's JWKS.
     auth_mode: AuthMode
     local_auth_token: str = ""
 
@@ -48,6 +49,14 @@ class Settings(BaseSettings):
     clerk_api_url: str = "https://api.clerk.com"
     clerk_verify_iat: bool = True
     clerk_leeway: float = 10.0
+
+    # Better Auth (auth only; roles stored in DB). The backend verifies
+    # Better Auth JWTs (from the Next.js app's /api/auth/* instance)
+    # statelessly against the JWKS the app publishes — never talking to
+    # Google or Better Auth on the request path.
+    betterauth_jwks_url: str = ""
+    betterauth_issuer: str = ""
+    betterauth_audience: str = ""
 
     cors_origins: str = ""
     base_url: str = ""
@@ -112,6 +121,27 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "LOCAL_AUTH_TOKEN must be at least 50 characters and non-placeholder when AUTH_MODE=local.",
                 )
+        elif self.auth_mode == AuthMode.BETTER_AUTH:
+            jwks_url = self.betterauth_jwks_url.strip()
+            parsed_jwks_url = urlparse(jwks_url)
+            if (
+                not jwks_url
+                or parsed_jwks_url.scheme not in {"http", "https"}
+                or not parsed_jwks_url.netloc
+            ):
+                raise ValueError(
+                    "BETTER_AUTH_JWKS_URL must be an absolute http(s) URL when "
+                    "AUTH_MODE=betterauth (e.g. http://localhost:3000/api/auth/jwks).",
+                )
+            if not self.betterauth_issuer.strip():
+                raise ValueError(
+                    "BETTER_AUTH_ISSUER must be set and non-empty when AUTH_MODE=betterauth.",
+                )
+            # Better Auth's jwt plugin sets audience = issuer unless a
+            # deployment overrides it, so default to the issuer.
+            self.betterauth_audience = (
+                self.betterauth_audience.strip() or self.betterauth_issuer.strip()
+            )
 
         base_url = self.base_url.strip()
         if not base_url:
