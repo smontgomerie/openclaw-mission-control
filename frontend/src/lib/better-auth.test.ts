@@ -382,4 +382,239 @@ describe("Better Auth Google sign-in (in-memory sqlite)", () => {
     const user = (data as { user?: { hd?: string } }).user;
     expect(user?.hd).toBe(ALLOWED_DOMAIN);
   });
+  it("exchanges a machine API key for a JWKS-verifiable session JWT", async () => {
+    const { auth, env, sqlite } = await makeApp();
+    const res = await signInViaHandler(auth, env, {
+      email: "ada@corp.example.com",
+      hd: ALLOWED_DOMAIN,
+    });
+    const body = await res.json();
+    const cookie = cookieFrom(res)!;
+
+    const createRes = await auth.handler(
+      new Request(`${AUTH_BASE}/api-key/create`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ name: "mcp" }),
+      }),
+    );
+    expect(createRes.status).toBe(200);
+    const { key } = await createRes.json();
+    expect(key.startsWith("mc_")).toBe(true);
+
+    // The machine-client wire path: x-api-key on the session-gated token
+    // endpoint. No session cookie is sent or set on this call.
+    const tokenRes = await auth.handler(
+      new Request(`${AUTH_BASE}/token`, {
+        headers: { "x-api-key": key },
+      }),
+    );
+    expect(tokenRes.status).toBe(200);
+    expect(tokenRes.headers.get("set-cookie")).toBeNull();
+    const { token } = await tokenRes.json();
+    expect(typeof token).toBe("string");
+
+    const jwksRes = await auth.handler(new Request(`${AUTH_BASE}/jwks`));
+    const jwks = await jwksRes.json();
+    const { payload } = await jwtVerify(token, await createLocalJWKSet(jwks), {
+      issuer: BASE_URL,
+      audience: BASE_URL,
+    });
+    expect(payload.sub).toBe(body.user.id);
+    expect(payload.email).toBe("ada@corp.example.com");
+
+    // A revocable credential stays revocable: no session row is minted for
+    // the key, so revoking the key affects only key rows.
+    expect(rowCount(sqlite, "session")).toBe(1);
+  });
+
+  it("refuses to exchange a disabled (revoked) key and mints nothing", async () => {
+    const { auth, env, sqlite } = await makeApp();
+    const res = await signInViaHandler(auth, env, {
+      email: "ada@corp.example.com",
+      hd: ALLOWED_DOMAIN,
+    });
+    const cookie = cookieFrom(res)!;
+
+    const createRes = await auth.handler(
+      new Request(`${AUTH_BASE}/api-key/create`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ name: "portfolio-sync" }),
+      }),
+    );
+    const created = await createRes.json();
+
+    const disableRes = await auth.handler(
+      new Request(`${AUTH_BASE}/api-key/update`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ keyId: created.id, enabled: false }),
+      }),
+    );
+    expect(disableRes.status).toBe(200);
+
+    const tokenRes = await auth.handler(
+      new Request(`${AUTH_BASE}/token`, {
+        headers: { "x-api-key": created.key },
+      }),
+    );
+    expect(tokenRes.status).toBe(401);
+    // Refusal without mutation: the revoked key changes no user/session row.
+    expect(rowCount(sqlite, "user")).toBe(1);
+    expect(rowCount(sqlite, "session")).toBe(1);
+    expect(rowCount(sqlite, "account")).toBe(1);
+  });
+
+  it("refuses to exchange a deleted key", async () => {
+    const { auth, env } = await makeApp();
+    const res = await signInViaHandler(auth, env, {
+      email: "ada@corp.example.com",
+      hd: ALLOWED_DOMAIN,
+    });
+    const cookie = cookieFrom(res)!;
+
+    const createRes = await auth.handler(
+      new Request(`${AUTH_BASE}/api-key/create`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ name: "cypress" }),
+      }),
+    );
+    const created = await createRes.json();
+
+    const deleteRes = await auth.handler(
+      new Request(`${AUTH_BASE}/api-key/delete`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ keyId: created.id }),
+      }),
+    );
+    expect(deleteRes.status).toBe(200);
+
+    const tokenRes = await auth.handler(
+      new Request(`${AUTH_BASE}/token`, {
+        headers: { "x-api-key": created.key },
+      }),
+    );
+    expect(tokenRes.status).toBe(401);
+  });
+
+  it("refuses to exchange an expired key", async () => {
+    const { auth, env, sqlite } = await makeApp();
+    const res = await signInViaHandler(auth, env, {
+      email: "ada@corp.example.com",
+      hd: ALLOWED_DOMAIN,
+    });
+    const cookie = cookieFrom(res)!;
+
+    const createRes = await auth.handler(
+      new Request(`${AUTH_BASE}/api-key/create`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ name: "one-shot", expiresIn: 86_400 }),
+      }),
+    );
+    expect(createRes.status).toBe(200);
+    const created = await createRes.json();
+    expect(created.key).toBeTypeOf("string");
+
+    // Backdate the stored expiry so the test does not have to wait (the
+    // plugin's minExpiresIn default is one day, so we cannot create with a
+    // sub-day expiry and let it lapse naturally).
+    sqlite
+      .prepare('UPDATE "apikey" SET "expiresAt" = ?')
+      .run(new Date(Date.now() - 60_000).toISOString());
+
+    const tokenRes = await auth.handler(
+      new Request(`${AUTH_BASE}/token`, {
+        headers: { "x-api-key": created.key },
+      }),
+    );
+    expect(tokenRes.status).toBe(401);
+  });
+
+  it("refuses an unknown key and a key-less exchange request", async () => {
+    const { auth } = await makeApp();
+    const unknown = await auth.handler(
+      new Request(`${AUTH_BASE}/token`, {
+        headers: { "x-api-key": `mc_${"z".repeat(67)}` },
+      }),
+    );
+    expect(unknown.status).toBe(401);
+
+    const bare = await auth.handler(new Request(`${AUTH_BASE}/token`));
+    expect(bare.status).toBe(401);
+  });
+
+  it("a key mints JWTs only for its owner, not for whoever is signed in", async () => {
+    const { auth, env } = await makeApp();
+    const ada = await signInViaHandler(auth, env, {
+      email: "ada@corp.example.com",
+      hd: ALLOWED_DOMAIN,
+    });
+    const adaBody = await ada.json();
+    const adaCookie = cookieFrom(ada)!;
+
+    const adaKey = (
+      await (
+        await auth.handler(
+          new Request(`${AUTH_BASE}/api-key/create`, {
+            method: "POST",
+            headers: { "content-type": "application/json", cookie: adaCookie },
+            body: JSON.stringify({ name: "ada-mcp" }),
+          }),
+        )
+      ).json()
+    ).key as string;
+
+    // A second user signs in on the same instance; the key still belongs
+    // to Ada and must mint only Ada's subject.
+    const grace = await signInViaHandler(auth, env, {
+      email: "grace@corp.example.com",
+      hd: ALLOWED_DOMAIN,
+      sub: "google-sub-2",
+    });
+    const graceBody = await grace.json();
+
+    const tokenRes = await auth.handler(
+      new Request(`${AUTH_BASE}/token`, {
+        headers: { "x-api-key": adaKey },
+      }),
+    );
+    expect(tokenRes.status).toBe(200);
+    const { token } = await tokenRes.json();
+    const jwks = await (
+      await auth.handler(new Request(`${AUTH_BASE}/jwks`))
+    ).json();
+    const { payload } = await jwtVerify(token, await createLocalJWKSet(jwks), {
+      issuer: BASE_URL,
+      audience: BASE_URL,
+    });
+    expect(payload.sub).toBe(adaBody.user.id);
+    expect(payload.sub).not.toBe(graceBody.user.id);
+  });
+
+  it("creates keys without the plugin-default per-key rate cap", async () => {
+    const { auth, env, sqlite } = await makeApp();
+    const res = await signInViaHandler(auth, env, {
+      email: "ada@corp.example.com",
+      hd: ALLOWED_DOMAIN,
+    });
+    const cookie = cookieFrom(res)!;
+
+    await auth.handler(
+      new Request(`${AUTH_BASE}/api-key/create`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ name: "mcp" }),
+      }),
+    );
+    // The machine-client exchange re-mints a 15-minute JWT many times a day,
+    // so the 10-requests/day plugin default must not be baked into keys.
+    const row = sqlite
+      .prepare('SELECT "rateLimitEnabled" FROM "apikey"')
+      .get() as { rateLimitEnabled: number };
+    expect(row.rateLimitEnabled).toBeFalsy();
+  });
 });

@@ -282,10 +282,24 @@ export function buildBetterAuthOptions(
         },
       }),
       // Machine-client credential path (later items migrate the clients).
-      // Machine-client credential path (later items migrate the clients).
-      // enableSessionForAPIKeys: an x-api-key header resolves to a session
-      // context, so machine clients can authenticate session-gated endpoints.
-      apiKey({ defaultPrefix: "mc_", enableSessionForAPIKeys: true }),
+      // Machine-client credential path: MCP, the portfolio-sync cron, and the
+      // Cypress harness exchange `mc_`-prefixed keys for short-lived session
+      // JWTs by sending the key in an `x-api-key` header to session-gated
+      // endpoints (GET /token, GET /get-session), then call the Python backend
+      // with that JWT, which verifies it statelessly against /api/auth/jwks.
+      // - enableSessionForAPIKeys: an x-api-key header resolves to a session
+      //   context, which is what makes that exchange possible.
+      // - rateLimit disabled: Better Auth's plugin default caps every key at
+      //   10 requests/day, which silently breaks a machine client that
+      //   re-exchanges its 15-minute JWT (~96 exchanges/day). Abuse control
+      //   stays per-key instead: operators set rateLimitMax /
+      //   rateLimitTimeWindow (or remaining / refill) when creating a key,
+      //   and revoke by disabling or deleting it.
+      apiKey({
+        defaultPrefix: "mc_",
+        enableSessionForAPIKeys: true,
+        rateLimit: { enabled: false },
+      }),
     ],
   };
 }

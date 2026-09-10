@@ -118,6 +118,7 @@ import type {
   ListTaskCommentsApiV1BoardsBoardIdTasksTaskIdCommentsGetParams,
   ListTasksApiV1AgentBoardsBoardIdTasksGetParams,
   ListTasksApiV1BoardsBoardIdTasksGetParams,
+  ListTranscriptionsApiV1TranscriptionsGetParams,
   MarketplaceSkillActionResponse,
   MarketplaceSkillCardRead,
   MarketplaceSkillCreate,
@@ -149,6 +150,14 @@ import type {
   SoulUpdateRequest,
   SoulsDirectoryMarkdownResponse,
   SoulsDirectorySearchResponse,
+  SpeakerBackfillPreviewRead,
+  SpeakerBackfillRunRead,
+  SpeakerBackfillStartRequest,
+  SpeakerDirectoryRead,
+  SpeakerProfileMergeRequest,
+  SpeakerProfileRead,
+  SpeakerProfileRenameRequest,
+  SpeakerSampleConfirmRequest,
   StreamAgentsApiV1AgentsStreamGetParams,
   StreamApprovalsApiV1BoardsBoardIdApprovalsStreamGetParams,
   StreamBoardGroupMemoryApiV1BoardGroupsGroupIdMemoryStreamGetParams,
@@ -9614,24 +9623,53 @@ export type listTranscriptionsApiV1TranscriptionsGetResponse200 = {
   status: 200;
 };
 
+export type listTranscriptionsApiV1TranscriptionsGetResponse422 = {
+  data: HTTPValidationError;
+  status: 422;
+};
+
 export type listTranscriptionsApiV1TranscriptionsGetResponseSuccess =
   listTranscriptionsApiV1TranscriptionsGetResponse200 & {
     headers: Headers;
   };
-export type listTranscriptionsApiV1TranscriptionsGetResponse =
-  listTranscriptionsApiV1TranscriptionsGetResponseSuccess;
+export type listTranscriptionsApiV1TranscriptionsGetResponseError =
+  listTranscriptionsApiV1TranscriptionsGetResponse422 & {
+    headers: Headers;
+  };
 
-export const getListTranscriptionsApiV1TranscriptionsGetUrl = () => {
-  return `/api/v1/transcriptions`;
+export type listTranscriptionsApiV1TranscriptionsGetResponse =
+  | listTranscriptionsApiV1TranscriptionsGetResponseSuccess
+  | listTranscriptionsApiV1TranscriptionsGetResponseError;
+
+export const getListTranscriptionsApiV1TranscriptionsGetUrl = (
+  params?: ListTranscriptionsApiV1TranscriptionsGetParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/v1/transcriptions?${stringifiedParams}`
+    : `/api/v1/transcriptions`;
 };
 
 export const listTranscriptionsApiV1TranscriptionsGet = async (
+  params?: ListTranscriptionsApiV1TranscriptionsGetParams,
   options?: RequestInit,
 ): Promise<listTranscriptionsApiV1TranscriptionsGetResponse> => {
-  const res = await fetch(getListTranscriptionsApiV1TranscriptionsGetUrl(), {
-    ...options,
-    method: "GET",
-  });
+  const res = await fetch(
+    getListTranscriptionsApiV1TranscriptionsGetUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
 
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
@@ -9688,6 +9726,564 @@ export const reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadata
       status: res.status,
       headers: res.headers,
     } as reprocessTranscriptionsMetadataApiV1TranscriptionsReprocessMetadataPostResponse;
+  };
+
+/**
+ * @summary Get Speaker Directory
+ */
+export type getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponse200 = {
+  data: SpeakerDirectoryRead;
+  status: 200;
+};
+
+export type getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponseSuccess =
+  getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponse200 & {
+    headers: Headers;
+  };
+export type getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponse =
+  getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponseSuccess;
+
+export const getGetSpeakerDirectoryApiV1TranscriptionsSpeakersGetUrl = () => {
+  return `/api/v1/transcriptions/speakers`;
+};
+
+export const getSpeakerDirectoryApiV1TranscriptionsSpeakersGet = async (
+  options?: RequestInit,
+): Promise<getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponse> => {
+  const res = await fetch(
+    getGetSpeakerDirectoryApiV1TranscriptionsSpeakersGetUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponse["data"] =
+    body ? JSON.parse(body) : {};
+  return {
+    data,
+    status: res.status,
+    headers: res.headers,
+  } as getSpeakerDirectoryApiV1TranscriptionsSpeakersGetResponse;
+};
+
+/**
+ * @summary Preview Speaker Annotation Import
+ */
+export type previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponse200 =
+  {
+    data: SpeakerBackfillPreviewRead;
+    status: 200;
+  };
+
+export type previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponseSuccess =
+  previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponse200 & {
+    headers: Headers;
+  };
+export type previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponse =
+  previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponseSuccess;
+
+export const getPreviewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetUrl =
+  () => {
+    return `/api/v1/transcriptions/speakers/annotation-import/preview`;
+  };
+
+export const previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGet =
+  async (
+    options?: RequestInit,
+  ): Promise<previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponse> => {
+    const res = await fetch(
+      getPreviewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetUrl(),
+      {
+        ...options,
+        method: "GET",
+      },
+    );
+
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+    const data: previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponse["data"] =
+      body ? JSON.parse(body) : {};
+    return {
+      data,
+      status: res.status,
+      headers: res.headers,
+    } as previewSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportPreviewGetResponse;
+  };
+
+/**
+ * @summary Start Speaker Annotation Import
+ */
+export type startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse202 =
+  {
+    data: SpeakerBackfillRunRead;
+    status: 202;
+  };
+
+export type startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponseSuccess =
+  startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse202 & {
+    headers: Headers;
+  };
+export type startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponseError =
+  startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse422 & {
+    headers: Headers;
+  };
+
+export type startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse =
+
+    | startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponseSuccess
+    | startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponseError;
+
+export const getStartSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostUrl =
+  () => {
+    return `/api/v1/transcriptions/speakers/annotation-imports`;
+  };
+
+export const startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPost =
+  async (
+    speakerBackfillStartRequest: SpeakerBackfillStartRequest,
+    options?: RequestInit,
+  ): Promise<startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse> => {
+    const res = await fetch(
+      getStartSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostUrl(),
+      {
+        ...options,
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...options?.headers },
+        body: JSON.stringify(speakerBackfillStartRequest),
+      },
+    );
+
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+    const data: startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse["data"] =
+      body ? JSON.parse(body) : {};
+    return {
+      data,
+      status: res.status,
+      headers: res.headers,
+    } as startSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsPostResponse;
+  };
+
+/**
+ * @summary Get Speaker Annotation Import
+ */
+export type getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse200 =
+  {
+    data: SpeakerBackfillRunRead;
+    status: 200;
+  };
+
+export type getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponseSuccess =
+  getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse200 & {
+    headers: Headers;
+  };
+export type getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponseError =
+  getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse422 & {
+    headers: Headers;
+  };
+
+export type getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse =
+
+    | getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponseSuccess
+    | getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponseError;
+
+export const getGetSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetUrl =
+  (runId: string) => {
+    return `/api/v1/transcriptions/speakers/annotation-imports/${runId}`;
+  };
+
+export const getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGet =
+  async (
+    runId: string,
+    options?: RequestInit,
+  ): Promise<getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse> => {
+    const res = await fetch(
+      getGetSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetUrl(
+        runId,
+      ),
+      {
+        ...options,
+        method: "GET",
+      },
+    );
+
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+    const data: getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse["data"] =
+      body ? JSON.parse(body) : {};
+    return {
+      data,
+      status: res.status,
+      headers: res.headers,
+    } as getSpeakerAnnotationImportApiV1TranscriptionsSpeakersAnnotationImportsRunIdGetResponse;
+  };
+
+/**
+ * @summary Import Legacy Speakers
+ */
+export type importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponse200 =
+  {
+    data: SpeakerDirectoryRead;
+    status: 200;
+  };
+
+export type importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponseSuccess =
+  importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponse200 & {
+    headers: Headers;
+  };
+export type importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponse =
+  importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponseSuccess;
+
+export const getImportLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostUrl =
+  () => {
+    return `/api/v1/transcriptions/speakers/import-legacy`;
+  };
+
+export const importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPost =
+  async (
+    options?: RequestInit,
+  ): Promise<importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponse> => {
+    const res = await fetch(
+      getImportLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostUrl(),
+      {
+        ...options,
+        method: "POST",
+      },
+    );
+
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+    const data: importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponse["data"] =
+      body ? JSON.parse(body) : {};
+    return {
+      data,
+      status: res.status,
+      headers: res.headers,
+    } as importLegacySpeakersApiV1TranscriptionsSpeakersImportLegacyPostResponse;
+  };
+
+/**
+ * @summary Confirm Speaker Sample
+ */
+export type confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse200 =
+  {
+    data: SpeakerProfileRead;
+    status: 200;
+  };
+
+export type confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponseSuccess =
+  confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse200 & {
+    headers: Headers;
+  };
+export type confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponseError =
+  confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse422 & {
+    headers: Headers;
+  };
+
+export type confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse =
+
+    | confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponseSuccess
+    | confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponseError;
+
+export const getConfirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostUrl =
+  (sampleId: string) => {
+    return `/api/v1/transcriptions/speakers/samples/${sampleId}/confirm`;
+  };
+
+export const confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPost =
+  async (
+    sampleId: string,
+    speakerSampleConfirmRequest: SpeakerSampleConfirmRequest,
+    options?: RequestInit,
+  ): Promise<confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse> => {
+    const res = await fetch(
+      getConfirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostUrl(
+        sampleId,
+      ),
+      {
+        ...options,
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...options?.headers },
+        body: JSON.stringify(speakerSampleConfirmRequest),
+      },
+    );
+
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+    const data: confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse["data"] =
+      body ? JSON.parse(body) : {};
+    return {
+      data,
+      status: res.status,
+      headers: res.headers,
+    } as confirmSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdConfirmPostResponse;
+  };
+
+/**
+ * @summary Reject Speaker Sample
+ */
+export type rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse200 =
+  {
+    data: OkResponse;
+    status: 200;
+  };
+
+export type rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponseSuccess =
+  rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse200 & {
+    headers: Headers;
+  };
+export type rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponseError =
+  rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse422 & {
+    headers: Headers;
+  };
+
+export type rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse =
+
+    | rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponseSuccess
+    | rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponseError;
+
+export const getRejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostUrl =
+  (sampleId: string) => {
+    return `/api/v1/transcriptions/speakers/samples/${sampleId}/reject`;
+  };
+
+export const rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPost =
+  async (
+    sampleId: string,
+    options?: RequestInit,
+  ): Promise<rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse> => {
+    const res = await fetch(
+      getRejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostUrl(
+        sampleId,
+      ),
+      {
+        ...options,
+        method: "POST",
+      },
+    );
+
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+    const data: rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse["data"] =
+      body ? JSON.parse(body) : {};
+    return {
+      data,
+      status: res.status,
+      headers: res.headers,
+    } as rejectSpeakerSampleApiV1TranscriptionsSpeakersSamplesSampleIdRejectPostResponse;
+  };
+
+/**
+ * @summary Delete Speaker Profile
+ */
+export type deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse200 =
+  {
+    data: OkResponse;
+    status: 200;
+  };
+
+export type deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponseSuccess =
+  deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse200 & {
+    headers: Headers;
+  };
+export type deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponseError =
+  deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse422 & {
+    headers: Headers;
+  };
+
+export type deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse =
+
+    | deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponseSuccess
+    | deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponseError;
+
+export const getDeleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteUrl =
+  (profileId: string) => {
+    return `/api/v1/transcriptions/speakers/${profileId}`;
+  };
+
+export const deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDelete =
+  async (
+    profileId: string,
+    options?: RequestInit,
+  ): Promise<deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse> => {
+    const res = await fetch(
+      getDeleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteUrl(
+        profileId,
+      ),
+      {
+        ...options,
+        method: "DELETE",
+      },
+    );
+
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+    const data: deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse["data"] =
+      body ? JSON.parse(body) : {};
+    return {
+      data,
+      status: res.status,
+      headers: res.headers,
+    } as deleteSpeakerProfileApiV1TranscriptionsSpeakersProfileIdDeleteResponse;
+  };
+
+/**
+ * @summary Rename Speaker Profile
+ */
+export type renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse200 =
+  {
+    data: SpeakerProfileRead;
+    status: 200;
+  };
+
+export type renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponseSuccess =
+  renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse200 & {
+    headers: Headers;
+  };
+export type renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponseError =
+  renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse422 & {
+    headers: Headers;
+  };
+
+export type renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse =
+
+    | renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponseSuccess
+    | renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponseError;
+
+export const getRenameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchUrl =
+  (profileId: string) => {
+    return `/api/v1/transcriptions/speakers/${profileId}`;
+  };
+
+export const renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatch =
+  async (
+    profileId: string,
+    speakerProfileRenameRequest: SpeakerProfileRenameRequest,
+    options?: RequestInit,
+  ): Promise<renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse> => {
+    const res = await fetch(
+      getRenameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchUrl(
+        profileId,
+      ),
+      {
+        ...options,
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...options?.headers },
+        body: JSON.stringify(speakerProfileRenameRequest),
+      },
+    );
+
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+    const data: renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse["data"] =
+      body ? JSON.parse(body) : {};
+    return {
+      data,
+      status: res.status,
+      headers: res.headers,
+    } as renameSpeakerProfileApiV1TranscriptionsSpeakersProfileIdPatchResponse;
+  };
+
+/**
+ * @summary Merge Speaker Profiles
+ */
+export type mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse200 =
+  {
+    data: SpeakerProfileRead;
+    status: 200;
+  };
+
+export type mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse422 =
+  {
+    data: HTTPValidationError;
+    status: 422;
+  };
+
+export type mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponseSuccess =
+  mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse200 & {
+    headers: Headers;
+  };
+export type mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponseError =
+  mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse422 & {
+    headers: Headers;
+  };
+
+export type mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse =
+
+    | mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponseSuccess
+    | mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponseError;
+
+export const getMergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostUrl =
+  (profileId: string) => {
+    return `/api/v1/transcriptions/speakers/${profileId}/merge`;
+  };
+
+export const mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePost =
+  async (
+    profileId: string,
+    speakerProfileMergeRequest: SpeakerProfileMergeRequest,
+    options?: RequestInit,
+  ): Promise<mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse> => {
+    const res = await fetch(
+      getMergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostUrl(
+        profileId,
+      ),
+      {
+        ...options,
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...options?.headers },
+        body: JSON.stringify(speakerProfileMergeRequest),
+      },
+    );
+
+    const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+    const data: mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse["data"] =
+      body ? JSON.parse(body) : {};
+    return {
+      data,
+      status: res.status,
+      headers: res.headers,
+    } as mergeSpeakerProfilesApiV1TranscriptionsSpeakersProfileIdMergePostResponse;
   };
 
 /**
