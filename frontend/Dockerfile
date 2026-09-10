@@ -1,7 +1,10 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+# better-sqlite3 (test-only) has no musl prebuild for this Node; node-gyp needs a toolchain.
+RUN apk add --no-cache python3 make g++
+
+COPY package.json package-lock.json .npmrc ./
 RUN npm ci
 
 FROM node:20-alpine AS builder
