@@ -106,7 +106,7 @@ describe("describeAuthQueryError", () => {
   it("maps known oauth failure codes", async () => {
     const { describeAuthQueryError } = await import("@/auth/redirects");
     expect(describeAuthQueryError(null)).toBeNull();
-    expect(describeAuthQueryError("UNKNOWN")).toMatch(/did not complete/i);
+    expect(describeAuthQueryError("UNKNOWN")).toMatch(/OAuth state/i);
     expect(describeAuthQueryError("state_not_found")).toMatch(/different URL/i);
   });
 });

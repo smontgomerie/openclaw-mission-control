@@ -93,9 +93,17 @@ export function BetterAuthLogin({
       // `resolveSignInRedirectUrl` validates the callback (relative, same-
       // origin) and is SSR-safe; the default lands on the shared sign-in
       // fallback (/onboarding or NEXT_PUBLIC_SIGN_IN_FALLBACK_REDIRECT_URL).
-      await signInWithGoogle(resolveSignInRedirectUrl(redirectUrl ?? null));
-      // The social flow normally ends in a full-page redirect to Google and
-      // back; when it completes in-page, re-run the gate.
+      const result = (await signInWithGoogle(
+        resolveSignInRedirectUrl(redirectUrl ?? null),
+      )) as { data?: { redirect?: boolean; url?: string } | null } | undefined;
+      // The Better Auth client sets window.location to Google when
+      // data.redirect is true. Calling reload() afterward races that
+      // navigation and can drop the OAuth state cookie mid-flight, so the
+      // Google callback comes back without `state` -> /?error=UNKNOWN.
+      if (result?.data?.redirect && result.data.url) {
+        return;
+      }
+      // In-page completion (e.g. idToken flows): re-run the gate.
       (onAuthenticated ?? defaultOnAuthenticated)();
     } catch {
       setError("Could not start Google sign-in. Please try again.");

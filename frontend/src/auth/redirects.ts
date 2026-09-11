@@ -118,8 +118,9 @@ export function describeAuthQueryError(errorCode: string | null): string | null 
     case "access_denied":
       return "Google sign-in was cancelled or denied.";
     case "unable_to_get_user_info":
-    case "UNKNOWN":
       return "Google sign-in did not complete. Use an allowed Google Workspace account on the configured HTTPS app origin.";
+    case "UNKNOWN":
+      return "Google sign-in lost its OAuth state (often a redirect race or starting from the wrong origin). Use the configured HTTPS app origin and try again.";
     default:
       return `Google sign-in failed (${errorCode}). Try again from the configured HTTPS app origin.`;
   }
