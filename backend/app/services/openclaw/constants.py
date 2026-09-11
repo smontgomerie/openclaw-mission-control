@@ -14,8 +14,10 @@ _GATEWAY_AGENT_SUFFIX = ":main"
 DEFAULT_HEARTBEAT_CONFIG: dict[str, Any] = {
     "every": "10m",
     "target": "last",
-    "includeReasoning": False,
 }
+
+# Removed from OpenClaw 2026.9+ agent heartbeat schemas; strip on gateway patches.
+GATEWAY_HEARTBEAT_UNSUPPORTED_KEYS: frozenset[str] = frozenset({"includeReasoning"})
 
 OFFLINE_AFTER = timedelta(minutes=10)
 # Provisioning convergence policy:

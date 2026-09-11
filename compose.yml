@@ -92,6 +92,9 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-auto}
         NEXT_PUBLIC_AUTH_MODE: ${AUTH_MODE}
+        # Baked into the client so Google OAuth can bounce off non-canonical
+        # origins (localhost HTTP) onto the configured HTTPS app origin.
+        NEXT_PUBLIC_BETTER_AUTH_BASE_URL: ${BETTER_AUTH_BASE_URL:-http://localhost:3000}
     restart: unless-stopped
     # Optional, user-managed env file.
     # IMPORTANT: do NOT load `.env.example` here — it is a template whose
@@ -103,6 +106,7 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-auto}
       NEXT_PUBLIC_AUTH_MODE: ${AUTH_MODE}
+      NEXT_PUBLIC_BETTER_AUTH_BASE_URL: ${BETTER_AUTH_BASE_URL:-http://localhost:3000}
       # Better Auth server at /api/auth/* (Google sign-in, JWKS/JWT for the
       # backend, API keys). All optional at compose level: unset -> the
       # /api/auth/* routes fail fast with a clear error and the local

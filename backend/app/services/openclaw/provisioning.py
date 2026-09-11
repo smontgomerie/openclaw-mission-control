@@ -30,6 +30,7 @@ from app.services.openclaw.constants import (
     DEFAULT_HEARTBEAT_CONFIG,
     DEFAULT_IDENTITY_PROFILE,
     EXTRA_IDENTITY_PROFILE_FIELDS,
+    GATEWAY_HEARTBEAT_UNSUPPORTED_KEYS,
     HEARTBEAT_AGENT_TEMPLATE,
     HEARTBEAT_LEAD_TEMPLATE,
     IDENTITY_PROFILE_FIELDS,
@@ -106,11 +107,20 @@ def _templates_root() -> Path:
     return _repo_root() / "templates"
 
 
+def _sanitize_gateway_heartbeat(heartbeat: dict[str, Any]) -> dict[str, Any]:
+    """Drop heartbeat keys rejected by current OpenClaw gateway schemas."""
+    return {
+        key: value
+        for key, value in heartbeat.items()
+        if key not in GATEWAY_HEARTBEAT_UNSUPPORTED_KEYS
+    }
+
+
 def _heartbeat_config(agent: Agent) -> dict[str, Any]:
     merged = DEFAULT_HEARTBEAT_CONFIG.copy()
     if isinstance(agent.heartbeat_config, dict):
         merged.update(agent.heartbeat_config)
-    return merged
+    return _sanitize_gateway_heartbeat(merged)
 
 
 def _tools_exec_host_patch(config_data: dict[str, Any]) -> dict[str, Any] | None:
@@ -132,6 +142,23 @@ def _tools_exec_host_patch(config_data: dict[str, Any]) -> dict[str, Any] | None
     return {"exec": {"host": "gateway"}}
 
 
+def _channel_heartbeat_visibility_key(defaults: dict[str, Any] | None) -> str:
+    """Return the channel-defaults key OpenClaw expects for heartbeat visibility.
+
+    OpenClaw 2026.9+ uses ``heartbeatVisibility``. Older gateways used ``heartbeat``.
+    Prefer the modern key unless the live config only has the legacy key.
+    """
+    if not isinstance(defaults, dict):
+        return "heartbeatVisibility"
+    has_modern = isinstance(defaults.get("heartbeatVisibility"), dict) or (
+        "heartbeatVisibility" in defaults
+    )
+    has_legacy = isinstance(defaults.get("heartbeat"), dict) or ("heartbeat" in defaults)
+    if has_legacy and not has_modern:
+        return "heartbeat"
+    return "heartbeatVisibility"
+
+
 def _channel_heartbeat_visibility_patch(config_data: dict[str, Any]) -> dict[str, Any] | None:
     """Build a minimal patch ensuring channel default heartbeat visibility is configured.
 
@@ -139,16 +166,29 @@ def _channel_heartbeat_visibility_patch(config_data: dict[str, Any]) -> dict[str
     overwrite operator intent. Returns `None` if no change is needed, otherwise returns a shallow
     patch dict suitable for a config merge."""
     channels = config_data.get("channels")
+    defaults = channels.get("defaults") if isinstance(channels, dict) else None
+    visibility_key = _channel_heartbeat_visibility_key(
+        defaults if isinstance(defaults, dict) else None
+    )
+
     if not isinstance(channels, dict):
-        return {"defaults": {"heartbeat": DEFAULT_CHANNEL_HEARTBEAT_VISIBILITY.copy()}}
+        return {"defaults": {visibility_key: DEFAULT_CHANNEL_HEARTBEAT_VISIBILITY.copy()}}
 
-    defaults = channels.get("defaults")
     if not isinstance(defaults, dict):
-        return {"defaults": {"heartbeat": DEFAULT_CHANNEL_HEARTBEAT_VISIBILITY.copy()}}
+        return {"defaults": {visibility_key: DEFAULT_CHANNEL_HEARTBEAT_VISIBILITY.copy()}}
 
-    heartbeat = defaults.get("heartbeat")
+    heartbeat = defaults.get(visibility_key)
     if not isinstance(heartbeat, dict):
-        return {"defaults": {"heartbeat": DEFAULT_CHANNEL_HEARTBEAT_VISIBILITY.copy()}}
+        # Prefer values already present under the alternate key when renaming schemas.
+        alternate = (
+            defaults.get("heartbeat")
+            if visibility_key == "heartbeatVisibility"
+            else defaults.get("heartbeatVisibility")
+        )
+        if isinstance(alternate, dict):
+            heartbeat = alternate
+        else:
+            return {"defaults": {visibility_key: DEFAULT_CHANNEL_HEARTBEAT_VISIBILITY.copy()}}
 
     merged = dict(heartbeat)
     changed = False
@@ -157,10 +197,14 @@ def _channel_heartbeat_visibility_patch(config_data: dict[str, Any]) -> dict[str
             merged[key] = value
             changed = True
 
+    # Rewrite legacy key onto the modern key even when values already match.
+    if visibility_key == "heartbeatVisibility" and "heartbeat" in defaults:
+        changed = True
+
     if not changed:
         return None
 
-    return {"defaults": {"heartbeat": merged}}
+    return {"defaults": {visibility_key: merged}}
 
 
 def _template_env() -> Environment:
@@ -685,7 +729,9 @@ class OpenClawGatewayControlPlane(GatewayControlPlane):
         self,
         entries: list[tuple[str, str, dict[str, Any]]],
     ) -> None:
-        base_hash, raw_list, config_data = await _gateway_config_agent_list(self._config)
+        base_hash, raw_list, config_data, roster_shape = await _gateway_config_agent_roster(
+            self._config
+        )
         entry_by_id = _heartbeat_entry_map(entries)
         new_list = _updated_agent_list(raw_list, entry_by_id)
 
@@ -698,7 +744,7 @@ class OpenClawGatewayControlPlane(GatewayControlPlane):
             logger.debug("patch_agent_heartbeats: no changes detected, skipping config.patch")
             return
 
-        patch: dict[str, Any] = {"agents": {"list": new_list}}
+        patch: dict[str, Any] = {"agents": _agents_roster_patch(roster_shape, new_list)}
         if channels_patch is not None:
             patch["channels"] = channels_patch
         if tools_patch is not None:
@@ -712,6 +758,55 @@ class OpenClawGatewayControlPlane(GatewayControlPlane):
 async def _gateway_config_agent_list(
     config: GatewayClientConfig,
 ) -> tuple[str | None, list[object], dict[str, Any]]:
+    """Backward-compatible wrapper around :func:`_gateway_config_agent_roster`."""
+    base_hash, agents_list, data, _shape = await _gateway_config_agent_roster(config)
+    return base_hash, agents_list, data
+
+
+def _agent_roster_shape(agents_section: dict[str, Any]) -> str:
+    """Detect whether the gateway stores agents as ``entries`` or legacy ``list``."""
+    if isinstance(agents_section.get("entries"), dict):
+        return "entries"
+    if isinstance(agents_section.get("list"), list):
+        return "list"
+    # OpenClaw 2026.9+ rejects agents.list; default to the keyed roster.
+    return "entries"
+
+
+def _agents_list_from_entries(entries: dict[str, Any]) -> list[object]:
+    normalized: list[object] = []
+    for agent_id, raw_entry in entries.items():
+        if not isinstance(raw_entry, dict):
+            normalized.append(raw_entry)
+            continue
+        entry = dict(raw_entry)
+        entry["id"] = agent_id
+        normalized.append(entry)
+    return normalized
+
+
+def _agents_entries_from_list(raw_list: list[object]) -> dict[str, Any]:
+    entries: dict[str, Any] = {}
+    for raw_entry in raw_list:
+        if not isinstance(raw_entry, dict):
+            continue
+        agent_id = raw_entry.get("id")
+        if not isinstance(agent_id, str) or not agent_id:
+            continue
+        entry = {key: value for key, value in raw_entry.items() if key != "id"}
+        entries[agent_id] = entry
+    return entries
+
+
+def _agents_roster_patch(roster_shape: str, raw_list: list[object]) -> dict[str, Any]:
+    if roster_shape == "list":
+        return {"list": raw_list}
+    return {"entries": _agents_entries_from_list(raw_list)}
+
+
+async def _gateway_config_agent_roster(
+    config: GatewayClientConfig,
+) -> tuple[str | None, list[object], dict[str, Any], str]:
     cfg = await openclaw_call("config.get", config=config)
     if not isinstance(cfg, dict):
         msg = "config.get returned invalid payload"
@@ -723,11 +818,21 @@ async def _gateway_config_agent_list(
         raise OpenClawGatewayError(msg)
 
     agents_section = data.get("agents") or {}
+    if not isinstance(agents_section, dict):
+        agents_section = {}
+    roster_shape = _agent_roster_shape(agents_section)
+    if roster_shape == "entries":
+        entries = agents_section.get("entries") or {}
+        if not isinstance(entries, dict):
+            msg = "config agents.entries is not an object"
+            raise OpenClawGatewayError(msg)
+        return cfg.get("hash"), _agents_list_from_entries(entries), data, roster_shape
+
     agents_list = agents_section.get("list") or []
     if not isinstance(agents_list, list):
         msg = "config agents.list is not a list"
         raise OpenClawGatewayError(msg)
-    return cfg.get("hash"), agents_list, data
+    return cfg.get("hash"), agents_list, data, roster_shape
 
 
 def _heartbeat_entry_map(
@@ -751,13 +856,19 @@ def _updated_agent_list(
             continue
         agent_id = raw_entry.get("id")
         if not isinstance(agent_id, str) or agent_id not in entry_by_id:
-            new_list.append(raw_entry)
+            preserved = dict(raw_entry)
+            existing_heartbeat = preserved.get("heartbeat")
+            if isinstance(existing_heartbeat, dict):
+                sanitized = _sanitize_gateway_heartbeat(existing_heartbeat)
+                if sanitized != existing_heartbeat:
+                    preserved["heartbeat"] = sanitized
+            new_list.append(preserved)
             continue
 
         workspace_path, heartbeat = entry_by_id[agent_id]
         new_entry = dict(raw_entry)
         new_entry["workspace"] = workspace_path
-        new_entry["heartbeat"] = heartbeat
+        new_entry["heartbeat"] = _sanitize_gateway_heartbeat(heartbeat)
         new_list.append(new_entry)
         updated_ids.add(agent_id)
 
@@ -765,7 +876,11 @@ def _updated_agent_list(
         if agent_id in updated_ids:
             continue
         new_list.append(
-            {"id": agent_id, "workspace": workspace_path, "heartbeat": heartbeat},
+            {
+                "id": agent_id,
+                "workspace": workspace_path,
+                "heartbeat": _sanitize_gateway_heartbeat(heartbeat),
+            },
         )
 
     return new_list

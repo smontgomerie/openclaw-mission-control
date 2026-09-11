@@ -206,3 +206,23 @@ def test_betterauth_mode_keeps_explicit_audience() -> None:
         base_url=BASE_URL,
     )
     assert settings.betterauth_audience == "https://mc.example.com"
+
+
+def test_betterauth_env_aliases_accept_documented_better_auth_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """compose.yml / .env.example use BETTER_AUTH_*; accept those env names."""
+    monkeypatch.setenv("AUTH_MODE", "betterauth")
+    monkeypatch.setenv("BETTER_AUTH_JWKS_URL", BETTER_AUTH_JWKS_URL)
+    monkeypatch.setenv("BETTER_AUTH_ISSUER", BETTER_AUTH_ISSUER)
+    monkeypatch.setenv("BETTER_AUTH_AUDIENCE", "https://aud.example.com")
+    monkeypatch.setenv("BASE_URL", BASE_URL)
+    monkeypatch.delenv("BETTERAUTH_JWKS_URL", raising=False)
+    monkeypatch.delenv("BETTERAUTH_ISSUER", raising=False)
+    monkeypatch.delenv("BETTERAUTH_AUDIENCE", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.betterauth_jwks_url == BETTER_AUTH_JWKS_URL
+    assert settings.betterauth_issuer == BETTER_AUTH_ISSUER
+    assert settings.betterauth_audience == "https://aud.example.com"

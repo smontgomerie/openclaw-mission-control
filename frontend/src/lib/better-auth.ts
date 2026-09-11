@@ -222,13 +222,15 @@ export function buildBetterAuthOptions(
     if (!profile?.email) {
       return null;
     }
-    const hd = profile.hd;
-    if (
-      typeof hd !== "string" ||
-      !config.allowedGoogleDomains.includes(hd.toLowerCase())
-    ) {
+    const hd = typeof profile.hd === "string" ? profile.hd.toLowerCase() : "";
+    const emailDomain = String(profile.email).split("@")[1]?.toLowerCase() ?? "";
+    const allowed = config.allowedGoogleDomains;
+    // Prefer Google's Workspace `hd` claim; fall back to the email domain so
+    // Workspace accounts that omit `hd` in the id_token are not refused.
+    if (!(hd && allowed.includes(hd)) && !allowed.includes(emailDomain)) {
       console.warn(
         "[better-auth] refused Google account outside allowed domain(s)",
+        { hd: hd || null, emailDomain: emailDomain || null, allowed },
       );
       return null;
     }
@@ -249,7 +251,19 @@ export function buildBetterAuthOptions(
   return {
     secret: config.secret,
     baseURL: config.baseUrl,
+    // Google callback + CSRF checks require the public app origin. Include it
+    // explicitly so reverse-proxied HTTPS deployments (Tailscale, Caddy) are
+    // trusted even when the Next process sees an internal Host header.
+    trustedOrigins: [config.baseUrl],
     database,
+    // OAuth state lives in the `verification` table. The signed state cookie
+    // is defense-in-depth; behind TLS-terminating proxies it has been seen to
+    // fail closed (callback arrives without a usable cookie). Skip the cookie
+    // equality check and trust the DB-backed state + Google `state` param.
+    account: {
+      storeStateStrategy: "database",
+      skipStateCookieCheck: true,
+    },
     // No email/password: Google is the only way in.
     emailAndPassword: { enabled: false },
     user: {

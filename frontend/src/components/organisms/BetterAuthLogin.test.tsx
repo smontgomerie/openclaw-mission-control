@@ -51,6 +51,33 @@ describe("BetterAuthLogin", () => {
     expect(onAuthenticatedMock).toHaveBeenCalledTimes(1);
   });
 
+  it("does not reload when the client is already redirecting to Google", async () => {
+    const onAuthenticatedMock = vi.fn();
+    signInWithGoogleMock.mockResolvedValueOnce({
+      error: null,
+      data: {
+        redirect: true,
+        url: "https://accounts.google.com/o/oauth2/v2/auth",
+      },
+    });
+    const user = userEvent.setup();
+    render(
+      <BetterAuthLogin
+        redirectUrl="/boards"
+        onAuthenticated={onAuthenticatedMock}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /sign in with google/i }),
+    );
+
+    await waitFor(() =>
+      expect(signInWithGoogleMock).toHaveBeenCalledWith("/boards"),
+    );
+    expect(onAuthenticatedMock).not.toHaveBeenCalled();
+  });
+
   it("falls back to the shared sign-in redirect when no redirectUrl is given", async () => {
     const onAuthenticatedMock = vi.fn();
     signInWithGoogleMock.mockResolvedValueOnce({ error: null, data: null });

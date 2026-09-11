@@ -78,6 +78,139 @@ def test_templates_root_points_to_repo_templates_dir():
     assert (root / "BOARD_AGENTS.md.j2").exists()
 
 
+def test_channel_heartbeat_visibility_patch_uses_modern_key_by_default():
+    patch = agent_provisioning._channel_heartbeat_visibility_patch({})
+    assert patch == {
+        "defaults": {
+            "heartbeatVisibility": {
+                "showOk": False,
+                "showAlerts": True,
+                "useIndicator": True,
+            }
+        }
+    }
+
+
+def test_channel_heartbeat_visibility_patch_preserves_legacy_key_when_only_legacy_present():
+    patch = agent_provisioning._channel_heartbeat_visibility_patch(
+        {"channels": {"defaults": {"heartbeat": {"showOk": True}}}},
+    )
+    assert patch == {
+        "defaults": {
+            "heartbeat": {
+                "showOk": True,
+                "showAlerts": True,
+                "useIndicator": True,
+            }
+        }
+    }
+
+
+def test_channel_heartbeat_visibility_patch_noop_when_modern_complete():
+    patch = agent_provisioning._channel_heartbeat_visibility_patch(
+        {
+            "channels": {
+                "defaults": {
+                    "heartbeatVisibility": {
+                        "showOk": False,
+                        "showAlerts": True,
+                        "useIndicator": True,
+                    }
+                }
+            }
+        },
+    )
+    assert patch is None
+
+
+def test_agents_roster_patch_entries_drops_id_field():
+    patch = agent_provisioning._agents_roster_patch(
+        "entries",
+        [{"id": "mc-gateway-1", "workspace": "/tmp/ws", "heartbeat": {"every": "10m"}}],
+    )
+    assert patch == {
+        "entries": {
+            "mc-gateway-1": {
+                "workspace": "/tmp/ws",
+                "heartbeat": {"every": "10m"},
+            }
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_patch_agent_heartbeats_uses_entries_roster(monkeypatch):
+    calls: list[tuple[str, dict[str, object] | None]] = []
+
+    async def _fake_openclaw_call(method, params=None, config=None):
+        _ = config
+        calls.append((method, params))
+        if method == "config.get":
+            return {
+                "hash": "abc",
+                "config": {
+                    "agents": {
+                        "ownership": "explicit",
+                        "entries": {
+                            "mc-gateway-1": {
+                                "name": "Gateway",
+                                "workspace": "/old",
+                            }
+                        },
+                    },
+                    "channels": {
+                        "defaults": {
+                            "heartbeatVisibility": {
+                                "showOk": False,
+                                "showAlerts": True,
+                                "useIndicator": True,
+                            }
+                        }
+                    },
+                    "tools": {"exec": {"host": "gateway"}},
+                },
+            }
+        if method == "config.patch":
+            return {"ok": True}
+        raise AssertionError(f"Unexpected method: {method}")
+
+    monkeypatch.setattr(agent_provisioning, "openclaw_call", _fake_openclaw_call)
+    cp = agent_provisioning.OpenClawGatewayControlPlane(
+        agent_provisioning.GatewayClientConfig(url="ws://gateway.example/ws", token=None),
+    )
+    await cp.patch_agent_heartbeats(
+        [
+            (
+                "mc-gateway-1",
+                "/new",
+                {"every": "10m", "target": "last"},
+            )
+        ],
+    )
+
+    assert calls[0][0] == "config.get"
+    assert calls[1][0] == "config.patch"
+    raw = calls[1][1]["raw"]
+    assert isinstance(raw, str)
+    import json
+
+    payload = json.loads(raw)
+    assert "list" not in payload["agents"]
+    assert payload["agents"]["entries"]["mc-gateway-1"]["workspace"] == "/new"
+    assert payload["agents"]["entries"]["mc-gateway-1"]["heartbeat"]["every"] == "10m"
+    assert "includeReasoning" not in payload["agents"]["entries"]["mc-gateway-1"]["heartbeat"]
+    assert "channels" not in payload
+
+
+def test_heartbeat_config_strips_unsupported_gateway_keys():
+    agent = _AgentStub(
+        name="Alice",
+        heartbeat_config={"every": "5m", "includeReasoning": True, "target": "last"},
+    )
+    heartbeat = agent_provisioning._heartbeat_config(agent)
+    assert heartbeat == {"every": "5m", "target": "last"}
+
+
 def test_worker_heartbeat_template_avoids_per_cycle_self_checkins():
     gateway = _GatewayStub(
         id=uuid4(),
@@ -577,7 +710,7 @@ async def test_control_plane_upsert_agent_create_then_update(monkeypatch):
             agent_id="board-agent-a",
             name="Board Agent A",
             workspace_path="/tmp/workspace-board-agent-a",
-            heartbeat={"every": "10m", "target": "last", "includeReasoning": False},
+            heartbeat={"every": "10m", "target": "last"},
         ),
     )
 
@@ -611,7 +744,7 @@ async def test_control_plane_upsert_agent_handles_already_exists(monkeypatch):
             agent_id="board-agent-a",
             name="Board Agent A",
             workspace_path="/tmp/workspace-board-agent-a",
-            heartbeat={"every": "10m", "target": "last", "includeReasoning": False},
+            heartbeat={"every": "10m", "target": "last"},
         ),
     )
 
@@ -655,7 +788,7 @@ async def test_control_plane_upsert_agent_retries_update_after_create_race(monke
             agent_id="board-agent-a",
             name="Board Agent A",
             workspace_path="/tmp/workspace-board-agent-a",
-            heartbeat={"every": "10m", "target": "last", "includeReasoning": False},
+            heartbeat={"every": "10m", "target": "last"},
         ),
     )
 
@@ -693,7 +826,7 @@ async def test_control_plane_upsert_agent_missing_after_already_exists_fails_fas
                 agent_id="board-agent-a",
                 name="Board Agent A",
                 workspace_path="/tmp/workspace-board-agent-a",
-                heartbeat={"every": "10m", "target": "last", "includeReasoning": False},
+                heartbeat={"every": "10m", "target": "last"},
             ),
         )
 
